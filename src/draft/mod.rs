@@ -1,5 +1,6 @@
 //! Push a draft markdown file as an email draft, or send it directly.
 
+pub mod attach;
 pub mod migrate;
 pub mod new;
 
@@ -13,7 +14,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::accounts::{
     get_account_for_email, get_default_account, load_accounts, resolve_password,
@@ -49,6 +50,8 @@ pub struct EmailDraftMeta {
     pub scheduled_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
 }
 
 /// Returns true if the content starts with YAML frontmatter.
@@ -193,6 +196,12 @@ fn markdown_to_html(body: &str) -> String {
     html_output
 }
 
+/// An inline image with a generated Content-ID and resolved path.
+struct InlineImage {
+    cid: String,
+    path: PathBuf,
+}
+
 /// Compose an email from draft metadata.
 fn compose_email(
     meta: &HashMap<String, String>,
@@ -200,6 +209,7 @@ fn compose_email(
     body: &str,
     from_addr: &str,
     attachment_paths: &[String],
+    image_paths: &[String],
 ) -> Result<Message> {
     let from: Mailbox = from_addr.parse().map_err(|_| anyhow::anyhow!("Invalid from address: {}", from_addr))?;
     let to: Mailbox = meta["To"]
@@ -223,16 +233,77 @@ fn compose_email(
             builder = builder.references(in_reply_to.to_string());
         }
 
-    let html_body = markdown_to_html(body);
+    // Prepare inline images: generate CIDs and validate paths
+    let inline_images: Vec<InlineImage> = image_paths
+        .iter()
+        .enumerate()
+        .map(|(i, p)| InlineImage {
+            cid: format!("image{}@corky", i + 1),
+            path: PathBuf::from(p),
+        })
+        .collect();
+
+    // Build HTML body, injecting CID references for inline images
+    let mut html_body = markdown_to_html(body);
+    if !inline_images.is_empty() {
+        // Append inline image references to the HTML body
+        for img in &inline_images {
+            let filename = img.path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "image".to_string());
+            html_body.push_str(&format!(
+                "<p><img src=\"cid:{}\" alt=\"{}\" /></p>\n",
+                img.cid, filename
+            ));
+        }
+    }
+
     let alternative = MultiPart::alternative()
         .singlepart(SinglePart::plain(body.to_string()))
         .singlepart(SinglePart::html(html_body));
 
-    if attachment_paths.is_empty() {
-        let email = builder.multipart(alternative)?;
+    // Build the MIME structure:
+    // - No images, no attachments: just alternative
+    // - Images only: multipart/related (alternative + inline images)
+    // - Attachments only: multipart/mixed (alternative + attachments)
+    // - Both: multipart/mixed (multipart/related (alternative + inline images) + attachments)
+    let has_images = !inline_images.is_empty();
+    let has_attachments = !attachment_paths.is_empty();
+
+    let body_part = if has_images {
+        let mut related = MultiPart::related().multipart(alternative);
+        for img in &inline_images {
+            if !img.path.exists() {
+                bail!("Inline image not found: {}", img.path.display());
+            }
+            let file_bytes = std::fs::read(&img.path)?;
+            let content_type = mime_guess::from_path(&img.path)
+                .first()
+                .map(|mime| {
+                    ContentType::parse(mime.as_ref())
+                        .unwrap_or(ContentType::parse("application/octet-stream").unwrap())
+                })
+                .unwrap_or_else(|| ContentType::parse("image/png").unwrap());
+
+            let filename = img.path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "image".to_string());
+
+            let inline_part = Attachment::new_inline_with_name(img.cid.clone(), filename)
+                .body(file_bytes, content_type);
+
+            related = related.singlepart(inline_part);
+        }
+        related
+    } else {
+        alternative
+    };
+
+    if !has_attachments {
+        let email = builder.multipart(body_part)?;
         Ok(email)
     } else {
-        let mut multipart = MultiPart::mixed().multipart(alternative);
+        let mut multipart = MultiPart::mixed().multipart(body_part);
 
         for path_str in attachment_paths {
             let path = Path::new(path_str);
@@ -407,6 +478,20 @@ fn bubble_credentials(
     None
 }
 
+/// Resolve a media path: expand `~`, resolve relative paths against a base directory.
+fn resolve_media_path(path_str: &str, base_dir: &Path) -> String {
+    if path_str.starts_with("~/") {
+        crate::resolve::expand_tilde(path_str).to_string_lossy().to_string()
+    } else {
+        let p = Path::new(path_str);
+        if p.is_absolute() {
+            path_str.to_string()
+        } else {
+            base_dir.join(path_str).to_string_lossy().to_string()
+        }
+    }
+}
+
 /// corky push-draft FILE [--send]
 pub fn run(file: &Path, send: bool) -> Result<()> {
     if !file.exists() {
@@ -414,13 +499,22 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
     }
 
     let text = std::fs::read_to_string(file)?;
-    let attachments = if is_yaml_format(&text) {
-        parse_draft_yaml(&text)
-            .map(|m| m.attachments)
-            .unwrap_or_default()
+    let (attachments, images) = if is_yaml_format(&text) {
+        let meta = parse_draft_yaml(&text);
+        (
+            meta.as_ref().map(|m| m.attachments.clone()).unwrap_or_default(),
+            meta.as_ref().map(|m| m.images.clone()).unwrap_or_default(),
+        )
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
+
+    // Resolve image paths relative to the draft file directory
+    let draft_dir = file.parent().unwrap_or(Path::new("."));
+    let resolved_images: Vec<String> = images
+        .iter()
+        .map(|p| resolve_media_path(p, draft_dir))
+        .collect();
 
     let (meta, subject, body) = parse_draft(file)?;
 
@@ -457,6 +551,12 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
             println!("         {}", a);
         }
     }
+    if !resolved_images.is_empty() {
+        println!("Images:  {} file(s)", resolved_images.len());
+        for img in &resolved_images {
+            println!("         {}", img);
+        }
+    }
     let body_preview = if body.len() > 80 {
         format!("{}...", &body[..80])
     } else {
@@ -465,7 +565,7 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
     println!("Body:    {}", body_preview);
     println!();
 
-    let email = compose_email(&meta, &subject, &body, &acct.user, &attachments)?;
+    let email = compose_email(&meta, &subject, &body, &acct.user, &attachments, &resolved_images)?;
 
     if send {
         send_email(&email, &acct.smtp_host, acct.smtp_port, &acct.user, &password)?;
@@ -619,7 +719,7 @@ mod tests {
     fn test_compose_email_contains_html() {
         let mut meta = HashMap::new();
         meta.insert("To".to_string(), "alice@example.com".to_string());
-        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[]).unwrap();
+        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[], &[]).unwrap();
         let bytes = email.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
         assert!(formatted.contains("multipart/alternative"), "should be multipart/alternative");
@@ -637,7 +737,7 @@ mod tests {
         write!(tmp, "file contents").unwrap();
         let path = tmp.path().to_string_lossy().to_string();
 
-        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[path]).unwrap();
+        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[path], &[]).unwrap();
         let bytes = email.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
         assert!(formatted.contains("multipart/mixed"), "should be multipart/mixed with attachments");
@@ -645,5 +745,70 @@ mod tests {
         assert!(formatted.contains("text/plain"), "should contain text/plain part");
         assert!(formatted.contains("text/html"), "should contain text/html part");
         assert!(formatted.contains("<strong>world</strong>"), "should contain rendered HTML");
+    }
+
+    #[test]
+    fn test_compose_email_with_inline_image() {
+        let mut meta = HashMap::new();
+        meta.insert("To".to_string(), "alice@example.com".to_string());
+        // Create a temp image file (fake PNG)
+        let mut tmp = NamedTempFile::with_suffix(".png").unwrap();
+        write!(tmp, "fake png data").unwrap();
+        let path = tmp.path().to_string_lossy().to_string();
+
+        let email = compose_email(&meta, "Test", "Hello", "bob@example.com", &[], &[path]).unwrap();
+        let bytes = email.formatted();
+        let formatted = String::from_utf8_lossy(&bytes);
+        assert!(formatted.contains("multipart/related"), "should be multipart/related with inline images");
+        assert!(formatted.contains("cid:image1@corky"), "should contain CID reference in HTML");
+        assert!(formatted.contains("Content-Disposition: inline"), "should have inline disposition");
+    }
+
+    #[test]
+    fn test_compose_email_with_both_attachments_and_images() {
+        let mut meta = HashMap::new();
+        meta.insert("To".to_string(), "alice@example.com".to_string());
+
+        let mut img = NamedTempFile::with_suffix(".png").unwrap();
+        write!(img, "fake png").unwrap();
+        let img_path = img.path().to_string_lossy().to_string();
+
+        let mut att = NamedTempFile::with_suffix(".pdf").unwrap();
+        write!(att, "fake pdf").unwrap();
+        let att_path = att.path().to_string_lossy().to_string();
+
+        let email = compose_email(&meta, "Test", "Hello", "bob@example.com", &[att_path], &[img_path]).unwrap();
+        let bytes = email.formatted();
+        let formatted = String::from_utf8_lossy(&bytes);
+        assert!(formatted.contains("multipart/mixed"), "should be multipart/mixed as outer");
+        assert!(formatted.contains("multipart/related"), "should contain multipart/related for images");
+    }
+
+    #[test]
+    fn test_resolve_media_path_absolute() {
+        let result = resolve_media_path("/tmp/image.png", Path::new("/drafts"));
+        assert_eq!(result, "/tmp/image.png");
+    }
+
+    #[test]
+    fn test_resolve_media_path_relative() {
+        let result = resolve_media_path("image.png", Path::new("/drafts"));
+        assert_eq!(result, "/drafts/image.png");
+    }
+
+    #[test]
+    fn test_resolve_media_path_tilde() {
+        let result = resolve_media_path("~/images/photo.png", Path::new("/drafts"));
+        let home = std::env::var("HOME").unwrap();
+        assert_eq!(result, format!("{}/images/photo.png", home));
+    }
+
+    #[test]
+    fn test_parse_draft_yaml_with_images() {
+        let content = "---\nto: alice@example.com\nstatus: draft\nimages:\n  - screenshot.png\n  - photo.jpg\n---\n\n# Test\n\nBody\n";
+        let meta = parse_draft_yaml(content).unwrap();
+        assert_eq!(meta.images.len(), 2);
+        assert_eq!(meta.images[0], "screenshot.png");
+        assert_eq!(meta.images[1], "photo.jpg");
     }
 }

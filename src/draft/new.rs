@@ -19,6 +19,7 @@ pub fn run(
     in_reply_to: Option<&str>,
     mailbox: Option<&str>,
     attachments: &[String],
+    images: &[String],
 ) -> Result<()> {
     let drafts_dir = match mailbox {
         Some(name) => resolve::mailbox_dir(name).join("drafts"),
@@ -36,7 +37,7 @@ pub fn run(
     let slug = util::slugify(subject);
     let path = unique_path(&drafts_dir, &date, &slug);
 
-    let content = render(subject, to, cc, account, from, in_reply_to, &author, attachments);
+    let content = render(subject, to, cc, account, from, in_reply_to, &author, attachments, images);
     std::fs::write(&path, content)?;
     println!("{}", path.display());
     Ok(())
@@ -69,6 +70,7 @@ fn render(
     in_reply_to: Option<&str>,
     author: &str,
     attachments: &[String],
+    images: &[String],
 ) -> String {
     let mut fm_lines = Vec::new();
     fm_lines.push(format!("to: {}", to));
@@ -94,6 +96,12 @@ fn render(
             fm_lines.push(format!("  - {}", path));
         }
     }
+    if !images.is_empty() {
+        fm_lines.push("images:".to_string());
+        for path in images {
+            fm_lines.push(format!("  - {}", path));
+        }
+    }
 
     let mut lines = Vec::new();
     lines.push("---".to_string());
@@ -111,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_render_minimal() {
-        let out = render("Hello", "a@b.com", None, None, None, None, "", &[]);
+        let out = render("Hello", "a@b.com", None, None, None, None, "", &[], &[]);
         assert!(out.starts_with("---\n"));
         assert!(out.contains("to: a@b.com\n"));
         assert!(out.contains("status: draft\n"));
@@ -135,6 +143,7 @@ mod tests {
             Some("<msg-1>"),
             "Alice",
             &[],
+            &[],
         );
         assert!(out.contains("cc: c@d.com\n"));
         assert!(out.contains("author: Alice\n"));
@@ -155,6 +164,7 @@ mod tests {
             None,
             "Alice",
             &[],
+            &[],
         );
         // Should be parseable by the YAML parser
         assert!(out.starts_with("---\n"));
@@ -174,7 +184,7 @@ mod tests {
             "/tmp/screenshot.png".to_string(),
             "/tmp/doc.pdf".to_string(),
         ];
-        let out = render("Test", "a@b.com", None, None, None, None, "", &attachments);
+        let out = render("Test", "a@b.com", None, None, None, None, "", &attachments, &[]);
         assert!(out.contains("attachments:\n"));
         assert!(out.contains("  - /tmp/screenshot.png\n"));
         assert!(out.contains("  - /tmp/doc.pdf\n"));
@@ -187,6 +197,27 @@ mod tests {
         assert_eq!(meta.attachments.len(), 2);
         assert_eq!(meta.attachments[0], "/tmp/screenshot.png");
         assert_eq!(meta.attachments[1], "/tmp/doc.pdf");
+    }
+
+    #[test]
+    fn test_render_with_images() {
+        let images = vec![
+            "screenshot.png".to_string(),
+            "photo.jpg".to_string(),
+        ];
+        let out = render("Test", "a@b.com", None, None, None, None, "", &[], &images);
+        assert!(out.contains("images:\n"));
+        assert!(out.contains("  - screenshot.png\n"));
+        assert!(out.contains("  - photo.jpg\n"));
+
+        // Should be parseable
+        let after_first = &out[4..];
+        let end = after_first.find("\n---").unwrap();
+        let yaml_str = &after_first[..end];
+        let meta: crate::draft::EmailDraftMeta = serde_yaml::from_str(yaml_str).unwrap();
+        assert_eq!(meta.images.len(), 2);
+        assert_eq!(meta.images[0], "screenshot.png");
+        assert_eq!(meta.images[1], "photo.jpg");
     }
 
     #[test]

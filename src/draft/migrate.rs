@@ -157,6 +157,7 @@ fn convert_legacy_to_yaml(content: &str) -> Result<String> {
         in_reply_to,
         scheduled_at,
         attachments: Vec::new(),
+        images: Vec::new(),
     };
 
     let yaml = serde_yaml::to_string(&meta)?;
