@@ -181,6 +181,18 @@ pub fn parse_draft_yaml(content: &str) -> Option<EmailDraftMeta> {
     serde_yaml::from_str(yaml_str).ok()
 }
 
+/// Convert markdown body text to HTML.
+fn markdown_to_html(body: &str) -> String {
+    use pulldown_cmark::{Options, Parser, html};
+    let options = Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TABLES
+        | Options::ENABLE_SMART_PUNCTUATION;
+    let parser = Parser::new_ext(body, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    html_output
+}
+
 /// Compose an email from draft metadata.
 fn compose_email(
     meta: &HashMap<String, String>,
@@ -199,25 +211,28 @@ fn compose_email(
         .to(to)
         .subject(subject);
 
-    if let Some(cc) = meta.get("CC") {
-        if !cc.is_empty() {
+    if let Some(cc) = meta.get("CC")
+        && !cc.is_empty() {
             let cc_box: Mailbox = cc.parse().map_err(|_| anyhow::anyhow!("Invalid CC address: {}", cc))?;
             builder = builder.cc(cc_box);
         }
-    }
 
-    if let Some(in_reply_to) = meta.get("In-Reply-To") {
-        if !in_reply_to.is_empty() {
+    if let Some(in_reply_to) = meta.get("In-Reply-To")
+        && !in_reply_to.is_empty() {
             builder = builder.in_reply_to(in_reply_to.to_string());
             builder = builder.references(in_reply_to.to_string());
         }
-    }
+
+    let html_body = markdown_to_html(body);
+    let alternative = MultiPart::alternative()
+        .singlepart(SinglePart::plain(body.to_string()))
+        .singlepart(SinglePart::html(html_body));
 
     if attachment_paths.is_empty() {
-        let email = builder.body(body.to_string())?;
+        let email = builder.multipart(alternative)?;
         Ok(email)
     } else {
-        let mut multipart = MultiPart::mixed().singlepart(SinglePart::plain(body.to_string()));
+        let mut multipart = MultiPart::mixed().multipart(alternative);
 
         for path_str in attachment_paths {
             let path = Path::new(path_str);
@@ -336,24 +351,20 @@ fn resolve_account(
     let accounts = load_accounts(None)?;
 
     // Try **Account** field first
-    if let Some(acct_name) = meta.get("Account") {
-        if !acct_name.is_empty() {
-            if let Some(acct) = accounts.get(acct_name) {
+    if let Some(acct_name) = meta.get("Account")
+        && !acct_name.is_empty()
+            && let Some(acct) = accounts.get(acct_name) {
                 let pwd = resolve_password(acct)?;
                 return Ok((acct_name.clone(), acct.clone(), pwd));
             }
-        }
-    }
 
     // Try **From** field to match by email
-    if let Some(from_addr) = meta.get("From") {
-        if !from_addr.is_empty() {
-            if let Some((name, acct)) = get_account_for_email(&accounts, from_addr) {
+    if let Some(from_addr) = meta.get("From")
+        && !from_addr.is_empty()
+            && let Some((name, acct)) = get_account_for_email(&accounts, from_addr) {
                 let pwd = resolve_password(&acct)?;
                 return Ok((name, acct, pwd));
             }
-        }
-    }
 
     // Fall back to default from local config
     if let Ok((name, acct)) = get_default_account(&accounts) {
@@ -382,15 +393,12 @@ fn bubble_credentials(
     loop {
         dir = dir.parent()?;
         let config_path = dir.join(".corky.toml");
-        if config_path.exists() {
-            if let Ok(parent_accounts) = load_accounts(Some(&config_path)) {
-                if let Some((name, acct)) = get_account_for_email(&parent_accounts, from_addr) {
-                    if let Ok(pwd) = resolve_password(&acct) {
+        if config_path.exists()
+            && let Ok(parent_accounts) = load_accounts(Some(&config_path))
+                && let Some((name, acct)) = get_account_for_email(&parent_accounts, from_addr)
+                    && let Ok(pwd) = resolve_password(&acct) {
                         return Some((name, acct, pwd));
                     }
-                }
-            }
-        }
         // Stop at filesystem root
         if dir.parent().is_none() || dir == dir.parent().unwrap() {
             break;
@@ -590,5 +598,52 @@ mod tests {
         assert_eq!(meta["Status"], "draft"); // default
         assert_eq!(subject, "Hello");
         assert!(body.contains("Body here"));
+    }
+
+    #[test]
+    fn test_markdown_to_html_basic() {
+        let html = markdown_to_html("Hello **world**");
+        assert!(html.contains("<strong>world</strong>"));
+        assert!(html.contains("<p>"));
+    }
+
+    #[test]
+    fn test_markdown_to_html_links_and_lists() {
+        let md = "Check [this](https://example.com)\n\n- item one\n- item two\n";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<a href=\"https://example.com\">this</a>"));
+        assert!(html.contains("<li>"));
+    }
+
+    #[test]
+    fn test_compose_email_contains_html() {
+        let mut meta = HashMap::new();
+        meta.insert("To".to_string(), "alice@example.com".to_string());
+        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[]).unwrap();
+        let bytes = email.formatted();
+        let formatted = String::from_utf8_lossy(&bytes);
+        assert!(formatted.contains("multipart/alternative"), "should be multipart/alternative");
+        assert!(formatted.contains("text/plain"), "should contain text/plain part");
+        assert!(formatted.contains("text/html"), "should contain text/html part");
+        assert!(formatted.contains("<strong>world</strong>"), "should contain rendered HTML");
+    }
+
+    #[test]
+    fn test_compose_email_with_attachment_contains_html() {
+        let mut meta = HashMap::new();
+        meta.insert("To".to_string(), "alice@example.com".to_string());
+        // Create a temp attachment file
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "file contents").unwrap();
+        let path = tmp.path().to_string_lossy().to_string();
+
+        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[path]).unwrap();
+        let bytes = email.formatted();
+        let formatted = String::from_utf8_lossy(&bytes);
+        assert!(formatted.contains("multipart/mixed"), "should be multipart/mixed with attachments");
+        assert!(formatted.contains("multipart/alternative"), "should contain nested alternative");
+        assert!(formatted.contains("text/plain"), "should contain text/plain part");
+        assert!(formatted.contains("text/html"), "should contain text/html part");
+        assert!(formatted.contains("<strong>world</strong>"), "should contain rendered HTML");
     }
 }
