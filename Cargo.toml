@@ -1,6 +1,6 @@
 [package]
 name = "corky"
-version = "0.15.3"
+version = "0.16.0"
 edition = "2024"
 description = "Sync email threads from IMAP to Markdown, draft replies, manage collaborators"
 license = "Apache-2.0"
