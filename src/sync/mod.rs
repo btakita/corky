@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod folders;
 pub mod imap_sync;
+pub mod imports;
 pub mod manifest;
 pub mod markdown;
 pub mod routes;

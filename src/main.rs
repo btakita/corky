@@ -62,6 +62,7 @@ fn main() -> Result<()> {
                 let out_dir = corky::resolve::conversations_dir();
                 corky::sync::sms_import::run(&path, &label, &out_dir, &account)
             }
+            Some(SyncCommands::Imports) => corky::sync::imports::run_from_config(),
         },
         Commands::SyncAuth => corky::sync::auth::run(),
         Commands::ListFolders { account } => corky::sync::folders::run(account.as_deref()),
@@ -280,6 +281,7 @@ fn run_draft_command(cmd: DraftCommands) -> anyhow::Result<()> {
             in_reply_to,
             mailbox,
             attachments,
+            images,
         } => corky::draft::new::run(
             &subject,
             &to,
@@ -289,7 +291,14 @@ fn run_draft_command(cmd: DraftCommands) -> anyhow::Result<()> {
             in_reply_to.as_deref(),
             mailbox.as_deref(),
             &attachments,
+            &images,
         ),
+        DraftCommands::Attach {
+            file,
+            files,
+            clipboard,
+            inline,
+        } => corky::draft::attach::run(&file, &files, clipboard, inline),
         DraftCommands::Validate { args } => {
             corky::mailbox::validate_draft::run_scoped(&args)
         }

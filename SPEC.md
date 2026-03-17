@@ -1527,6 +1527,46 @@ corky sync sms-import PATH [--label LABEL] [--account ACCOUNT]
 - `--label`: Label for imported conversations (default: "sms")
 - `--account`: Account name (default: "sms")
 
+## § 16b Config-driven Imports
+
+### 16b.1 Overview
+
+The `[[imports]]` config section defines import sources in `.corky.toml`.
+`corky sync imports` reads all entries and dispatches to the matching handler
+(`sms_import`, `telegram_import`, `slack_import`).
+
+### 16b.2 Configuration
+
+```toml
+[[imports]]
+type = "sms"                    # sms | telegram | slack
+path = "~/Downloads/sms-backup.xml"
+label = "sms"                   # default: same as type
+account = "personal"            # default: same as type
+```
+
+- `type` (required): Handler to invoke.
+- `path` (required): Source file or directory. Tilde (`~`) is expanded.
+- `label` (optional): Conversation label. Defaults to the import type.
+- `account` (optional): Account name for metadata. Defaults to the import type.
+
+### 16b.3 CLI Interface
+
+```
+corky sync imports
+```
+
+Reads `[[imports]]` from `.corky.toml` and runs each entry in order.
+Missing paths emit a warning and are skipped. Unknown types cause an error.
+
+### 16b.4 Dispatch
+
+| type | handler |
+|------|---------|
+| `sms` | `sync::sms_import::run()` |
+| `telegram` | `sync::telegram_import::run()` |
+| `slack` | `sync::slack_import::run()` |
+
 ## § 17 YouTube
 
 ### 17.1 Overview

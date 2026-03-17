@@ -10,6 +10,7 @@ use crate::config::contact::Contact;
 use crate::config::topic::TopicConfig;
 use crate::resolve;
 use crate::social::profiles::Profile;
+use crate::sync::imports::ImportConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CorkyConfig {
@@ -37,6 +38,8 @@ pub struct CorkyConfig {
     pub transcription: Option<TranscriptionConfig>,
     #[serde(default)]
     pub profiles: HashMap<String, Profile>,
+    #[serde(default)]
+    pub imports: Vec<ImportConfig>,
 }
 
 /// Gmail API config + filter rules (lives in .corky.toml under [gmail]).

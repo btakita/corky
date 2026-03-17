@@ -51,3 +51,20 @@ default = true
 # [watch]
 # poll_interval = 300                       # seconds between polls (default: 300)
 # notify = true                             # desktop alerts on new messages (default: false)
+
+# Import sources — run with `corky sync imports`.
+# [[imports]]
+# type = "sms"                              # sms | telegram | slack
+# path = "~/Downloads/sms-backup.xml"
+# label = "sms"                             # default: same as type
+# account = "personal"                      # default: same as type
+
+# [[imports]]
+# type = "telegram"
+# path = "~/Downloads/telegram-export"
+
+# [[imports]]
+# type = "slack"
+# path = "~/Downloads/slack-export.zip"
+# label = "work-slack"
+# account = "work"

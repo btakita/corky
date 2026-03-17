@@ -305,6 +305,9 @@ pub enum SyncCommands {
         #[arg(long, default_value = "sms")]
         account: String,
     },
+
+    /// Run all imports from [[imports]] in .corky.toml
+    Imports,
 }
 
 #[derive(Subcommand)]
@@ -341,6 +344,27 @@ pub enum DraftCommands {
         /// Attach a file (can be repeated)
         #[arg(long = "attach")]
         attachments: Vec<String>,
+
+        /// Embed an inline image (can be repeated)
+        #[arg(long = "image")]
+        images: Vec<String>,
+    },
+    /// Attach a file or clipboard content to an existing draft
+    Attach {
+        /// Path to the draft markdown file
+        file: PathBuf,
+
+        /// File path(s) to attach
+        #[arg(long = "file")]
+        files: Vec<String>,
+
+        /// Attach clipboard content (image or text)
+        #[arg(long)]
+        clipboard: bool,
+
+        /// Add as inline image instead of attachment
+        #[arg(long)]
+        inline: bool,
     },
     /// Validate draft markdown files
     Validate {
