@@ -46,8 +46,8 @@ const DEV_COMMANDS: &[(&str, &str)] = &[
 ];
 
 pub fn run(filter: Option<&str>) -> Result<()> {
-    if let Some(filter) = filter {
-        if filter != "--dev" {
+    if let Some(filter) = filter
+        && filter != "--dev" {
             let all_cmds: Vec<(&str, &str)> = COMMANDS
                 .iter()
                 .chain(MAILBOX_COMMANDS.iter())
@@ -65,7 +65,6 @@ pub fn run(filter: Option<&str>) -> Result<()> {
             print_table(&matches.iter().map(|&&(a, b)| (a, b)).collect::<Vec<_>>());
             return Ok(());
         }
-    }
 
     println!("corky commands\n");
     print_table(COMMANDS);

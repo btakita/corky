@@ -291,11 +291,10 @@ pub fn add_label_to_account(account_name: &str, label: &str, path: Option<&Path>
         .and_then(|t| t.get_mut(account_name))
         .and_then(|t| t.get_mut("labels"));
 
-    if let Some(labels) = labels_array {
-        if let Some(arr) = labels.as_array_mut() {
+    if let Some(labels) = labels_array
+        && let Some(arr) = labels.as_array_mut() {
             arr.push(label);
         }
-    }
 
     std::fs::write(&path, doc.to_string())?;
     Ok(true)

@@ -92,12 +92,11 @@ pub fn resolve_mailbox(name: Option<&str>) -> Result<Option<PathBuf>> {
     }
 
     // No name given — try defaults
-    if let Some(default) = read_default(&table) {
-        if let Some(mailbox_val) = mailboxes.get(default.as_str()) {
+    if let Some(default) = read_default(&table)
+        && let Some(mailbox_val) = mailboxes.get(default.as_str()) {
             let path = mailbox_path(mailbox_val)?;
             return Ok(Some(path));
         }
-    }
 
     if mailboxes.len() == 1 {
         let (_, mailbox_val) = mailboxes.iter().next().unwrap();

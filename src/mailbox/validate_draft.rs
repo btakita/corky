@@ -159,14 +159,13 @@ fn validate_legacy_draft(text: &str) -> Vec<String> {
     }
 
     // Check body exists after separator
-    if has_separator {
-        if let Some(sep_idx) = lines.iter().position(|line| line.trim() == "---") {
+    if has_separator
+        && let Some(sep_idx) = lines.iter().position(|line| line.trim() == "---") {
             let body: String = lines[sep_idx + 1..].join("\n");
             if body.trim().is_empty() {
                 issues.push("Warning: empty body after --- separator".to_string());
             }
         }
-    }
 
     issues
 }

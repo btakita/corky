@@ -303,13 +303,11 @@ fn resolve_from_name(from_name: Option<String>) -> anyhow::Result<String> {
     if let Some(name) = from_name {
         return Ok(name);
     }
-    if let Some(cfg) = corky::config::corky_config::try_load_config(None) {
-        if let Some(owner) = cfg.owner {
-            if !owner.name.is_empty() {
+    if let Some(cfg) = corky::config::corky_config::try_load_config(None)
+        && let Some(owner) = cfg.owner
+            && !owner.name.is_empty() {
                 return Ok(owner.name);
             }
-        }
-    }
     anyhow::bail!(
         "No --from name provided and no [owner] name in .corky.toml.\n\
          Use --from NAME or set name in [owner] section of .corky.toml."

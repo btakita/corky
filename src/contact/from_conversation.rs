@@ -103,8 +103,8 @@ fn find_conversation(slug: &str) -> Result<std::path::PathBuf> {
 
     // Search mailboxes/*/conversations/
     let mailboxes_dir = data_dir.join("mailboxes");
-    if mailboxes_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&mailboxes_dir) {
+    if mailboxes_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&mailboxes_dir) {
             for entry in entries.flatten() {
                 let mb_path = entry.path().join("conversations").join(&filename);
                 if mb_path.exists() {
@@ -112,7 +112,6 @@ fn find_conversation(slug: &str) -> Result<std::path::PathBuf> {
                 }
             }
         }
-    }
 
     anyhow::bail!(
         "Conversation '{}' not found.\nSearched:\n  - {}\n  - {}",

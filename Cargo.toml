@@ -48,6 +48,7 @@ hound = { version = "3.5", optional = true }
 pyannote-rs = { version = "0.3", optional = true }
 ort = { version = "=2.0.0-rc.10", optional = true, features = ["ndarray"] }
 quick-xml = { version = "0.39.2", features = ["serialize"] }
+pulldown-cmark = "0.12"
 
 [features]
 default = ["transcribe"]
@@ -65,11 +66,6 @@ mockito = "1"
 
 [lints.rust]
 warnings = "deny"
-
-[lints.clippy]
-# Allowed during Rust 2024 migration: clippy now suggests `if let` chains
-# (a Rust 2024 feature) for nested if/if-let blocks. Fix incrementally.
-collapsible_if = "allow"
 
 [profile.release]
 opt-level = 3

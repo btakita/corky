@@ -55,11 +55,10 @@ pub fn generate_manifest(conversations_dir: &Path) -> Result<()> {
             for field in [&msg.from, &msg.to, &msg.cc] {
                 for cap in EMAIL_RE.captures_iter(field) {
                     let addr = cap[1].to_lowercase();
-                    if let Some(cname) = email_to_contact.get(&addr) {
-                        if !thread_contacts.contains(cname) {
+                    if let Some(cname) = email_to_contact.get(&addr)
+                        && !thread_contacts.contains(cname) {
                             thread_contacts.push(cname.clone());
                         }
-                    }
                 }
             }
         }

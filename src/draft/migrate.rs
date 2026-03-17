@@ -21,8 +21,8 @@ pub fn run(dry_run: bool) -> Result<()> {
 
     // mailboxes/*/drafts/
     let mb_base = resolve::mailboxes_base_dir();
-    if mb_base.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&mb_base) {
+    if mb_base.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&mb_base) {
             for entry in entries.flatten() {
                 let mb_drafts = entry.path().join("drafts");
                 if mb_drafts.is_dir() {
@@ -30,7 +30,6 @@ pub fn run(dry_run: bool) -> Result<()> {
                 }
             }
         }
-    }
 
     if dirs.is_empty() {
         println!("No drafts directories found.");

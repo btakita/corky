@@ -17,11 +17,10 @@ pub fn decode_audio(path: &Path) -> Result<Vec<f32>> {
         .to_lowercase();
 
     // For WAV files, try hound first (simpler, more reliable for PCM WAV)
-    if ext == "wav" {
-        if let Ok(samples) = decode_wav_hound(path) {
+    if ext == "wav"
+        && let Ok(samples) = decode_wav_hound(path) {
             return Ok(samples);
         }
-    }
 
     // For formats symphonia supports, use it directly
     if SYMPHONIA_EXTS.contains(&ext.as_str()) {
@@ -74,11 +73,10 @@ fn decode_ffmpeg(path: &Path) -> Result<Vec<f32>> {
 
 fn which_ffmpeg() -> Result<String> {
     for name in &["ffmpeg"] {
-        if let Ok(output) = std::process::Command::new(name).arg("-version").output() {
-            if output.status.success() {
+        if let Ok(output) = std::process::Command::new(name).arg("-version").output()
+            && output.status.success() {
                 return Ok(name.to_string());
             }
-        }
     }
     bail!(
         "ffmpeg not found. Install ffmpeg for AMR and other format support.\n\

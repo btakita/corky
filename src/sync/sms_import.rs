@@ -154,11 +154,10 @@ pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Resu
                         .unwrap_or_else(|| sms.address.clone())
                 };
 
-                if let Some(name) = &sms.contact_name {
-                    if !name.is_empty() && name != "(Unknown)" {
+                if let Some(name) = &sms.contact_name
+                    && !name.is_empty() && name != "(Unknown)" {
                         contact_names.entry(phone.clone()).or_insert_with(|| name.clone());
                     }
-                }
 
                 msg_counter += 1;
                 let message = Message {
@@ -225,11 +224,10 @@ pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Resu
                         .unwrap_or_else(|| phone.clone())
                 };
 
-                if let Some(name) = &mms.contact_name {
-                    if !name.is_empty() && name != "(Unknown)" {
+                if let Some(name) = &mms.contact_name
+                    && !name.is_empty() && name != "(Unknown)" {
                         contact_names.entry(phone.clone()).or_insert_with(|| name.clone());
                     }
-                }
 
                 msg_counter += 1;
                 let message = Message {

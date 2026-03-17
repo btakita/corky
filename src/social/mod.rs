@@ -256,11 +256,10 @@ pub fn run_list(status_filter: Option<&str>) -> Result<()> {
     for entry in entries {
         let content = std::fs::read_to_string(entry.path())?;
         if let Ok(draft) = SocialDraft::parse(&content) {
-            if let Some(ref f) = filter {
-                if draft.meta.status != *f {
+            if let Some(ref f) = filter
+                && draft.meta.status != *f {
                     continue;
                 }
-            }
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
             let preview = util::truncate_preview(&draft.body, 60);
@@ -291,14 +290,13 @@ pub fn run_rename_author(old: &str, new: &str) -> Result<()> {
     if corky_path.exists() {
         let content = std::fs::read_to_string(&corky_path)?;
         let mut doc = content.parse::<toml_edit::DocumentMut>()?;
-        if let Some(profiles_table) = doc.get_mut("profiles").and_then(|v| v.as_table_mut()) {
-            if let Some(item) = profiles_table.remove(old) {
+        if let Some(profiles_table) = doc.get_mut("profiles").and_then(|v| v.as_table_mut())
+            && let Some(item) = profiles_table.remove(old) {
                 profiles_table.insert(new, item);
                 std::fs::write(&corky_path, doc.to_string())?;
                 println!("Renamed profile '{}' -> '{}' in .corky.toml", old, new);
                 count += 1;
             }
-        }
     }
     // Also check standalone profiles.toml for backward compat
     let profiles_path = resolve::profiles_toml();
@@ -321,15 +319,14 @@ pub fn run_rename_author(old: &str, new: &str) -> Result<()> {
             let entry = entry?;
             if entry.path().extension().map(|x| x == "md").unwrap_or(false) {
                 let content = std::fs::read_to_string(entry.path())?;
-                if let Ok(mut draft) = SocialDraft::parse(&content) {
-                    if draft.meta.author == old {
+                if let Ok(mut draft) = SocialDraft::parse(&content)
+                    && draft.meta.author == old {
                         draft.meta.author = new.to_string();
                         let rendered = draft.render()?;
                         std::fs::write(entry.path(), rendered)?;
                         println!("Updated author in {}", entry.path().display());
                         count += 1;
                     }
-                }
             }
         }
     }

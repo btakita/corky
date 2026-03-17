@@ -81,21 +81,19 @@ fn cache_directory(custom: Option<&str>) -> Result<PathBuf> {
 
 fn dirs_cache_dir() -> Option<PathBuf> {
     // Use XDG_CACHE_HOME or ~/.cache
-    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-        if !xdg.is_empty() {
+    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME")
+        && !xdg.is_empty() {
             return Some(PathBuf::from(xdg));
         }
-    }
     let home = std::env::var("HOME").ok()?;
     Some(PathBuf::from(home).join(".cache"))
 }
 
 fn shellexpand(path: &str) -> String {
-    if path.starts_with("~/") {
-        if let Ok(home) = std::env::var("HOME") {
+    if path.starts_with("~/")
+        && let Ok(home) = std::env::var("HOME") {
             return format!("{}{}", home, &path[1..]);
         }
-    }
     path.to_string()
 }
 

@@ -34,11 +34,10 @@ fn extract_body(parsed: &mailparse::ParsedMail) -> String {
                 .headers
                 .iter()
                 .any(|h| h.get_key_ref().eq_ignore_ascii_case("Content-Disposition"));
-            if !has_disposition {
-                if let Ok(body) = part.get_body() {
+            if !has_disposition
+                && let Ok(body) = part.get_body() {
                     return body;
                 }
-            }
         }
         let nested = extract_body(part);
         if !nested.is_empty() {
@@ -97,13 +96,11 @@ fn find_thread_file(out_dir: &Path, thread_id: &str) -> Option<PathBuf> {
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        if let Ok(text) = std::fs::read_to_string(&path) {
-            if let Some(cap) = THREAD_ID_RE.captures(&text) {
-                if cap[1].trim() == thread_id {
+        if let Ok(text) = std::fs::read_to_string(&path)
+            && let Some(cap) = THREAD_ID_RE.captures(&text)
+                && cap[1].trim() == thread_id {
                     return Some(path);
                 }
-            }
-        }
     }
     None
 }
@@ -483,11 +480,10 @@ fn sync_label(
         for out_dir in out_dirs {
             let file_path =
                 merge_message_to_file(out_dir, label_name, account_name, &message, &thread_key)?;
-            if let Some(touched_set) = touched {
-                if let Some(ref fp) = file_path {
+            if let Some(touched_set) = touched
+                && let Some(ref fp) = file_path {
                     touched_set.insert(fp.clone());
                 }
-            }
         }
 
         if *uid > max_uid {

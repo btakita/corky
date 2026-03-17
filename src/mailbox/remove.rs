@@ -82,29 +82,26 @@ fn remove_from_config(name: &str) -> Result<()> {
     let mut doc = content.parse::<toml_edit::DocumentMut>()?;
 
     // Remove [mailboxes.{name}]
-    if let Some(mailboxes) = doc.get_mut("mailboxes") {
-        if let Some(table) = mailboxes.as_table_mut() {
+    if let Some(mailboxes) = doc.get_mut("mailboxes")
+        && let Some(table) = mailboxes.as_table_mut() {
             table.remove(name);
         }
-    }
 
     // Remove routing entries that point to this mailbox
     let mb_path = format!("mailboxes/{}", name);
-    if let Some(routing) = doc.get_mut("routing") {
-        if let Some(table) = routing.as_table_mut() {
+    if let Some(routing) = doc.get_mut("routing")
+        && let Some(table) = routing.as_table_mut() {
             let keys_to_check: Vec<String> = table.iter().map(|(k, _)| k.to_string()).collect();
             for key in keys_to_check {
-                if let Some(item) = table.get_mut(&key) {
-                    if let Some(arr) = item.as_array_mut() {
+                if let Some(item) = table.get_mut(&key)
+                    && let Some(arr) = item.as_array_mut() {
                         arr.retain(|v| v.as_str() != Some(&mb_path));
                         if arr.is_empty() {
                             table.remove(&key);
                         }
                     }
-                }
             }
         }
-    }
 
     std::fs::write(&config_path, doc.to_string())?;
     println!("Removed '{}' from .corky.toml", name);

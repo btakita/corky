@@ -69,13 +69,11 @@ fn count_new_messages(
 
 fn load_state() -> SyncState {
     let sf = resolve::sync_state_file();
-    if sf.exists() {
-        if let Ok(data) = std::fs::read(&sf) {
-            if let Ok(state) = crate::sync::types::load_state(&data) {
+    if sf.exists()
+        && let Ok(data) = std::fs::read(&sf)
+            && let Ok(state) = crate::sync::types::load_state(&data) {
                 return state;
             }
-        }
-    }
     SyncState::default()
 }
 
@@ -101,11 +99,10 @@ fn sync_mailboxes() {
             .arg("status")
             .arg("--porcelain")
             .output();
-        if let Ok(out) = output {
-            if !String::from_utf8_lossy(&out.stdout).trim().is_empty() {
+        if let Ok(out) = output
+            && !String::from_utf8_lossy(&out.stdout).trim().is_empty() {
                 let _ = crate::mailbox::sync::sync_one(name);
             }
-        }
     }
 }
 

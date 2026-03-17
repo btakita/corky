@@ -93,13 +93,12 @@ impl ProfilesFile {
     /// Load profiles from .corky.toml [profiles] section, falling back to profiles.toml.
     pub fn load() -> Result<Self> {
         // Prefer [profiles] section in .corky.toml
-        if let Some(config) = corky_config::try_load_config(None) {
-            if !config.profiles.is_empty() {
+        if let Some(config) = corky_config::try_load_config(None)
+            && !config.profiles.is_empty() {
                 return Ok(ProfilesFile {
                     profiles: config.profiles,
                 });
             }
-        }
         // Fallback to standalone profiles.toml
         let path = resolve::profiles_toml();
         Self::load_from(&path)
@@ -199,14 +198,13 @@ impl ProfilesFile {
                             if other_platform == platform {
                                 continue; // Same platform duplicate already caught
                             }
-                            if let Some(other_urn) = &other_entry.urn {
-                                if *other_urn == urn_key {
+                            if let Some(other_urn) = &other_entry.urn
+                                && *other_urn == urn_key {
                                     result.errors.push(format!(
                                         "URN '{}' used by profile '{}' ({}) and '{}' ({})",
                                         urn, name, platform, other_name, other_platform
                                     ));
                                 }
-                            }
                         }
                     }
                 }
@@ -268,11 +266,10 @@ impl ProfilesFile {
     /// Resolve a handle to its profile name for a given platform.
     pub fn resolve_handle(&self, handle: &str, platform: Platform) -> Option<String> {
         for (name, profile) in &self.profiles {
-            if let Some(entry) = profile.get_platform(platform) {
-                if entry.handle == handle {
+            if let Some(entry) = profile.get_platform(platform)
+                && entry.handle == handle {
                     return Some(name.clone());
                 }
-            }
         }
         None
     }

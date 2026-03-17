@@ -33,8 +33,8 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
     match platform {
         Platform::LinkedIn => {
             // Try .corky.toml first (inline or _cmd)
-            if let Some(cfg) = corky_config::try_load_config(None) {
-                if let Some(li) = &cfg.linkedin {
+            if let Some(cfg) = corky_config::try_load_config(None)
+                && let Some(li) = &cfg.linkedin {
                     let has_config = !li.client_id.is_empty()
                         || !li.client_id_cmd.is_empty()
                         || !li.client_secret.is_empty()
@@ -56,7 +56,6 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
                         });
                     }
                 }
-            }
             // Fall back to env vars
             let client_id = std::env::var("CORKY_LINKEDIN_CLIENT_ID")
                 .context("LinkedIn client_id not found.\nSet [linkedin] in .corky.toml or CORKY_LINKEDIN_CLIENT_ID env var.")?;
@@ -69,8 +68,8 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
         }
         Platform::Youtube => {
             // Try .corky.toml first (inline or _cmd)
-            if let Some(cfg) = corky_config::try_load_config(None) {
-                if let Some(yt) = &cfg.youtube {
+            if let Some(cfg) = corky_config::try_load_config(None)
+                && let Some(yt) = &cfg.youtube {
                     let has_config = !yt.client_id.is_empty()
                         || !yt.client_id_cmd.is_empty()
                         || !yt.client_secret.is_empty()
@@ -92,7 +91,6 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
                         });
                     }
                 }
-            }
             // Fall back to env vars
             let client_id = std::env::var("CORKY_YOUTUBE_CLIENT_ID")
                 .context("YouTube client_id not found.\nSet [youtube] in .corky.toml or CORKY_YOUTUBE_CLIENT_ID env var.")?;

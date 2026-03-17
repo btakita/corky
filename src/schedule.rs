@@ -68,8 +68,8 @@ pub fn scan_scheduled(now: DateTime<Utc>) -> Result<Vec<ScheduledItem>> {
 
     // Scan mailboxes/*/drafts/
     let mb_base = resolve::mailboxes_base_dir();
-    if mb_base.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&mb_base) {
+    if mb_base.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&mb_base) {
             for entry in entries.flatten() {
                 let mb_drafts = entry.path().join("drafts");
                 if mb_drafts.is_dir() {
@@ -77,7 +77,6 @@ pub fn scan_scheduled(now: DateTime<Utc>) -> Result<Vec<ScheduledItem>> {
                 }
             }
         }
-    }
 
     // Sort by scheduled_at ascending (earliest first)
     items.sort_by_key(|item| item.scheduled_at);
@@ -94,15 +93,15 @@ fn scan_social_dir(
 ) -> Result<()> {
     for entry in std::fs::read_dir(dir)?.flatten() {
         let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(draft) = SocialDraft::parse(&content) {
+        if path.extension().map(|e| e == "md").unwrap_or(false)
+            && let Ok(content) = std::fs::read_to_string(&path)
+                && let Ok(draft) = SocialDraft::parse(&content) {
                     // Skip already-published items (prevents double-publish)
                     if draft.meta.status == crate::social::draft::DraftStatus::Published {
                         continue;
                     }
-                    if let Some(scheduled_at) = draft.meta.scheduled_at {
-                        if scheduled_at <= deadline {
+                    if let Some(scheduled_at) = draft.meta.scheduled_at
+                        && scheduled_at <= deadline {
                             items.push(ScheduledItem {
                                 path,
                                 kind: ScheduledKind::Social,
@@ -110,10 +109,7 @@ fn scan_social_dir(
                                 label: format!("{}", draft.meta.platform),
                             });
                         }
-                    }
                 }
-            }
-        }
     }
     Ok(())
 }
@@ -126,13 +122,11 @@ fn scan_email_dir(
 ) -> Result<()> {
     for entry in std::fs::read_dir(dir)?.flatten() {
         let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Some(item) = parse_email_scheduled(&path, &content, deadline) {
+        if path.extension().map(|e| e == "md").unwrap_or(false)
+            && let Ok(content) = std::fs::read_to_string(&path)
+                && let Some(item) = parse_email_scheduled(&path, &content, deadline) {
                     items.push(item);
                 }
-            }
-        }
     }
     Ok(())
 }
@@ -325,8 +319,8 @@ pub fn list() -> Result<()> {
 
     // Scan mailboxes/*/drafts/
     let mb_base = resolve::mailboxes_base_dir();
-    if mb_base.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&mb_base) {
+    if mb_base.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&mb_base) {
             for entry in entries.flatten() {
                 let mb_drafts = entry.path().join("drafts");
                 if mb_drafts.is_dir() {
@@ -334,7 +328,6 @@ pub fn list() -> Result<()> {
                 }
             }
         }
-    }
 
     items.sort_by_key(|item| item.scheduled_at);
 

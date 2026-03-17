@@ -52,8 +52,8 @@ pub fn run(name: &str) -> Result<()> {
 
     // Mailbox manifests
     let mailboxes_dir = data_dir.join("mailboxes");
-    if mailboxes_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&mailboxes_dir) {
+    if mailboxes_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&mailboxes_dir) {
             let mut mb_entries: Vec<_> = entries.flatten().collect();
             mb_entries.sort_by_key(|e| e.file_name());
             for entry in mb_entries {
@@ -64,7 +64,6 @@ pub fn run(name: &str) -> Result<()> {
                 }
             }
         }
-    }
 
     // 5. Print thread list
     if all_threads.is_empty() {

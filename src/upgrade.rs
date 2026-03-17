@@ -168,12 +168,11 @@ pub fn run() -> Result<()> {
         .args(["install", CRATE_NAME])
         .status();
 
-    if let Ok(status) = cargo_status {
-        if status.success() {
+    if let Ok(status) = cargo_status
+        && status.success() {
             eprintln!("Successfully upgraded to v{latest} via cargo.");
             return Ok(());
         }
-    }
 
     // Strategy 3: pip install
     eprintln!("cargo install failed, trying: pip install --upgrade {CRATE_NAME}");
@@ -181,12 +180,11 @@ pub fn run() -> Result<()> {
         .args(["install", "--upgrade", CRATE_NAME])
         .status();
 
-    if let Ok(status) = pip_status {
-        if status.success() {
+    if let Ok(status) = pip_status
+        && status.success() {
             eprintln!("Successfully upgraded to v{latest} via pip.");
             return Ok(());
         }
-    }
 
     // Manual instructions
     eprintln!(

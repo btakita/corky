@@ -23,8 +23,8 @@ struct ClientCredentials {
 /// Resolve OAuth2 client credentials from .corky.toml [gmail] section or env vars.
 /// Calendar reuses the same Google project credentials as Gmail.
 fn resolve_credentials() -> Result<ClientCredentials> {
-    if let Some(cfg) = corky_config::try_load_config(None) {
-        if let Some(gmail) = &cfg.gmail {
+    if let Some(cfg) = corky_config::try_load_config(None)
+        && let Some(gmail) = &cfg.gmail {
             let has_config = !gmail.client_id.is_empty()
                 || !gmail.client_id_cmd.is_empty()
                 || !gmail.client_secret.is_empty()
@@ -46,7 +46,6 @@ fn resolve_credentials() -> Result<ClientCredentials> {
                 });
             }
         }
-    }
     let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID")
         .context("Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.")?;
     let client_secret = std::env::var("CORKY_GMAIL_CLIENT_SECRET")
@@ -103,8 +102,8 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
     }
 
     // Try refresh
-    if let Some(token) = store.tokens.get(&key).cloned() {
-        if let Some(ref refresh) = token.refresh_token {
+    if let Some(token) = store.tokens.get(&key).cloned()
+        && let Some(ref refresh) = token.refresh_token {
             println!("Calendar token expired, refreshing...");
             match refresh_access_token(refresh) {
                 Ok(new_token) => {
@@ -118,7 +117,6 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
                 }
             }
         }
-    }
 
     let token = run_auth_flow()?;
     let access = token.access_token.clone();

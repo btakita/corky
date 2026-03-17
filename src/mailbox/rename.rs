@@ -84,19 +84,17 @@ fn update_config(old_name: &str, new_name: &str) -> Result<()> {
     let mut doc = content.parse::<toml_edit::DocumentMut>()?;
 
     // Rename [mailboxes.{old}] → [mailboxes.{new}]
-    if let Some(mailboxes) = doc.get_mut("mailboxes") {
-        if let Some(table) = mailboxes.as_table_mut() {
-            if let Some(entry) = table.remove(old_name) {
+    if let Some(mailboxes) = doc.get_mut("mailboxes")
+        && let Some(table) = mailboxes.as_table_mut()
+            && let Some(entry) = table.remove(old_name) {
                 table.insert(new_name, entry);
             }
-        }
-    }
 
     // Update routing paths
     let old_path = format!("mailboxes/{}", old_name);
     let new_path = format!("mailboxes/{}", new_name);
-    if let Some(routing) = doc.get_mut("routing") {
-        if let Some(table) = routing.as_table_mut() {
+    if let Some(routing) = doc.get_mut("routing")
+        && let Some(table) = routing.as_table_mut() {
             for (_, item) in table.iter_mut() {
                 if let Some(arr) = item.as_array_mut() {
                     for i in 0..arr.len() {
@@ -107,7 +105,6 @@ fn update_config(old_name: &str, new_name: &str) -> Result<()> {
                 }
             }
         }
-    }
 
     std::fs::write(&config_path, doc.to_string())?;
     println!(

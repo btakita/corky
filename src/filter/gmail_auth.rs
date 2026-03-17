@@ -24,8 +24,8 @@ struct ClientCredentials {
 ///
 /// Resolution order: `[gmail]` in .corky.toml > env vars.
 fn resolve_credentials() -> Result<ClientCredentials> {
-    if let Some(cfg) = corky_config::try_load_config(None) {
-        if let Some(gmail) = &cfg.gmail {
+    if let Some(cfg) = corky_config::try_load_config(None)
+        && let Some(gmail) = &cfg.gmail {
             let has_config = !gmail.client_id.is_empty()
                 || !gmail.client_id_cmd.is_empty()
                 || !gmail.client_secret.is_empty()
@@ -47,7 +47,6 @@ fn resolve_credentials() -> Result<ClientCredentials> {
                 });
             }
         }
-    }
     let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID")
         .context("Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.")?;
     let client_secret = std::env::var("CORKY_GMAIL_CLIENT_SECRET")
@@ -103,8 +102,8 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
     }
 
     // Try refresh if we have a refresh token
-    if let Some(token) = store.tokens.get(&key).cloned() {
-        if let Some(ref refresh) = token.refresh_token {
+    if let Some(token) = store.tokens.get(&key).cloned()
+        && let Some(ref refresh) = token.refresh_token {
             println!("Access token expired, refreshing...");
             match refresh_access_token(refresh) {
                 Ok(new_token) => {
@@ -118,7 +117,6 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
                 }
             }
         }
-    }
 
     // Full auth flow
     let token = run_auth_flow()?;
@@ -141,16 +139,14 @@ pub fn get_access_token_noninteractive(account: Option<&str>) -> Result<String> 
         return Ok(token.access_token.clone());
     }
 
-    if let Some(token) = store.tokens.get(&key).cloned() {
-        if let Some(ref refresh) = token.refresh_token {
-            if let Ok(new_token) = refresh_access_token(refresh) {
+    if let Some(token) = store.tokens.get(&key).cloned()
+        && let Some(ref refresh) = token.refresh_token
+            && let Ok(new_token) = refresh_access_token(refresh) {
                 let access = new_token.access_token.clone();
                 store.upsert(key, new_token);
                 store.save()?;
                 return Ok(access);
             }
-        }
-    }
 
     bail!("Gmail token expired or missing. Run `corky filter auth` to re-authenticate.")
 }
