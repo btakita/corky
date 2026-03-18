@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::accounts::{load_accounts, load_watch_config, resolve_password};
 use crate::config::corky_config;
 use crate::resolve;
+use crate::sync::gmail_api_sync;
 use crate::sync::imap_sync::sync_account;
 use crate::sync::types::SyncState;
 
@@ -171,7 +172,7 @@ fn check_filter_drift() {
 }
 
 /// One sync + mailbox sync cycle. Returns count of labels with new messages.
-fn poll_once(notify_enabled: bool) -> usize {
+fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
     let accounts = match load_accounts(None) {
         Ok(a) => a,
         Err(e) => {
@@ -185,27 +186,43 @@ fn poll_once(notify_enabled: bool) -> usize {
 
     for (acct_name, acct) in &accounts {
         println!("\n=== Account: {} ({}) ===", acct_name, acct.user);
-        let password = match resolve_password(acct) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("  Error resolving password for {}: {}", acct_name, e);
-                continue;
+
+        let result = match acct.provider.as_str() {
+            "gmail-api" => gmail_api_sync::sync_account(
+                acct_name,
+                &acct.user,
+                &acct.labels,
+                acct.sync_days,
+                &mut state,
+                false,
+                None,
+                Some(&shutdown),
+            ),
+            _ => {
+                let password = match resolve_password(acct) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("  Error resolving password for {}: {}", acct_name, e);
+                        continue;
+                    }
+                };
+                sync_account(
+                    acct_name,
+                    &acct.imap_host,
+                    acct.imap_port,
+                    acct.imap_starttls,
+                    &acct.user,
+                    &password,
+                    &acct.labels,
+                    acct.sync_days,
+                    &mut state,
+                    false,
+                    None,
+                    None,
+                )
             }
         };
-        if let Err(e) = sync_account(
-            acct_name,
-            &acct.imap_host,
-            acct.imap_port,
-            acct.imap_starttls,
-            &acct.user,
-            &password,
-            &acct.labels,
-            acct.sync_days,
-            &mut state,
-            false,
-            None,
-            None,
-        ) {
+        if let Err(e) = result {
             eprintln!("  Error syncing {}: {}", acct_name, e);
             continue;
         }
@@ -271,8 +288,9 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
 
         // Run sync in a blocking context
         let notify_enabled = config.notify;
+        let shutdown_for_poll = shutdown.clone();
         tokio::task::spawn_blocking(move || {
-            poll_once(notify_enabled);
+            poll_once(notify_enabled, shutdown_for_poll);
         })
         .await?;
 

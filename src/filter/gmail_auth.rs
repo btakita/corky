@@ -12,7 +12,13 @@ const CALLBACK_TIMEOUT_SECS: u64 = 300;
 /// OAuth2 scopes for Gmail filter management.
 /// - gmail.settings.basic: read/write filter settings
 /// - gmail.labels: list labels (needed for name→ID resolution in push)
-const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels";
+const GMAIL_FILTER_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels";
+
+/// OAuth2 scopes for Gmail API sync (read-only message access).
+pub const GMAIL_SYNC_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
+
+/// Default scope (filter management) for backwards compatibility.
+const GMAIL_SCOPE: &str = GMAIL_FILTER_SCOPE;
 
 /// Client credentials resolved from .corky.toml or env vars.
 struct ClientCredentials {
@@ -93,6 +99,16 @@ fn token_key(account: Option<&str>) -> String {
 
 /// Get a valid access token, refreshing or running full auth flow if needed.
 pub fn get_access_token(account: Option<&str>) -> Result<String> {
+    get_access_token_with_scope(account, GMAIL_SCOPE)
+}
+
+/// Get a valid access token with specific scopes and optional login hint.
+pub fn get_access_token_with_scope(account: Option<&str>, scope: &str) -> Result<String> {
+    get_access_token_for_user(account, scope, None)
+}
+
+/// Get a valid access token with specific scopes and login hint (email).
+pub fn get_access_token_for_user(account: Option<&str>, scope: &str, login_hint: Option<&str>) -> Result<String> {
     let key = token_key(account);
     let mut store = TokenStore::load()?;
 
@@ -118,8 +134,8 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
             }
         }
 
-    // Full auth flow
-    let token = run_auth_flow()?;
+    // Full auth flow with specified scope
+    let token = run_auth_flow_with_scope(scope, login_hint)?;
     let access = token.access_token.clone();
     store.upsert(key, token);
     store.save()?;
@@ -164,10 +180,15 @@ pub fn run_auth(account: Option<&str>) -> Result<()> {
 
 /// Run the full Gmail OAuth2 authorization code flow.
 fn run_auth_flow() -> Result<StoredToken> {
+    run_auth_flow_with_scope(GMAIL_SCOPE, None)
+}
+
+/// Run the full Gmail OAuth2 authorization code flow with specific scopes.
+fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
 
-    let url = format!(
+    let mut url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth\
          ?response_type=code\
          &client_id={}\
@@ -179,8 +200,13 @@ fn run_auth_flow() -> Result<StoredToken> {
         urlencode(&creds.client_id),
         urlencode(REDIRECT_URI),
         urlencode(&state),
-        urlencode(GMAIL_SCOPE),
+        urlencode(scope),
     );
+
+    // Add login_hint to pre-select the correct Google account
+    if let Some(hint) = login_hint {
+        url.push_str(&format!("&login_hint={}", urlencode(hint)));
+    }
 
     println!("Opening browser for Gmail authorization...");
     println!("If the browser doesn't open, visit:\n  {}\n", url);
@@ -225,11 +251,11 @@ fn run_auth_flow() -> Result<StoredToken> {
 
     // Exchange code for token
     println!("Exchanging authorization code...");
-    exchange_code(&creds, &code)
+    exchange_code(&creds, &code, scope)
 }
 
 /// Exchange an authorization code for access + refresh tokens.
-fn exchange_code(creds: &ClientCredentials, code: &str) -> Result<StoredToken> {
+fn exchange_code(creds: &ClientCredentials, code: &str, scope: &str) -> Result<StoredToken> {
     let body_str = format!(
         "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
         urlencode(code),
@@ -251,7 +277,7 @@ fn exchange_code(creds: &ClientCredentials, code: &str) -> Result<StoredToken> {
     };
 
     let body: serde_json::Value = resp.into_json()?;
-    parse_token_response(&body)
+    parse_token_response(&body, scope)
 }
 
 /// Refresh an expired access token using the refresh token.
@@ -277,14 +303,14 @@ fn refresh_access_token(refresh_token: &str) -> Result<StoredToken> {
     };
 
     let body: serde_json::Value = resp.into_json()?;
-    let mut token = parse_token_response(&body)?;
+    let mut token = parse_token_response(&body, GMAIL_SCOPE)?;
     // Refresh responses don't include a new refresh_token — keep the original
     token.refresh_token = Some(refresh_token.to_string());
     Ok(token)
 }
 
 /// Parse a Google OAuth2 token response into a StoredToken.
-fn parse_token_response(body: &serde_json::Value) -> Result<StoredToken> {
+fn parse_token_response(body: &serde_json::Value, scope: &str) -> Result<StoredToken> {
     let access_token = body["access_token"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing access_token in response"))?
@@ -296,7 +322,7 @@ fn parse_token_response(body: &serde_json::Value) -> Result<StoredToken> {
         access_token,
         refresh_token,
         expires_at: Utc::now() + Duration::seconds(expires_in),
-        scopes: vec![GMAIL_SCOPE.to_string()],
+        scopes: vec![scope.to_string()],
         platform: "gmail".to_string(),
     })
 }
@@ -334,7 +360,7 @@ mod tests {
             "refresh_token": "1//test",
             "token_type": "Bearer"
         });
-        let token = parse_token_response(&body).unwrap();
+        let token = parse_token_response(&body, GMAIL_SCOPE).unwrap();
         assert_eq!(token.access_token, "ya29.test");
         assert_eq!(token.refresh_token.as_deref(), Some("1//test"));
         assert_eq!(token.platform, "gmail");
@@ -349,7 +375,7 @@ mod tests {
             "expires_in": 3600,
             "token_type": "Bearer"
         });
-        let token = parse_token_response(&body).unwrap();
+        let token = parse_token_response(&body, GMAIL_SCOPE).unwrap();
         assert!(token.refresh_token.is_none());
     }
 
@@ -359,6 +385,6 @@ mod tests {
             "expires_in": 3600,
             "token_type": "Bearer"
         });
-        assert!(parse_token_response(&body).is_err());
+        assert!(parse_token_response(&body, GMAIL_SCOPE).is_err());
     }
 }

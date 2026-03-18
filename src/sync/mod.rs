@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod folders;
+pub mod gmail_api_sync;
 pub mod imap_sync;
 pub mod imports;
 pub mod manifest;
@@ -70,21 +71,38 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
     for name in &names {
         let acct = &accounts[name];
         println!("\n=== Account: {} ({}) ===", name, acct.user);
-        let password = resolve_password(acct)?;
-        sync_account(
-            name,
-            &acct.imap_host,
-            acct.imap_port,
-            acct.imap_starttls,
-            &acct.user,
-            &password,
-            &acct.labels,
-            acct.sync_days,
-            &mut state,
-            full,
-            None,
-            touched.as_mut(),
-        )?;
+
+        match acct.provider.as_str() {
+            "gmail-api" => {
+                gmail_api_sync::sync_account(
+                    name,
+                    &acct.user,
+                    &acct.labels,
+                    acct.sync_days,
+                    &mut state,
+                    full,
+                    touched.as_mut(),
+                    None,
+                )?;
+            }
+            _ => {
+                let password = resolve_password(acct)?;
+                sync_account(
+                    name,
+                    &acct.imap_host,
+                    acct.imap_port,
+                    acct.imap_starttls,
+                    &acct.user,
+                    &password,
+                    &acct.labels,
+                    acct.sync_days,
+                    &mut state,
+                    full,
+                    None,
+                    touched.as_mut(),
+                )?;
+            }
+        }
     }
 
     // Orphan cleanup on --full

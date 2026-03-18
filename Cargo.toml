@@ -49,6 +49,7 @@ pyannote-rs = { version = "0.3", optional = true }
 ort = { version = "=2.0.0-rc.10", optional = true, features = ["ndarray"] }
 quick-xml = { version = "0.39.2", features = ["serialize"] }
 pulldown-cmark = "0.12"
+base64 = "0.22"
 
 [features]
 default = ["transcribe"]

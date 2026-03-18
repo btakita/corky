@@ -37,10 +37,20 @@ pub struct LabelState {
     pub last_uid: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailLabelState {
+    /// Highest historyId seen for this label (for incremental sync).
+    #[serde(default)]
+    pub last_history_id: Option<u64>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AccountSyncState {
     #[serde(default)]
     pub labels: HashMap<String, LabelState>,
+    /// Gmail API sync state (per-label). Only used when provider = "gmail-api".
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub gmail_labels: HashMap<String, GmailLabelState>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
