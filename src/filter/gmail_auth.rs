@@ -95,10 +95,10 @@ fn resolve_credential_field(
         return crate::util::resolve_secret("", cmd, env_var);
     }
     // 3. Environment variable
-    if let Ok(val) = std::env::var(env_var) {
-        if !val.is_empty() {
-            return Ok(val);
-        }
+    if let Ok(val) = std::env::var(env_var)
+        && !val.is_empty()
+    {
+        return Ok(val);
     }
     // 4. Built-in default
     Ok(default.to_string())

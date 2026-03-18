@@ -124,10 +124,10 @@ fn check_email_accounts(
 
     for (name, account) in &accounts {
         // Filter by provider if requested.
-        if let Some(p) = provider {
-            if account.provider != p {
-                continue;
-            }
+        if let Some(p) = provider
+            && account.provider != p
+        {
+            continue;
         }
 
         report.push(String::new());
