@@ -266,6 +266,7 @@ fn main() -> Result<()> {
         Commands::Transcribe { file, model, language, output, speakers, diarize } => {
             corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize)
         }
+        Commands::Doctor { provider } => corky::doctor::run(provider.as_deref()),
         Commands::Upgrade => corky::upgrade::run(),
     }
 }

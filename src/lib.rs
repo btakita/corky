@@ -5,6 +5,7 @@ pub mod cli;
 pub mod config;
 pub mod contact;
 pub mod doc;
+pub mod doctor;
 pub mod draft;
 pub mod init;
 pub mod filter;

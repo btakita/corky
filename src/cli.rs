@@ -232,6 +232,12 @@ pub enum Commands {
         diarize: bool,
     },
 
+    /// Check environment, config, and account health
+    Doctor {
+        /// Check a specific provider (gmail, gmail-api, imap, etc.)
+        provider: Option<String>,
+    },
+
     /// Check for updates and upgrade to the latest version.
     Upgrade,
 }
