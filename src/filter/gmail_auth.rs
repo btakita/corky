@@ -15,10 +15,13 @@ const CALLBACK_TIMEOUT_SECS: u64 = 300;
 /// explicitly documents as non-secret:
 /// <https://developers.google.com/identity/protocols/oauth2#installed-applications>
 ///
+/// Injected at build time via environment variables. Set `CORKY_DEFAULT_GCP_CLIENT_ID`
+/// and `CORKY_DEFAULT_GCP_CLIENT_SECRET` when building, or use the values from
+/// `pass corky/gcp/client_id` and `pass corky/gcp/client_secret`.
+///
 /// Users can override these via `[gmail]` in `.corky.toml` or env vars.
-pub const DEFAULT_GCP_CLIENT_ID: &str =
-    "718955483040-0aru4vvij1ug85ga8o3tjsqpk7gtb7tj.apps.googleusercontent.com";
-pub const DEFAULT_GCP_CLIENT_SECRET: &str = "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";
+pub const DEFAULT_GCP_CLIENT_ID: &str = env!("CORKY_DEFAULT_GCP_CLIENT_ID");
+pub const DEFAULT_GCP_CLIENT_SECRET: &str = env!("CORKY_DEFAULT_GCP_CLIENT_SECRET");
 
 /// OAuth2 scopes for Gmail filter management.
 /// - gmail.settings.basic: read/write filter settings

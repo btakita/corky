@@ -1,5 +1,9 @@
 .PHONY: build release test clippy check precommit install install-hooks clean init-python wheel publish publish-crate publish-pypi
 
+# GCP OAuth credentials (public desktop-app credentials, injected at build time)
+export CORKY_DEFAULT_GCP_CLIENT_ID ?= $(shell pass corky/gcp/client_id 2>/dev/null)
+export CORKY_DEFAULT_GCP_CLIENT_SECRET ?= $(shell pass corky/gcp/client_secret 2>/dev/null)
+
 # Build debug binary
 build:
 	cargo build
