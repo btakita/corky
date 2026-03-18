@@ -26,3 +26,5 @@
 
 - [Specification](reference/specs.md)
 - [Changelog](reference/changelog.md)
+- [Privacy Policy](reference/privacy-policy.md)
+- [Terms of Service](reference/terms-of-service.md)
