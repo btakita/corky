@@ -183,7 +183,13 @@ pub fn run(
 
     // 8. Provider-specific guidance
     let presets = provider_presets();
-    if provider == "gmail" && password_cmd.is_empty() {
+    if provider == "gmail-api" {
+        println!();
+        println!("Gmail API setup (OAuth):");
+        println!("  Built-in OAuth credentials will be used automatically.");
+        println!("  On first sync, your browser will open for Google authorization.");
+        println!("  To use your own GCP credentials, add [gmail] to mail/.corky.toml");
+    } else if provider == "gmail" && password_cmd.is_empty() {
         println!();
         println!("Gmail setup:");
         println!("  Option A: App password \u{2014} https://myaccount.google.com/apppasswords");
@@ -202,14 +208,19 @@ pub fn run(
     if !sync {
         println!();
         println!("Done! Next steps:");
-        println!("  - Edit {} with your credentials", config_path.display());
-        if provider == "gmail" && password_cmd.is_empty() {
-            println!("  - Set up app password or OAuth (see above)");
+        if provider == "gmail-api" {
+            println!("  - Run: corky sync");
+            println!("  - (Your browser will open for Google authorization on first sync)");
+        } else {
+            println!("  - Edit {} with your credentials", config_path.display());
+            if provider == "gmail" && password_cmd.is_empty() {
+                println!("  - Set up app password or OAuth (see above)");
+            }
+            if !presets.contains_key(provider) && provider == "imap" {
+                println!("  - Add imap_host, smtp_host to mail/.corky.toml");
+            }
+            println!("  - Run: corky sync");
         }
-        if !presets.contains_key(provider) && provider == "imap" {
-            println!("  - Add imap_host, smtp_host to mail/.corky.toml");
-        }
-        println!("  - Run: corky sync");
     }
 
     Ok(())

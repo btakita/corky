@@ -116,6 +116,48 @@ Export from Slack: Workspace admin > Settings > Import/Export Data > Export.
 
 See the [command reference](https://btakita.github.io/corky/guide/commands.html) for details.
 
+### Gmail API sync
+
+Sync Gmail accounts without IMAP or app passwords using the Gmail REST API with OAuth2.
+
+**1. Create OAuth credentials:**
+
+- Go to [Google Cloud Console](https://console.cloud.google.com/)
+- Create a project (or use existing)
+- Enable the **Gmail API**: APIs & Services → Library → Gmail API → Enable
+- Create OAuth credentials: APIs & Services → Credentials → Create Credentials → OAuth client ID
+  - Application type: **Desktop app**
+  - Name: `corky` (or anything)
+- Copy the Client ID and Client Secret
+
+**2. Configure `.corky.toml`:**
+
+```toml
+[gmail]
+client_id_cmd = "pass corky/gmail/client_id"       # or inline: client_id = "..."
+client_secret_cmd = "pass corky/gmail/client_secret" # or inline: client_secret = "..."
+
+[accounts.my-gmail]
+provider = "gmail-api"
+user = "you@gmail.com"
+labels = ["INBOX"]
+sync_days = 30           # optional, default 3650
+```
+
+**3. First sync:**
+
+```sh
+corky sync account my-gmail
+```
+
+This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs.
+
+**Notes:**
+- If your OAuth app is in testing mode, add the Gmail account as a test user in the Cloud Console
+- `login_hint` pre-selects the configured email in the consent screen
+- Post-auth verification ensures the token matches the configured account
+- Incremental sync uses Gmail's `historyId` for efficient polling after initial sync
+
 ## Development
 
 ```sh

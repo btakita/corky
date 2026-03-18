@@ -1,6 +1,6 @@
 //! Gmail OAuth2 authorization code flow for the Gmail Settings API.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use chrono::{Duration, Utc};
 
 use crate::config::corky_config;
@@ -8,6 +8,17 @@ use crate::social::token_store::{StoredToken, TokenStore};
 
 const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 300;
+
+/// Default GCP OAuth2 client credentials for the corky desktop application.
+///
+/// These are **public** credentials for a "Desktop app" OAuth client, which Google
+/// explicitly documents as non-secret:
+/// <https://developers.google.com/identity/protocols/oauth2#installed-applications>
+///
+/// Users can override these via `[gmail]` in `.corky.toml` or env vars.
+pub const DEFAULT_GCP_CLIENT_ID: &str =
+    "718955483040-0aru4vvij1ug85ga8o3tjsqpk7gtb7tj.apps.googleusercontent.com";
+pub const DEFAULT_GCP_CLIENT_SECRET: &str = "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";
 
 /// OAuth2 scopes for Gmail filter management.
 /// - gmail.settings.basic: read/write filter settings
@@ -28,39 +39,69 @@ struct ClientCredentials {
 
 /// Resolve Gmail OAuth2 client credentials.
 ///
-/// Resolution order: `[gmail]` in .corky.toml > env vars.
+/// Resolution order per field:
+/// 1. Inline value in `[gmail]` section of .corky.toml
+/// 2. Command (`client_id_cmd` / `client_secret_cmd`) in .corky.toml
+/// 3. Environment variable (`CORKY_GMAIL_CLIENT_ID` / `CORKY_GMAIL_CLIENT_SECRET`)
+/// 4. Built-in default (corky's public GCP desktop-app credentials)
 fn resolve_credentials() -> Result<ClientCredentials> {
-    if let Some(cfg) = corky_config::try_load_config(None)
-        && let Some(gmail) = &cfg.gmail {
-            let has_config = !gmail.client_id.is_empty()
-                || !gmail.client_id_cmd.is_empty()
-                || !gmail.client_secret.is_empty()
-                || !gmail.client_secret_cmd.is_empty();
-            if has_config {
-                let client_id = crate::util::resolve_secret(
-                    &gmail.client_id,
-                    &gmail.client_id_cmd,
-                    "Gmail client_id (check [gmail] in .corky.toml)",
-                )?;
-                let client_secret = crate::util::resolve_secret(
-                    &gmail.client_secret,
-                    &gmail.client_secret_cmd,
-                    "Gmail client_secret (check [gmail] in .corky.toml)",
-                )?;
-                return Ok(ClientCredentials {
-                    client_id,
-                    client_secret,
-                });
-            }
-        }
-    let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID")
-        .context("Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.")?;
-    let client_secret = std::env::var("CORKY_GMAIL_CLIENT_SECRET")
-        .context("Gmail client_secret not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_SECRET env var.")?;
+    let (cfg_id, cfg_id_cmd, cfg_secret, cfg_secret_cmd) =
+        if let Some(cfg) = corky_config::try_load_config(None)
+            && let Some(gmail) = &cfg.gmail
+        {
+            (
+                gmail.client_id.clone(),
+                gmail.client_id_cmd.clone(),
+                gmail.client_secret.clone(),
+                gmail.client_secret_cmd.clone(),
+            )
+        } else {
+            Default::default()
+        };
+
+    let client_id = resolve_credential_field(
+        &cfg_id,
+        &cfg_id_cmd,
+        "CORKY_GMAIL_CLIENT_ID",
+        DEFAULT_GCP_CLIENT_ID,
+    )?;
+    let client_secret = resolve_credential_field(
+        &cfg_secret,
+        &cfg_secret_cmd,
+        "CORKY_GMAIL_CLIENT_SECRET",
+        DEFAULT_GCP_CLIENT_SECRET,
+    )?;
+
     Ok(ClientCredentials {
         client_id,
         client_secret,
     })
+}
+
+/// Resolve a single credential field through the fallback chain:
+/// inline value → command → env var → built-in default.
+fn resolve_credential_field(
+    inline: &str,
+    cmd: &str,
+    env_var: &str,
+    default: &str,
+) -> Result<String> {
+    // 1. Inline config value
+    if !inline.is_empty() {
+        return Ok(inline.to_string());
+    }
+    // 2. Command
+    if !cmd.is_empty() {
+        return crate::util::resolve_secret("", cmd, env_var);
+    }
+    // 3. Environment variable
+    if let Ok(val) = std::env::var(env_var) {
+        if !val.is_empty() {
+            return Ok(val);
+        }
+    }
+    // 4. Built-in default
+    Ok(default.to_string())
 }
 
 /// Percent-encode a string for URL query parameters / form bodies.

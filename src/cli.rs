@@ -25,7 +25,7 @@ pub enum Commands {
         user: String,
 
         /// Email provider
-        #[arg(long, default_value = "gmail", value_parser = ["gmail", "protonmail-bridge", "imap"])]
+        #[arg(long, default_value = "gmail", value_parser = ["gmail", "gmail-api", "protonmail-bridge", "imap"])]
         provider: String,
 
         /// Shell command to retrieve password
