@@ -16,6 +16,7 @@
 - [Contacts](guide/contacts.md)
 - [Watch Daemon](guide/watch.md)
 - [Sandboxing](guide/sandboxing.md)
+- [Self-Hosted Gmail](guide/self-hosted-gmail.md)
 
 # Development
 
