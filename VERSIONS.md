@@ -4,6 +4,41 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.18.0
+
+- **Built-in GCP OAuth credentials**: Zero-config Gmail API sync. `DEFAULT_GCP_CLIENT_ID` and `DEFAULT_GCP_CLIENT_SECRET` constants for corky's public GCP desktop OAuth app. Credential resolution order: config > cmd > env > built-in default. Injected at build time via `env!()` macro (avoids GitHub secret scanning).
+- **`corky doctor`**: Runtime environment validation command. Per-provider health checks — config loading, mail directory, Gmail (filter auth, API sync tokens, credential resolution), LinkedIn (OAuth, profile URN, token validity), YouTube (OAuth, channel IDs, token validity). 11 integration tests.
+- **`gmail-api` as init provider**: `corky init` now accepts `gmail-api` as a provider with provider-specific guidance.
+- **Self-hosted Gmail setup guide**: Step-by-step docs for users who want their own GCP project instead of corky's public OAuth app.
+- **Privacy policy and terms of service**: Documents for the public Google OAuth app.
+
+## 0.17.0
+
+- **Gmail API sync provider**: New `provider = "gmail-api"` option for accounts using OAuth instead of IMAP. Full Gmail REST API sync via `messages.list` and `messages.get`. `historyId`-based incremental sync (`GmailLabelState`). Scope-aware OAuth (`get_access_token_with_scope`, `login_hint`). Watch and sync dispatch based on provider type. Added `base64 = "0.22"` dependency.
+
+## 0.16.0
+
+- **HTML email sending**: `multipart/alternative` with pulldown-cmark markdown-to-HTML conversion. Works for both direct sends and IMAP draft pushes.
+- **Inline images**: `images:` YAML frontmatter + `--image` flag on `draft new`. Content-ID (CID) references in `multipart/related`.
+- **Clipboard attachment**: `corky draft attach --clipboard` captures clipboard content via `wl-paste`/`xclip`/`pngpaste`. Also adds `--file` and `--inline` flags.
+- **`corky sync imports`**: Config-driven import dispatcher. Reads `[[imports]]` from `.corky.toml` and dispatches to existing sms_import, telegram_import, or slack_import handlers. Tilde expansion, default label/account, skip-on-missing-path.
+- **Rust 2024 let-chains refactor**: Collapsed 61 nested if statements across 26 files. Removed `collapsible_if = "allow"` lint override.
+
+## 0.15.3
+
+- **CUDA transcription build fix**: Updated `whisper-rs` to 0.16 to fix CUDA build compatibility.
+
+## 0.15.2
+
+- **YouTube embeddable flag**: Sets `embeddable=true` for YouTube uploads and edits, allowing videos to be embedded on external sites.
+
+## 0.15.1
+
+- **YouTube default visibility changed to public**: Was "private", now defaults to "public".
+- **`corky youtube edit`**: New command for updating published video metadata (title, description, tags, visibility).
+- **YouTube error handling**: Better error messages for empty body and upload failures.
+- **Test suite**: 8 YouTube tests + 5 LinkedIn/YouTube draft round-trip tests.
+
 ## 0.15.0
 
 - **YouTube upload**: `corky youtube auth/draft/publish` commands for uploading videos to YouTube via Data API v3. Resumable upload with 8MB chunks, SRT captions upload, draft frontmatter with video/captions/title fields.
@@ -58,11 +93,57 @@ Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
 - **Email attachments**: `--attach` flag on `corky draft new` and `attachments:` YAML frontmatter field. Sends as `multipart/mixed` with auto-detected content types via `mime_guess`. Files validated at send time.
 
+## 0.12.0
+
+- **`corky transcribe`**: whisper-rs speech-to-text with optional speaker diarization. Feature-gated (`transcribe`/`transcribe-cuda`), auto-downloads models. Multi-format audio support (symphonia + ffmpeg fallback). `--speakers` flag for tdrz speaker turn detection, markdown output.
+- **`corky filter`**: Gmail filter management — `filter build` (generate from config), `filter push` (sync to Gmail), `filter pull` (download from Gmail). Gmail OAuth2 for filter API access.
+- **Topics sync**: Sync keywords from `mail/topics/` directories to `.corky.toml`.
+- **Watch improvements**: Improved Ctrl+C handling, scheduled publishing integrated into poll loop.
+
+## 0.11.5
+
+- **`corky label clear`**: Bulk IMAP label removal. Removes a specified Gmail label from all messages that carry it. Uses IMAP STORE to remove label flags.
+
+## 0.11.4
+
+- **BREAKING CHANGE: `SPECS.md` renamed to `SPEC.md`**: Singular naming convention. All internal references updated.
+- Gitignore `.agent-doc/` directory.
+- Dependency sync: instruction-files bumped to 0.1.2.
+
+## 0.11.3
+
+- **Watch Ctrl+C fix**: Fixed unresponsiveness in `corky watch` using `tokio::select!` + watch channel. Enabled tokio `sync` feature.
+- **Test coverage expansion**: 22 new tests (357 total) — watch helpers (8), schedule dispatch (3), LinkedIn API mocks (11).
+- **LinkedIn API testability**: Refactored `linkedin.rs` with `_at` variants for configurable base URL (HTTP mocking). Added `mockito` dev-dependency.
+
+## 0.11.2
+
+- **OAuth URL encoding fix**: Proper percent-encoding for OAuth form body params (fixes potential 401 errors).
+- **Better OAuth error reporting**: Shows LinkedIn response body on token exchange failure.
+- **CWD-as-data-dir**: `data_dir()` detects `.corky.toml` in CWD (supports running from inside `mail/`).
+- **Schedule improvements**: Dry-run flag for schedule and publish commands (`--dry-run`).
+
 ## 0.11.1
 
 - **`_cmd` fields for social OAuth credentials**: `client_id_cmd` and `client_secret_cmd` in `[social.linkedin]` for credential managers (pass, op, etc.). Resolution order: inline value > `_cmd` shell command > env var.
 - **Shared `resolve_secret()` utility**: Extracted from `resolve_password()` into `util.rs`. Both email password and social credential resolution use the same code path.
 - **Fix: credential resolution error propagation**: When `[social.linkedin]` is configured but the `_cmd` command fails, the error is now propagated instead of silently falling through to the env var check.
+
+## 0.11.0
+
+- **Scheduling**: Unified scheduler scans both social and email drafts, dispatches to existing publish paths. `schedule_tick()` integrated into watch loop.
+- **Topics management**: `corky topics list/add/info/suggest` commands with `.corky.toml [topics.*]` config. Bidirectional topic sync between `mail/topics/` and `mailboxes/*/topics/` (mtime-based).
+- **Draft YAML migration**: `corky draft migrate` converts legacy `**Key**: value` drafts to YAML frontmatter. `EmailDraftMeta` serde struct with dual-parser (YAML frontmatter + legacy format).
+- SPEC.md updated with Topic Sync, Scheduling, and Draft Lifecycle sections.
+
+## 0.10.0
+
+- **Social media posting with LinkedIn**: OAuth2 authentication (`corky social auth linkedin`), draft scaffolding (`corky social draft linkedin`), publish (`corky social publish`), profile management via `profiles.toml`. Token store with JSON persistence.
+- SPEC.md updated with Social Media Posting section.
+
+## 0.9.5
+
+- **Extract audit-docs to instruction-files crate**: `src/audit_docs.rs` reduced to a thin wrapper around the new `instruction-files` crate dependency.
 
 ## 0.9.4
 
