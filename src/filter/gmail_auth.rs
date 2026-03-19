@@ -31,8 +31,9 @@ const GMAIL_FILTER_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings
 /// OAuth2 scopes for Gmail API sync (read-only message access).
 pub const GMAIL_SYNC_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
 
-/// OAuth2 scope for Gmail API sending.
-pub const GMAIL_SEND_SCOPE: &str = "https://www.googleapis.com/auth/gmail.send";
+/// OAuth2 scope for Gmail API sending and draft creation.
+/// `gmail.compose` covers both `messages.send` and `drafts.create`.
+pub const GMAIL_SEND_SCOPE: &str = "https://www.googleapis.com/auth/gmail.compose";
 
 /// Default scope (filter management) for backwards compatibility.
 const GMAIL_SCOPE: &str = GMAIL_FILTER_SCOPE;
