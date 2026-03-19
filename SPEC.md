@@ -1046,10 +1046,12 @@ Filename convention: `YYYY-MM-DD-{slug}.md`.
 
 ### 8.3 Push / Send
 
-`corky draft push FILE`: IMAP APPEND to drafts folder.
-`corky draft push FILE --send`: SMTP send, update Status to `sent`.
+`corky draft push FILE`: IMAP APPEND to drafts folder (or Gmail API `drafts.create` for `gmail-api` accounts).
+`corky draft push FILE --send`: SMTP send (or Gmail API `messages.send` for `gmail-api` accounts), update Status to `sent`.
 
 Account resolution: Account field → From field → default account.
+
+**Provider dispatch:** For accounts with `provider = "gmail-api"`, draft push and send use the Gmail REST API instead of IMAP/SMTP. OAuth token obtained via `get_send_access_token()` with scope `gmail.send`, stored under key `gmail:<account>:send` (separate from sync token). No password required for gmail-api accounts.
 
 ## 9. Watch Daemon
 

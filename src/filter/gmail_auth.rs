@@ -31,6 +31,9 @@ const GMAIL_FILTER_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings
 /// OAuth2 scopes for Gmail API sync (read-only message access).
 pub const GMAIL_SYNC_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
 
+/// OAuth2 scope for Gmail API sending.
+pub const GMAIL_SEND_SCOPE: &str = "https://www.googleapis.com/auth/gmail.send";
+
 /// Default scope (filter management) for backwards compatibility.
 const GMAIL_SCOPE: &str = GMAIL_FILTER_SCOPE;
 
@@ -141,6 +144,13 @@ fn token_key(account: Option<&str>) -> String {
     }
 }
 
+/// Token store key for a Gmail account with a scope suffix.
+/// Used to avoid collisions between tokens with different scopes (e.g., sync vs send).
+fn scoped_token_key(account: Option<&str>, scope_suffix: &str) -> String {
+    let base = token_key(account);
+    format!("{}:{}", base, scope_suffix)
+}
+
 /// Get a valid access token, refreshing or running full auth flow if needed.
 pub fn get_access_token(account: Option<&str>) -> Result<String> {
     get_access_token_with_scope(account, GMAIL_SCOPE)
@@ -180,6 +190,44 @@ pub fn get_access_token_for_user(account: Option<&str>, scope: &str, login_hint:
 
     // Full auth flow with specified scope
     let token = run_auth_flow_with_scope(scope, login_hint)?;
+    let access = token.access_token.clone();
+    store.upsert(key, token);
+    store.save()?;
+    Ok(access)
+}
+
+/// Get a valid access token for Gmail API sending.
+///
+/// Uses a dedicated token key (`gmail:<account>:send`) to avoid collision
+/// with the sync token (which has `gmail.readonly` scope).
+pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) -> Result<String> {
+    let key = scoped_token_key(account, "send");
+    let mut store = TokenStore::load()?;
+
+    // Check for existing valid token
+    if let Some(token) = store.get_valid(&key) {
+        return Ok(token.access_token.clone());
+    }
+
+    // Try refresh if we have a refresh token
+    if let Some(token) = store.tokens.get(&key).cloned()
+        && let Some(ref refresh) = token.refresh_token {
+            println!("Send token expired, refreshing...");
+            match refresh_access_token(refresh) {
+                Ok(new_token) => {
+                    let access = new_token.access_token.clone();
+                    store.upsert(key, new_token);
+                    store.save()?;
+                    return Ok(access);
+                }
+                Err(e) => {
+                    eprintln!("Token refresh failed: {}. Re-authenticating...", e);
+                }
+            }
+        }
+
+    // Full auth flow with send scope
+    let token = run_auth_flow_with_scope(GMAIL_SEND_SCOPE, login_hint)?;
     let access = token.access_token.clone();
     store.upsert(key, token);
     store.save()?;

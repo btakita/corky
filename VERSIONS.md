@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.18.1
+
+- **Gmail API email sending**: `provider = "gmail-api"` accounts now use the Gmail API for both draft push (`drafts.create`) and direct send (`messages.send`), bypassing SMTP entirely. Dedicated OAuth token key (`gmail:<account>:send`) avoids scope collision with sync tokens. Password no longer required for gmail-api accounts in draft resolution. One-time browser OAuth consent grants `gmail.send` scope, then auto-refreshes.
+
 ## 0.18.0
 
 - **Built-in GCP OAuth credentials**: Zero-config Gmail API sync. `DEFAULT_GCP_CLIENT_ID` and `DEFAULT_GCP_CLIENT_SECRET` constants for corky's public GCP desktop OAuth app. Credential resolution order: config > cmd > env > built-in default. Injected at build time via `env!()` macro (avoids GitHub secret scanning).

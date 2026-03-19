@@ -364,6 +364,74 @@ fn push_to_drafts(
     Ok(())
 }
 
+/// Send email via Gmail API (messages.send endpoint).
+///
+/// Uses OAuth2 token from the token store (scope: gmail.send).
+/// The email is serialized as RFC 2822, base64url-encoded, and POSTed.
+fn send_via_gmail_api(
+    email: &Message,
+    account_name: &str,
+    user: &str,
+) -> Result<()> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+
+    let token = crate::filter::gmail_auth::get_send_access_token(Some(account_name), Some(user))?;
+
+    let raw_bytes = email.formatted();
+    let encoded = URL_SAFE_NO_PAD.encode(&raw_bytes);
+
+    let body = serde_json::json!({ "raw": encoded });
+
+    match ureq::post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .send_string(&body.to_string())
+    {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(status, resp)) => {
+            let err_body = resp.into_string().unwrap_or_default();
+            bail!("Gmail API send failed (HTTP {}): {}", status, err_body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Push draft to Gmail Drafts via Gmail API (drafts.create endpoint).
+///
+/// Uses OAuth2 token from the token store (scope: gmail.send).
+/// The email is serialized as RFC 2822, base64url-encoded, and POSTed to the drafts endpoint.
+fn push_to_drafts_via_gmail_api(
+    email: &Message,
+    account_name: &str,
+    user: &str,
+) -> Result<()> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+
+    let token = crate::filter::gmail_auth::get_send_access_token(Some(account_name), Some(user))?;
+
+    let raw_bytes = email.formatted();
+    let encoded = URL_SAFE_NO_PAD.encode(&raw_bytes);
+
+    let body = serde_json::json!({
+        "message": { "raw": encoded }
+    });
+
+    match ureq::post("https://gmail.googleapis.com/gmail/v1/users/me/drafts")
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .send_string(&body.to_string())
+    {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(status, resp)) => {
+            let err_body = resp.into_string().unwrap_or_default();
+            bail!("Gmail API draft push failed (HTTP {}): {}", status, err_body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Send email via SMTP.
 fn send_email(
     email: &Message,
@@ -409,6 +477,15 @@ fn update_draft_status(path: &Path, new_status: &str) -> Result<()> {
     Ok(())
 }
 
+/// Resolve password, returning empty string if unavailable (e.g., gmail-api provider).
+fn resolve_password_optional(acct: &crate::accounts::Account) -> String {
+    if acct.provider == "gmail-api" {
+        // Gmail API accounts use OAuth tokens, not passwords
+        return String::new();
+    }
+    resolve_password(acct).unwrap_or_default()
+}
+
 /// Resolve sending account from draft metadata.
 ///
 /// Supports credential bubbling: if the draft lives inside a `mailboxes/` subtree,
@@ -425,7 +502,7 @@ fn resolve_account(
     if let Some(acct_name) = meta.get("Account")
         && !acct_name.is_empty()
             && let Some(acct) = accounts.get(acct_name) {
-                let pwd = resolve_password(acct)?;
+                let pwd = resolve_password_optional(acct);
                 return Ok((acct_name.clone(), acct.clone(), pwd));
             }
 
@@ -433,13 +510,13 @@ fn resolve_account(
     if let Some(from_addr) = meta.get("From")
         && !from_addr.is_empty()
             && let Some((name, acct)) = get_account_for_email(&accounts, from_addr) {
-                let pwd = resolve_password(&acct)?;
+                let pwd = resolve_password_optional(&acct);
                 return Ok((name, acct, pwd));
             }
 
     // Fall back to default from local config
     if let Ok((name, acct)) = get_default_account(&accounts) {
-        let pwd = resolve_password(&acct)?;
+        let pwd = resolve_password_optional(&acct);
         return Ok((name, acct, pwd));
     }
 
@@ -466,8 +543,8 @@ fn bubble_credentials(
         let config_path = dir.join(".corky.toml");
         if config_path.exists()
             && let Ok(parent_accounts) = load_accounts(Some(&config_path))
-                && let Some((name, acct)) = get_account_for_email(&parent_accounts, from_addr)
-                    && let Ok(pwd) = resolve_password(&acct) {
+                && let Some((name, acct)) = get_account_for_email(&parent_accounts, from_addr) {
+                        let pwd = resolve_password_optional(&acct);
                         return Some((name, acct, pwd));
                     }
         // Stop at filesystem root
@@ -532,8 +609,9 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
     }
 
     let (acct_name, acct, password) = resolve_account(&meta, file)?;
+    let use_gmail_api = acct.provider == "gmail-api";
 
-    println!("Account: {} ({})", acct_name, acct.user);
+    println!("Account: {} ({}){}", acct_name, acct.user, if use_gmail_api { " [Gmail API]" } else { "" });
     println!("To:      {}", meta["To"]);
     println!("Subject: {}", subject);
     if let Some(author) = meta.get("Author") {
@@ -568,19 +646,27 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
     let email = compose_email(&meta, &subject, &body, &acct.user, &attachments, &resolved_images)?;
 
     if send {
-        send_email(&email, &acct.smtp_host, acct.smtp_port, &acct.user, &password)?;
+        if use_gmail_api {
+            send_via_gmail_api(&email, &acct_name, &acct.user)?;
+        } else {
+            send_email(&email, &acct.smtp_host, acct.smtp_port, &acct.user, &password)?;
+        }
         update_draft_status(file, "sent")?;
         println!("Email sent. Status updated to 'sent'.");
     } else {
-        push_to_drafts(
-            &email,
-            &acct.imap_host,
-            acct.imap_port,
-            acct.imap_starttls,
-            &acct.user,
-            &password,
-            &acct.drafts_folder,
-        )?;
+        if use_gmail_api {
+            push_to_drafts_via_gmail_api(&email, &acct_name, &acct.user)?;
+        } else {
+            push_to_drafts(
+                &email,
+                &acct.imap_host,
+                acct.imap_port,
+                acct.imap_starttls,
+                &acct.user,
+                &password,
+                &acct.drafts_folder,
+            )?;
+        }
         println!("Draft created. Open your email drafts to review and send.");
     }
 
