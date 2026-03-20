@@ -716,7 +716,11 @@ Gmail OAuth2 authorization for filter management. Opens a browser for the author
 
 Required scopes: `gmail.settings.basic` (read/write filters), `gmail.labels` (list labels for name-to-ID resolution).
 
-Client credentials resolved from `[gmail]` in `.corky.toml` (`client_id`/`client_id_cmd`, `client_secret`/`client_secret_cmd`) or env vars (`CORKY_GMAIL_CLIENT_ID`, `CORKY_GMAIL_CLIENT_SECRET`).
+**Credential resolution order:**
+1. `[gmail]` in `.corky.toml` (`client_id`/`client_id_cmd`, `client_secret`/`client_secret_cmd`)
+2. `--client-id` / `--client-secret` CLI flags
+3. Env vars (`CORKY_GMAIL_CLIENT_ID`, `CORKY_GMAIL_CLIENT_SECRET`)
+4. Built-in default credentials (public desktop-app OAuth, injected at compile time)
 
 ### 5.26 filter build
 
@@ -859,6 +863,15 @@ Yeah.
 - `transcribe-cuda` — GPU-accelerated transcription
 - `diarize` — pyannote-rs speaker diarization (implies `transcribe`)
 
+**GPU auto-detection:**
+
+Both install methods auto-detect NVIDIA GPU availability and attempt GPU-accelerated builds:
+
+- **`make install`** (from source): Runs `nvidia-smi` to detect a GPU. If found, attempts `cargo install --features transcribe-cuda`. On failure (missing CUDA toolkit, incompatible driver), falls back to CPU-only install silently.
+- **`install.sh`** (prebuilt binary): Checks for `nvidia-smi`. If a GPU is detected, tries to download the `corky-<target>-cuda.tar.gz` binary. If the GPU variant isn't available for the release, falls back to the standard binary.
+
+No user action needed — GPU support is enabled automatically when hardware is available. If the GPU build fails, the install continues with CPU-only transcription.
+
 **Edge cases:**
 
 | # | Edge Case | Expected Behavior |
@@ -936,6 +949,65 @@ State is saved only after all accounts complete successfully. If sync crashes mi
 4. Write winning content, preserve mtime, update stored hash
 
 **Ineligible contacts (both exist):** Same 3-way logic but only allows mailbox → root direction.
+
+### 6.8 Gmail API Sync
+
+Alternative sync provider using the Gmail REST API instead of IMAP. Selected by `provider = "gmail-api"` in account config.
+
+**Config (`.corky.toml`):**
+```toml
+[[accounts]]
+name = "personal"
+provider = "gmail-api"
+user = "you@gmail.com"
+labels = ["INBOX", "SENT"]
+sync_days = 30
+```
+
+**Authentication:** OAuth2 via `gmail_auth::get_access_token_for_user()` with `GMAIL_SYNC_SCOPE`. Passes `user` as `login_hint` to pre-select the correct Google account. Credential resolution follows §5.25 (config → CLI → env → built-in defaults).
+
+**State:** Per-account, per-label `GmailLabelState { last_history_id: Option<u64> }` in `.sync-state.json`.
+
+**Incremental sync (historyId):**
+1. If `last_history_id` exists and not `--full`: call `GET /history?startHistoryId={id}&historyTypes=messageAdded&labelId={label}` with pagination
+2. On success: extract new message IDs, update `last_history_id` to highest seen
+3. On failure (e.g., historyId expired): log warning, clear `last_history_id`, fall back to full sync
+
+**Full sync:**
+1. `GET /messages?labelIds={label}&q=after:{sync_days ago}` with pagination
+2. For each message ID: `GET /messages/{id}?format=full`
+3. Parse MIME payload for text/plain body, extract headers (From, To, Cc, Date, Subject)
+4. Thread ID from Gmail preserved as dedup key
+5. Label IDs resolved to human-readable names via `GET /labels`
+6. Multi-label messages written to each label's mailbox + extra routes
+
+**Account verification:** Before syncing, validates the OAuth token belongs to the configured `user` email address. Catches account mismatch early.
+
+**Shutdown handling:** Checks `AtomicBool` shutdown signal per-message and every 5 pages of listing. Returns early with partial results if interrupted.
+
+**Merge and orphan cleanup:** Same as IMAP (§6.4, §6.5) — messages merge into thread files, full sync deletes untouched files.
+
+### 6.9 Doctor
+
+`corky doctor [PROVIDER]` — health check that validates environment, configuration, and account connectivity.
+
+**Always checks:**
+- `.corky.toml` exists and parses successfully
+- Mail directory exists
+
+**Per-provider checks (all run when no PROVIDER given):**
+
+| Provider | Checks |
+|----------|--------|
+| `gmail-api` | OAuth credentials resolution, sync token existence/validity/expiration, refresh token capability, user email match |
+| `gmail`, `imap`, `protonmail-bridge` | Password config (inline or command), IMAP host and port |
+| Gmail filters | Filter auth token status (`gmail:default` key), validity/expiration |
+| `linkedin` | OAuth credentials (config/env), per-profile: handle, URN, token validity, auto-refresh |
+| `youtube` | OAuth credentials (config/env), per-profile: handle, channel ID, token validity, auto-refresh |
+
+**Output:** Line-by-line text. `✓` for pass, `✗` for failure. 2-space indentation for details. Sections separated by blank lines.
+
+**Exit code:** 0 if all checks pass, 1 if any fail.
 
 ## 7. Mailbox Lifecycle
 
@@ -1246,6 +1318,7 @@ corky linkedin check                              # Validate profiles.toml
 corky linkedin list [--status X]                  # List LinkedIn drafts
 corky linkedin rename-author <old> <new>          # Rename across drafts + profiles
 corky linkedin edit <file> [--body TEXT]           # Update published post text
+corky linkedin comment <file> <body>             # Comment on a published post
 ```
 
 ### 12.8 Edge Case Table
@@ -1632,4 +1705,24 @@ corky youtube list [--status X]                     # List YouTube drafts
 - Captions: SRT format only
 - Visibility: public, unlisted, or private
 - Category ID defaults to 28 (Science & Technology)
+
+## 18. Self-Hosted Deployment
+
+Corky is fully self-hosted — it runs entirely on the user's machine with no external services beyond the provider APIs (Gmail, LinkedIn, YouTube).
+
+### 18.1 Credential Modes
+
+1. **Built-in defaults** (zero config) — corky ships with public OAuth client credentials compiled in. Suitable for most users.
+2. **Self-hosted GCP project** — users create their own GCP project for full control over OAuth tokens, audit logs, and credential rotation. See `docs/guide/self-hosted-gmail.md`.
+
+### 18.2 Privacy Model
+
+- No data collection, storage, or transmission to third parties
+- Email content stays on the local machine
+- OAuth tokens stored locally (`~/.config/corky/`)
+- No analytics, telemetry, or tracking
+- Gmail API scopes: `gmail.readonly`, `gmail.send`, `gmail.settings.basic`, optionally `youtube.readonly`
+- Does NOT request: delete, contacts, calendar, or YouTube modification permissions
+- Users can revoke access anytime via Google security settings
+- Full privacy policy: `docs/reference/privacy-policy.md`
 

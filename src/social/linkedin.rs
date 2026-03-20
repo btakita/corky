@@ -167,6 +167,76 @@ pub fn update_post_at(
     }
 }
 
+/// Create a comment on a LinkedIn post.
+///
+/// Returns the comment URN on success.
+pub fn create_comment(
+    access_token: &str,
+    author_urn: &str,
+    post_urn: &str,
+    text: &str,
+) -> Result<String> {
+    create_comment_at(API_BASE, access_token, author_urn, post_urn, text)
+}
+
+/// Create a comment with configurable API base URL (for testing).
+pub fn create_comment_at(
+    api_base: &str,
+    access_token: &str,
+    author_urn: &str,
+    post_urn: &str,
+    text: &str,
+) -> Result<String> {
+    let char_count = text.chars().count();
+    if char_count > MAX_BODY_LENGTH {
+        bail!(
+            "Comment exceeds LinkedIn's {} character limit ({} characters)",
+            MAX_BODY_LENGTH,
+            char_count
+        );
+    }
+
+    let payload = json!({
+        "actor": author_urn,
+        "message": {
+            "text": text
+        }
+    });
+
+    // URL-encode the post URN for the path
+    let encoded_urn = post_urn
+        .replace('%', "%25")
+        .replace(':', "%3A")
+        .replace(',', "%2C")
+        .replace('(', "%28")
+        .replace(')', "%29");
+    // Use v2 API (not /rest/) — the versioned /rest/socialActions endpoint
+    // requires partner-level permissions that personal tokens don't have.
+    let url = format!(
+        "{}/v2/socialActions/{}/comments",
+        api_base, encoded_urn
+    );
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .set("X-Restli-Protocol-Version", "2.0.0")
+        .send_json(&payload);
+
+    match resp {
+        Ok(r) => {
+            let comment_id = r
+                .header("x-restli-id")
+                .unwrap_or("unknown")
+                .to_string();
+            Ok(comment_id)
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("LinkedIn API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => bail!("LinkedIn API request failed: {}", e),
+    }
+}
+
 /// Create a post on LinkedIn using the REST API.
 ///
 /// `image_urns` controls the post type:

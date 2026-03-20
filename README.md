@@ -62,6 +62,7 @@ corky filter pull               # Show current Gmail filters
 corky filter auth               # Authenticate for Gmail filter API
 corky linkedin draft              # Create LinkedIn draft
 corky linkedin publish FILE      # Publish to LinkedIn
+corky linkedin comment FILE TEXT # Comment on a published post
 corky schedule run              # Publish due scheduled items
 corky topics list               # Show configured topics
 corky watch                     # Poll, sync, and publish scheduled
@@ -87,7 +88,7 @@ corky transcribe call.amr --diarize --speakers "Alice,Bob" -o transcript.md
 
 Diarization uses [pyannote-rs](https://github.com/thewh1teagle/pyannote-rs) (ONNX Runtime) to detect and label speakers. When run without `--speakers`, corky shows text excerpts per speaker and prompts you to assign names interactively. ONNX models auto-download on first use — no gated HuggingFace access required.
 
-**Feature flags:** Transcription (CPU) is enabled by default. For GPU acceleration, install with `--features transcribe-cuda`. Diarization requires `--features diarize`.
+**Feature flags:** Transcription (CPU) is enabled by default. GPU acceleration is auto-detected — both `make install` and `install.sh` check for an NVIDIA GPU and attempt to enable `transcribe-cuda` automatically, falling back to CPU-only if the GPU build fails. For manual control: `cargo install --path . --features transcribe-cuda`. Diarization requires `--features diarize`.
 
 > This feature was designed collaboratively using [agent-doc](https://github.com/btakita/agent-doc) interactive document sessions.
 
@@ -120,22 +121,16 @@ See the [command reference](https://btakita.github.io/corky/guide/commands.html)
 
 Sync Gmail accounts without IMAP or app passwords using the Gmail REST API with OAuth2.
 
-**1. Create OAuth credentials:**
+**1. Configure `.corky.toml`:**
 
-- Go to [Google Cloud Console](https://console.cloud.google.com/)
-- Create a project (or use existing)
-- Enable the **Gmail API**: APIs & Services → Library → Gmail API → Enable
-- Create OAuth credentials: APIs & Services → Credentials → Create Credentials → OAuth client ID
-  - Application type: **Desktop app**
-  - Name: `corky` (or anything)
-- Copy the Client ID and Client Secret
-
-**2. Configure `.corky.toml`:**
+Corky ships with built-in GCP OAuth credentials, so no Google Cloud Console setup is needed for most users. Just configure your account:
 
 ```toml
-[gmail]
-client_id_cmd = "pass corky/gmail/client_id"       # or inline: client_id = "..."
-client_secret_cmd = "pass corky/gmail/client_secret" # or inline: client_secret = "..."
+# [gmail] section is optional — built-in credentials are used by default
+# To use your own OAuth app, uncomment and configure:
+# [gmail]
+# client_id_cmd = "pass corky/gmail/client_id"       # or inline: client_id = "..."
+# client_secret_cmd = "pass corky/gmail/client_secret" # or inline: client_secret = "..."
 
 [accounts.my-gmail]
 provider = "gmail-api"
@@ -144,7 +139,7 @@ labels = ["INBOX"]
 sync_days = 30           # optional, default 3650
 ```
 
-**3. First sync:**
+**2. First sync:**
 
 ```sh
 corky sync account my-gmail

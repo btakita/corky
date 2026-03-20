@@ -169,6 +169,9 @@ fn main() -> Result<()> {
             }
             LinkedinCommands::Check => corky::social::run_check(),
             LinkedinCommands::List { status } => corky::social::run_list(status.as_deref()),
+            LinkedinCommands::Comment { file, body } => {
+                corky::social::run_comment(&file, &body)
+            }
             LinkedinCommands::RenameAuthor { old, new } => {
                 corky::social::run_rename_author(&old, &new)
             }

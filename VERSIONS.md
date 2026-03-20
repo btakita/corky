@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.19.0
+
+- **`corky linkedin comment`**: Post comments on published LinkedIn posts via API. Takes a published draft file (with `post_id` in frontmatter) and comment text. Uses v2 API path (`/v2/socialActions/{urn}/comments`) — the versioned `/rest/` endpoint requires partner-level permissions that personal OAuth tokens don't have.
+
 ## 0.18.1
 
 - **Gmail API email sending**: `provider = "gmail-api"` accounts now use the Gmail API for both draft push (`drafts.create`) and direct send (`messages.send`), bypassing SMTP entirely. Dedicated OAuth token key (`gmail:<account>:send`) avoids scope collision with sync tokens. Password no longer required for gmail-api accounts in draft resolution. One-time browser OAuth consent grants `gmail.send` scope, then auto-refreshes.

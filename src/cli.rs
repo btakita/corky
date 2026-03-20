@@ -549,6 +549,15 @@ pub enum LinkedinCommands {
         status: Option<String>,
     },
 
+    /// Post a comment on a published LinkedIn post
+    Comment {
+        /// Path to the published draft file (must have post_id in frontmatter)
+        file: PathBuf,
+
+        /// Comment text
+        body: String,
+    },
+
     /// Rename an author across drafts and profiles
     RenameAuthor {
         /// Old author name
