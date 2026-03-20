@@ -204,6 +204,7 @@ aliases = ["Display Name"]      # Match sender names that don't slugify to the d
 [routing]
 for-alex = ["mailboxes/alex"]
 shared = ["mailboxes/alice", "mailboxes/bob"]
+"work:for-lucas" = ["mailboxes/lucas"]   # account-scoped route
 
 [mailboxes.alex]
 auto_send = false
@@ -344,6 +345,7 @@ Routing values are paths like `mailboxes/{name}`, resolved relative to data_dir,
 Account:label syntax (`"proton-dev:INBOX"`):
 - Only matches when syncing the named account
 - The IMAP folder used is the part after the colon
+- Supported in both account `labels` arrays and `[routing]` keys (e.g. `"work:for-lucas" = ["mailboxes/lucas"]` routes only when syncing the `work` account)
 
 ### 4.6 Manifest Generation
 
@@ -983,6 +985,8 @@ sync_days = 30
 
 **Account verification:** Before syncing, validates the OAuth token belongs to the configured `user` email address. Catches account mismatch early.
 
+**404 resilience:** Individual messages that return HTTP 404 (deleted between listing and fetch) are logged and skipped. The sync continues with remaining messages rather than aborting the entire account.
+
 **Shutdown handling:** Checks `AtomicBool` shutdown signal per-message and every 5 pages of listing. Returns early with partial results if interrupted.
 
 **Merge and orphan cleanup:** Same as IMAP (§6.4, §6.5) — messages merge into thread files, full sync deletes untouched files.
@@ -1144,7 +1148,7 @@ while not shutdown:
 
 ### 9.2 Signals
 
-SIGTERM, SIGINT → clean shutdown (finish current poll, then exit).
+SIGTERM, SIGINT → clean shutdown (finish current poll, then exit). Both IMAP and Gmail API sync paths check the shutdown signal and return early when interrupted.
 
 ### 9.3 Notifications
 

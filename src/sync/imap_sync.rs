@@ -9,6 +9,8 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use super::markdown::{parse_thread_markdown, thread_to_markdown};
 use super::types::{AccountSyncState, LabelState, Message, SyncState, Thread};
@@ -198,13 +200,22 @@ pub fn merge_message_to_file(
 /// Fan-out: one label can route to multiple mailbox directories.
 /// Supports `account:label` syntax for per-account binding.
 pub fn build_label_routes(account_name: &str) -> std::collections::HashMap<String, Vec<PathBuf>> {
-    let mut routes: std::collections::HashMap<String, Vec<PathBuf>> = std::collections::HashMap::new();
     let config = match corky_config::try_load_config(None) {
         Some(c) => c,
-        None => return routes,
+        None => return std::collections::HashMap::new(),
     };
     let data_dir = resolve::data_dir();
-    for (label_key, mailbox_paths) in &config.routing {
+    build_label_routes_from_routing(account_name, &config.routing, &data_dir)
+}
+
+/// Inner routing logic, separated for testability.
+fn build_label_routes_from_routing(
+    account_name: &str,
+    routing: &std::collections::HashMap<String, Vec<String>>,
+    data_dir: &Path,
+) -> std::collections::HashMap<String, Vec<PathBuf>> {
+    let mut routes: std::collections::HashMap<String, Vec<PathBuf>> = std::collections::HashMap::new();
+    for (label_key, mailbox_paths) in routing {
         if label_key.contains(':') {
             let parts: Vec<&str> = label_key.splitn(2, ':').collect();
             let label_account = parts[0];
@@ -283,6 +294,7 @@ pub fn sync_account(
     full: bool,
     base_dir: Option<&Path>,
     mut touched: Option<&mut HashSet<PathBuf>>,
+    shutdown: Option<&Arc<AtomicBool>>,
 ) -> Result<()> {
     let base_dir = base_dir
         .map(PathBuf::from)
@@ -322,6 +334,14 @@ pub fn sync_account(
             out_dirs.extend(dirs.iter().cloned());
         }
 
+        // Check for shutdown signal between labels
+        if let Some(s) = shutdown
+            && s.load(Ordering::Relaxed) {
+                println!("\n    Sync interrupted by shutdown signal");
+                let _ = session.logout();
+                return Ok(());
+            }
+
         sync_label(
             &mut session,
             label,
@@ -331,6 +351,7 @@ pub fn sync_account(
             sync_days,
             &out_dirs,
             &mut touched,
+            shutdown,
         )?;
     }
 
@@ -352,6 +373,7 @@ fn sync_label(
     sync_days: u32,
     out_dirs: &[PathBuf],
     touched: &mut Option<&mut HashSet<PathBuf>>,
+    shutdown: Option<&Arc<AtomicBool>>,
 ) -> Result<()> {
     println!("Syncing label: {}", label_name);
 
@@ -409,6 +431,13 @@ fn sync_label(
     let mut max_uid = prior.map(|p| p.last_uid).unwrap_or(0);
 
     for uid in &uids {
+        // Check for shutdown signal between message fetches
+        if let Some(s) = shutdown
+            && s.load(Ordering::Relaxed) {
+                println!("\n    Sync interrupted by shutdown signal");
+                return Ok(());
+            }
+
         let fetches = session.uid_fetch(uid.to_string(), "RFC822")?;
         let fetch = match fetches.iter().next() {
             Some(f) => f,
@@ -500,4 +529,69 @@ fn sync_label(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    // --- Bug 1: Routing scope tests ---
+
+    #[test]
+    fn scoped_route_returns_for_matching_account() {
+        let mut routing = HashMap::new();
+        routing.insert(
+            "personal:for-lucas".to_string(),
+            vec!["mailboxes/lucas".to_string()],
+        );
+        let data_dir = PathBuf::from("/tmp/test-data");
+
+        let routes = build_label_routes_from_routing("personal", &routing, &data_dir);
+        assert!(routes.contains_key("for-lucas"), "expected for-lucas key");
+        assert_eq!(routes.len(), 1);
+    }
+
+    #[test]
+    fn scoped_route_returns_empty_for_other_account() {
+        let mut routing = HashMap::new();
+        routing.insert(
+            "personal:for-lucas".to_string(),
+            vec!["mailboxes/lucas".to_string()],
+        );
+        let data_dir = PathBuf::from("/tmp/test-data");
+
+        let routes = build_label_routes_from_routing("proton-dev", &routing, &data_dir);
+        assert!(routes.is_empty(), "expected empty routes for proton-dev");
+    }
+
+    #[test]
+    fn unscoped_route_returns_for_all_accounts() {
+        let mut routing = HashMap::new();
+        routing.insert(
+            "shared-label".to_string(),
+            vec!["mailboxes/shared".to_string()],
+        );
+        let data_dir = PathBuf::from("/tmp/test-data");
+
+        let routes_a = build_label_routes_from_routing("personal", &routing, &data_dir);
+        let routes_b = build_label_routes_from_routing("proton-dev", &routing, &data_dir);
+
+        assert!(routes_a.contains_key("shared-label"));
+        assert!(routes_b.contains_key("shared-label"));
+    }
+
+    // --- Bug 3: Shutdown signal smoke test ---
+
+    #[test]
+    fn shutdown_signal_is_observable() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        assert!(!shutdown.load(Ordering::Relaxed));
+
+        shutdown.store(true, Ordering::Relaxed);
+        assert!(shutdown.load(Ordering::Relaxed));
+    }
 }

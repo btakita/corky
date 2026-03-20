@@ -219,6 +219,7 @@ fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
                     false,
                     None,
                     None,
+                    Some(&shutdown),
                 )
             }
         };

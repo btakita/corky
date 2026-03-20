@@ -371,7 +371,16 @@ pub fn sync_account(
                 let _ = std::io::stdout().flush();
             }
 
-            let gmail_msg = fetch_message(&token, &msg_ref.id)?;
+            let gmail_msg = match fetch_message(&token, &msg_ref.id)? {
+                Some(msg) => msg,
+                None => {
+                    eprintln!(
+                        "    Skipping message {} (deleted before fetch)",
+                        msg_ref.id
+                    );
+                    continue;
+                }
+            };
 
             // Track highest history_id
             if let Some(ref hid_str) = gmail_msg.history_id
@@ -573,9 +582,24 @@ fn fetch_new_message_ids_incremental(
 }
 
 /// Fetch a single message by ID.
-fn fetch_message(token: &str, message_id: &str) -> Result<GmailMessage> {
+fn fetch_message(token: &str, message_id: &str) -> Result<Option<GmailMessage>> {
     let url = format!("{}/messages/{}?format=full", GMAIL_API, message_id);
-    let resp = api_get(token, &url)?;
-    let msg: GmailMessage = resp.into_json().context("Failed to parse message")?;
-    Ok(msg)
+    match ureq::get(&url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .call()
+    {
+        Ok(resp) => {
+            let msg: GmailMessage = resp.into_json().context("Failed to parse message")?;
+            Ok(Some(msg))
+        }
+        Err(ureq::Error::Status(404, _)) => Ok(None),
+        Err(ureq::Error::Status(401, _)) => {
+            bail!("Gmail API: unauthorized (401). Token may be expired or revoked.");
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Gmail API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
 }

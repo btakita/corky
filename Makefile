@@ -30,8 +30,20 @@ check: clippy test
 precommit: check
 	cargo run --quiet -- audit-docs
 
-# Install to ~/.cargo/bin
+# Install to ~/.cargo/bin (auto-detects GPU for transcribe-cuda)
 install:
+	@FEATURES=""; \
+	if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then \
+		echo "GPU detected — attempting install with transcribe-cuda..."; \
+		if cargo install --path . --features transcribe-cuda 2>/dev/null; then \
+			echo "Installed with GPU support (transcribe-cuda)."; \
+			exit 0; \
+		else \
+			echo "GPU build failed — falling back to CPU-only install."; \
+		fi; \
+	else \
+		echo "No GPU detected — installing CPU-only."; \
+	fi; \
 	cargo install --path .
 
 # Install git hooks

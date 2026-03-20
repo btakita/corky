@@ -46,7 +46,7 @@ See the [getting started guide](https://btakita.github.io/corky/getting-started/
 - **Scheduling** — schedule email and social drafts for timed publishing
 - **Topics** — organize conversations with shared topic context across mailboxes
 - **Transcription** — whisper-rs audio transcription with speaker diarization via pyannote-rs
-- **Watch daemon** — poll IMAP and run scheduled publishing with `corky watch`
+- **Watch daemon** — poll IMAP and run scheduled publishing with `corky watch`. Ctrl+C cleanly interrupts both IMAP and Gmail API syncs
 
 ## Usage
 
@@ -152,6 +152,7 @@ This opens your browser for OAuth authorization. Authorize with the correct Goog
 - `login_hint` pre-selects the configured email in the consent screen
 - Post-auth verification ensures the token matches the configured account
 - Incremental sync uses Gmail's `historyId` for efficient polling after initial sync
+- Messages deleted between listing and fetch (404) are skipped gracefully — sync continues with remaining messages
 
 ## Development
 

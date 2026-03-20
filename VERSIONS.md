@@ -4,6 +4,14 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.19.1
+
+- **Watch bug fixes**: Three fixes for `corky watch` reliability:
+  - **Scoped routing**: `[routing]` entries now support `account:label` syntax to prevent label leakage across accounts. `for-lucas` route scoped to `personal` account only.
+  - **Gmail API 404 resilience**: Messages deleted between `messages.list` and `messages.get` are skipped with a warning instead of aborting the entire account sync.
+  - **IMAP shutdown signal**: Ctrl+C now interrupts IMAP syncs between message fetches (previously only Gmail API syncs respected the shutdown signal).
+- **GPU auto-detection**: `make install` and `install.sh` auto-detect NVIDIA GPU and attempt CUDA-accelerated transcription build with graceful fallback.
+
 ## 0.19.0
 
 - **`corky linkedin comment`**: Post comments on published LinkedIn posts via API. Takes a published draft file (with `post_id` in frontmatter) and comment text. Uses v2 API path (`/v2/socialActions/{urn}/comments`) — the versioned `/rest/` endpoint requires partner-level permissions that personal OAuth tokens don't have.

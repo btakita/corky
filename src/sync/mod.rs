@@ -100,6 +100,7 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
                     full,
                     None,
                     touched.as_mut(),
+                    None,
                 )?;
             }
         }
