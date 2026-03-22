@@ -4,6 +4,12 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.19.2
+
+- **Write destination display**: `Wrote:` output now shows routing destination (e.g., `file.md → mailboxes/lucas/conversations/`) so fan-out writes don't look like duplicates.
+- **Pull error handling**: Mailbox sync checks for git remote before attempting pull; shows actual error message on failure instead of generic "continuing with push".
+- **SPEC.md**: Added §6.8 Gmail API Sync, §6.9 Doctor, §18 Self-Hosted Deployment.
+
 ## 0.19.1
 
 - **Watch bug fixes**: Three fixes for `corky watch` reliability:
