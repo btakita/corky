@@ -188,10 +188,15 @@ pub fn merge_message_to_file(
     std::fs::write(&file_path, thread_to_markdown(&thread))?;
     let _ = set_mtime(&file_path, &thread.last_date);
 
-    println!(
-        "  Wrote: {}",
-        file_path.file_name().unwrap_or_default().to_string_lossy()
-    );
+    let file_name = file_path.file_name().unwrap_or_default().to_string_lossy();
+    let base_conversations = resolve::conversations_dir();
+    if out_dir == base_conversations {
+        println!("  Wrote: {file_name}");
+    } else if let Ok(rel) = out_dir.strip_prefix(resolve::data_dir()) {
+        println!("  Wrote: {file_name} → {}/", rel.display());
+    } else {
+        println!("  Wrote: {file_name} → {}/", out_dir.display());
+    }
     Ok(Some(file_path))
 }
 

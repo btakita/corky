@@ -194,14 +194,20 @@ pub fn sync_one(name: &str) -> Result<()> {
     println!("Syncing {}...", name);
     let sp = mb_path.to_string_lossy().to_string();
 
-    // Pull changes
-    let (stdout, _stderr, code) = run_git(&["git", "-C", &sp, "pull", "--rebase"]);
-    if code == 0 {
-        if !stdout.contains("Already up to date") {
-            println!("  Pulled changes");
-        }
+    // Pull changes (skip if no remote configured)
+    let (remotes, _, _) = run_git(&["git", "-C", &sp, "remote"]);
+    if remotes.trim().is_empty() {
+        // No remote — local-only mailbox, skip pull silently
     } else {
-        println!("  Pull failed -- continuing with push");
+        let (stdout, stderr, code) = run_git(&["git", "-C", &sp, "pull", "--rebase"]);
+        if code == 0 {
+            if !stdout.contains("Already up to date") {
+                println!("  Pulled changes");
+            }
+        } else {
+            let reason = stderr.lines().last().unwrap_or("unknown error").trim();
+            println!("  Pull failed ({})", reason);
+        }
     }
 
     // Copy voice.md if root copy is newer
