@@ -8,6 +8,9 @@ const SYMPHONIA_EXTS: &[&str] = &[
     "wav", "mp3", "flac", "ogg", "m4a", "mp4", "aac", "aiff",
 ];
 
+/// Video/media formats that symphonia can't handle but ffmpeg can.
+const VIDEO_EXTS: &[&str] = &["mov", "mkv", "webm", "avi", "ts", "mts"];
+
 /// Decode an audio file to f32 PCM samples at 16kHz mono.
 pub fn decode_audio(path: &Path) -> Result<Vec<f32>> {
     let ext = path
@@ -22,9 +25,20 @@ pub fn decode_audio(path: &Path) -> Result<Vec<f32>> {
             return Ok(samples);
         }
 
-    // For formats symphonia supports, use it directly
+    // Video formats go straight to ffmpeg (no point trying symphonia)
+    if VIDEO_EXTS.contains(&ext.as_str()) {
+        return decode_ffmpeg(path);
+    }
+
+    // For formats symphonia supports, try it first, fall back to ffmpeg
     if SYMPHONIA_EXTS.contains(&ext.as_str()) {
-        return decode_symphonia(path);
+        match decode_symphonia(path) {
+            Ok(samples) => return Ok(samples),
+            Err(e) => {
+                eprintln!("  symphonia failed ({}), trying ffmpeg...", e);
+                return decode_ffmpeg(path);
+            }
+        }
     }
 
     // For unsupported formats (AMR, etc.), fall back to ffmpeg

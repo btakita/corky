@@ -1,6 +1,6 @@
 [package]
 name = "corky"
-version = "0.19.2"
+version = "0.19.3"
 edition = "2024"
 description = "Sync email threads from IMAP to Markdown, draft replies, manage collaborators"
 license = "Apache-2.0"
@@ -56,6 +56,7 @@ default = ["transcribe"]
 vendored-openssl = ["openssl"]
 transcribe = ["whisper-rs", "symphonia", "rubato", "hound"]
 transcribe-cuda = ["transcribe", "whisper-rs/cuda"]
+transcribe-metal = ["transcribe", "whisper-rs/metal"]
 diarize = ["transcribe", "pyannote-rs", "ort"]
 
 [dev-dependencies]

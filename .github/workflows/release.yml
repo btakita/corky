@@ -13,6 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # CPU builds
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: false
@@ -28,6 +29,18 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             use_cross: false
+          # GPU builds
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+            features: transcribe-cuda
+            suffix: -cuda
+            cuda: true
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+            features: transcribe-metal
+            suffix: -metal
 
     runs-on: ${{ matrix.os }}
 
@@ -41,6 +54,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install CUDA toolkit
+        if: matrix.cuda
+        uses: Jimver/cuda-toolkit@v0.2.18
+        with:
+          cuda: '12.6.3'
+          method: network
+          sub-packages: '["nvcc", "cudart"]'
+
       - name: Install cross
         if: matrix.use_cross
         run: cargo install cross --version 0.2.5
@@ -53,30 +74,30 @@ jobs:
 
       - name: Build (cargo)
         if: "!matrix.use_cross"
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
-        run: tar czf corky-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release corky
+        run: tar czf corky-${{ matrix.target }}${{ matrix.suffix || '' }}.tar.gz -C target/${{ matrix.target }}/release corky
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path target/${{ matrix.target }}/release/corky.exe -DestinationPath corky-${{ matrix.target }}.zip
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/corky.exe -DestinationPath corky-${{ matrix.target }}${{ matrix.suffix || '' }}.zip
 
       - name: Upload artifact (Unix)
         if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: corky-${{ matrix.target }}
-          path: corky-${{ matrix.target }}.tar.gz
+          name: corky-${{ matrix.target }}${{ matrix.suffix || '' }}
+          path: corky-${{ matrix.target }}${{ matrix.suffix || '' }}.tar.gz
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: corky-${{ matrix.target }}
-          path: corky-${{ matrix.target }}.zip
+          name: corky-${{ matrix.target }}${{ matrix.suffix || '' }}
+          path: corky-${{ matrix.target }}${{ matrix.suffix || '' }}.zip
 
   release:
     needs: build

@@ -862,17 +862,21 @@ Yeah.
 
 **Feature flags:**
 - `transcribe` — whisper-rs transcription + tdrz speaker turns (enabled by default)
-- `transcribe-cuda` — GPU-accelerated transcription
+- `transcribe-cuda` — NVIDIA CUDA GPU-accelerated transcription (Linux)
+- `transcribe-metal` — Apple Metal GPU-accelerated transcription (macOS)
 - `diarize` — pyannote-rs speaker diarization (implies `transcribe`)
 
 **GPU auto-detection:**
 
-Both install methods auto-detect NVIDIA GPU availability and attempt GPU-accelerated builds:
+Both install methods auto-detect GPU availability and attempt GPU-accelerated builds:
 
-- **`make install`** (from source): Runs `nvidia-smi` to detect a GPU. If found, attempts `cargo install --features transcribe-cuda`. On failure (missing CUDA toolkit, incompatible driver), falls back to CPU-only install silently.
-- **`install.sh`** (prebuilt binary): Checks for `nvidia-smi`. If a GPU is detected, tries to download the `corky-<target>-cuda.tar.gz` binary. If the GPU variant isn't available for the release, falls back to the standard binary.
+- **`make install`** (from source): On macOS, builds with `--features transcribe-metal`. On Linux, runs `nvidia-smi` — if found, attempts `cargo install --features transcribe-cuda`. On failure (missing CUDA toolkit, incompatible driver), falls back to CPU-only install silently.
+- **`make release-gpu`** (build only): Same auto-detection as `make install` but runs `cargo build --release` instead of `cargo install`.
+- **`install.sh`** (prebuilt binary): Checks for `nvidia-smi` (Linux) or macOS platform. Downloads the appropriate GPU binary variant (`-cuda` or `-metal`). Falls back to standard binary if GPU variant isn't available.
 
 No user action needed — GPU support is enabled automatically when hardware is available. If the GPU build fails, the install continues with CPU-only transcription.
+
+**Audio decode pipeline:** Video formats (mov, mkv, webm, avi, ts, mts) go directly to ffmpeg. Audio formats supported by symphonia are tried first; on failure, ffmpeg is used as a fallback.
 
 **Edge cases:**
 

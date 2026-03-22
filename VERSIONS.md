@@ -4,6 +4,12 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.19.3
+
+- **Metal GPU support**: `transcribe-metal` feature for macOS Metal acceleration. `make release-gpu` and CI release workflow auto-detect CUDA (Linux) vs Metal (macOS).
+- **Audio decode resilience**: Video formats (mov, mkv, webm, avi, ts, mts) go straight to ffmpeg. Symphonia failures now fall back to ffmpeg instead of erroring.
+- **CI GPU builds**: Release workflow builds CUDA (Linux) and Metal (macOS) binary variants alongside CPU builds.
+
 ## 0.19.2
 
 - **Write destination display**: `Wrote:` output now shows routing destination (e.g., `file.md → mailboxes/lucas/conversations/`) so fan-out writes don't look like duplicates.

@@ -15,6 +15,22 @@ release:
 	@ln -sf ../target/release/corky .bin/corky
 	@echo "Installed .bin/corky -> target/release/corky"
 
+# Build release binary with GPU support (CUDA on Linux, Metal on macOS)
+release-gpu:
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		echo "Building with Metal (macOS)..."; \
+		cargo build --release --features transcribe-metal; \
+	elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then \
+		echo "Building with CUDA (Linux)..."; \
+		cargo build --release --features transcribe-cuda; \
+	else \
+		echo "No GPU detected — building CPU-only."; \
+		cargo build --release; \
+	fi
+	@mkdir -p .bin
+	@ln -sf ../target/release/corky .bin/corky
+	@echo "Installed .bin/corky -> target/release/corky"
+
 # Run tests
 test:
 	cargo test
