@@ -526,7 +526,7 @@ corky mailbox sync [NAME]
 
 Alias: `corky mb sync`
 
-For each mailbox (or one named): git pull --rebase, copy voice.md if newer, sync GitHub Actions workflow, bidirectional topic sync (§7.7), stage+commit+push local changes, update submodule ref in parent. Skips git ops for plain (non-submodule) directories.
+For each mailbox (or one named): git pull --rebase (if remote configured), copy voice.md if newer, sync GitHub Actions workflow, bidirectional topic sync (§7.7), stage+commit+push local changes, update submodule ref in parent. Skips git ops for plain (non-submodule) directories. Local-only mailboxes (no git remote) skip pull silently. On pull failure with a remote, logs the actual error message instead of a generic warning.
 
 ### 5.13 mailbox status
 
@@ -1031,7 +1031,7 @@ With `--github` (submodule):
 
 ### 7.2 Sync
 
-1. `git pull --rebase` in submodule (skipped for plain directories)
+1. `git pull --rebase` in submodule (skipped for plain directories and local-only repos with no remote)
 2. Copy `voice.md` if root copy is newer
 3. Sync workflow template if newer
 4. **Bidirectional topic sync** (see §7.7)
@@ -1065,7 +1065,7 @@ Then:
 
 ### 7.6 Reset
 
-1. `git pull --rebase` (submodules only)
+1. `git pull --rebase` (submodules with remote only)
 2. Regenerate: AGENTS.md, CLAUDE.md (symlink), README.md, .gitignore, voice.md, `.claude/skills/email/` at `mailboxes/{name}/`
 3. Stage, commit, push (submodules only)
 4. Update submodule ref in parent (submodules only)
