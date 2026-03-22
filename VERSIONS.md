@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.20.0
+
+- **YouTube comments**: `corky youtube comment <file> "text"` posts top-level comments on published videos via the Data API v3 `commentThreads.insert` endpoint. Prints comment ID and direct `&lc=` link for manual pinning.
+
 ## 0.19.3
 
 - **Metal GPU support**: `transcribe-metal` feature for macOS Metal acceleration. `make release-gpu` and CI release workflow auto-detect CUDA (Linux) vs Metal (macOS).
