@@ -1702,6 +1702,7 @@ tags:
 corky youtube auth                                  # Google OAuth2 flow
 corky youtube draft [BODY] [--author X] [--video PATH] [--captions PATH] [--title TEXT]
 corky youtube publish <file>                        # Upload video + captions
+corky youtube comment <file> "text"                  # Post a comment on a published video
 corky youtube check                                 # Validate YouTube profiles
 corky youtube list [--status X]                     # List YouTube drafts
 ```

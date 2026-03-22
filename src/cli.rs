@@ -610,6 +610,14 @@ pub enum YoutubeCommands {
         file: PathBuf,
     },
 
+    /// Post a comment on a published YouTube video
+    Comment {
+        /// Path to the draft file (must have post_id in frontmatter)
+        file: PathBuf,
+        /// Comment text
+        body: String,
+    },
+
     /// Validate profiles in .corky.toml
     Check,
 

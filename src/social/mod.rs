@@ -194,6 +194,50 @@ pub fn run_comment(file: &Path, body: &str) -> Result<()> {
     Ok(())
 }
 
+/// Run the `youtube comment` command: post a comment on a published YouTube video.
+pub fn run_youtube_comment(file: &Path, body: &str) -> Result<()> {
+    let content = std::fs::read_to_string(file)?;
+    let draft = SocialDraft::parse(&content)?;
+
+    if draft.meta.platform != platform::Platform::Youtube {
+        bail!(
+            "Draft is not a YouTube draft (platform: {})",
+            draft.meta.platform
+        );
+    }
+
+    let video_id = draft.meta.post_id.clone().ok_or_else(|| {
+        anyhow::anyhow!("Video has not been published yet — no post_id in frontmatter.")
+    })?;
+
+    if body.trim().is_empty() {
+        bail!("Comment text is empty.");
+    }
+
+    let profiles = ProfilesFile::load()?;
+    let author = &draft.meta.author;
+    let urn = profiles.resolve_urn(author, platform::Platform::Youtube)?;
+
+    let store = token_store::TokenStore::load()?;
+    let token = store.get_valid(&urn).ok_or_else(|| {
+        anyhow::anyhow!(
+            "No valid token for {} ({}).\nRun `corky youtube auth` to authenticate.",
+            author,
+            urn,
+        )
+    })?;
+
+    let comment_id = youtube::insert_comment(&token.access_token, &video_id, body)?;
+
+    println!("Commented on https://www.youtube.com/watch?v={}", video_id);
+    println!("Comment ID: {}", comment_id);
+    println!(
+        "Pin it manually: https://www.youtube.com/watch?v={}&lc={}",
+        video_id, comment_id
+    );
+    Ok(())
+}
+
 /// Run the `social edit` command: update a published post's commentary.
 pub fn run_edit(file: &Path, body: Option<&str>) -> Result<()> {
     let content = std::fs::read_to_string(file)?;

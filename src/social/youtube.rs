@@ -339,3 +339,61 @@ pub fn upload_captions_at(
         Err(e) => bail!("YouTube caption upload request failed: {}", e),
     }
 }
+
+/// Insert a top-level comment on a YouTube video.
+///
+/// Uses the YouTube Data API v3 commentThreads.insert endpoint.
+/// Returns the comment ID on success.
+pub fn insert_comment(
+    access_token: &str,
+    video_id: &str,
+    text: &str,
+) -> Result<String> {
+    insert_comment_at(API_BASE, access_token, video_id, text)
+}
+
+/// Insert a comment with configurable API base URL (for testing).
+pub fn insert_comment_at(
+    api_base: &str,
+    access_token: &str,
+    video_id: &str,
+    text: &str,
+) -> Result<String> {
+    let url = format!(
+        "{}/youtube/v3/commentThreads?part=snippet",
+        api_base
+    );
+
+    let body = serde_json::json!({
+        "snippet": {
+            "videoId": video_id,
+            "topLevelComment": {
+                "snippet": {
+                    "textOriginal": text
+                }
+            }
+        }
+    });
+
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .set("Content-Type", "application/json")
+        .send_json(&body);
+
+    match resp {
+        Ok(r) => {
+            let resp_body: serde_json::Value = r.into_json()?;
+            let comment_id = resp_body["snippet"]["topLevelComment"]["id"]
+                .as_str()
+                .or_else(|| resp_body["id"].as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            Ok(comment_id)
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let err_body = resp.into_string().unwrap_or_default();
+            bail!("YouTube comment insert failed (HTTP {}): {}", status, err_body);
+        }
+        Err(e) => bail!("YouTube comment insert request failed: {}", e),
+    }
+}
