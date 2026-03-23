@@ -4,6 +4,11 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.21.0
+
+- **YouTube playlists**: `corky youtube playlist create/add/list/remove` — full playlist management via Data API v3. Create playlists, add/remove videos, list all playlists. Uses existing `youtube.force-ssl` OAuth scope.
+- **Sorted YouTube commands**: CLI `--help` output and docs now list YouTube subcommands alphabetically.
+
 ## 0.20.0
 
 - **YouTube comments**: `corky youtube comment <file> "text"` posts top-level comments on published videos via the Data API v3 `commentThreads.insert` endpoint. Prints comment ID and direct `&lc=` link for manual pinning.
