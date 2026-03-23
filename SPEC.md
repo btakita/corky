@@ -1700,14 +1700,28 @@ tags:
 
 ```
 corky youtube auth                                  # Google OAuth2 flow
-corky youtube draft [BODY] [--author X] [--video PATH] [--captions PATH] [--title TEXT]
-corky youtube publish <file>                        # Upload video + captions
-corky youtube comment <file> "text"                  # Post a comment on a published video
 corky youtube check                                 # Validate YouTube profiles
+corky youtube comment <file> "text"                 # Post a comment on a published video
+corky youtube draft [BODY] [--author X] [--video PATH] [--captions PATH] [--title TEXT]
+corky youtube edit <file>                           # Update published video metadata
 corky youtube list [--status X]                     # List YouTube drafts
+corky youtube playlist add <PLAYLIST_ID> <VIDEO_ID> [--position N]
+corky youtube playlist create <TITLE> [--description TEXT] [--visibility V]
+corky youtube playlist list                         # List your playlists
+corky youtube playlist remove <PLAYLIST_ID> <VIDEO_ID>
+corky youtube publish <file>                        # Upload video + captions
 ```
 
-### 17.7 Constraints
+### 17.7 Playlist Management
+
+Playlist operations use the YouTube Data API v3 playlists and playlistItems endpoints. The existing `youtube.force-ssl` OAuth scope covers all playlist operations — no additional authorization is needed.
+
+- **create** — `playlists.insert` with snippet (title, description) and status (privacy)
+- **add** — `playlistItems.insert` with snippet (playlistId, resourceId, optional position)
+- **list** — `playlists.list` with `mine=true`, returns ID, title, privacy, item count
+- **remove** — looks up the playlistItem ID via `playlistItems.list` (filter by playlistId + videoId), then `playlistItems.delete`
+
+### 17.8 Constraints
 
 - Maximum video file size: handled by resumable upload (no practical limit)
 - Chunk size: 8MB (configurable internally)

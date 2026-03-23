@@ -238,6 +238,74 @@ pub fn run_youtube_comment(file: &Path, body: &str) -> Result<()> {
     Ok(())
 }
 
+/// Get a valid YouTube access token using the first YouTube profile found.
+fn get_youtube_token() -> Result<String> {
+    let profiles = ProfilesFile::load()?;
+    let youtube_profiles: Vec<_> = profiles
+        .profiles
+        .iter()
+        .filter(|(_, p)| p.youtube.is_some())
+        .collect();
+
+    if youtube_profiles.is_empty() {
+        bail!("No YouTube profile found in .corky.toml. Run `corky youtube auth --profile <name>` first.");
+    }
+
+    let (author, _) = youtube_profiles[0];
+    let urn = profiles.resolve_urn(author, platform::Platform::Youtube)?;
+    let store = token_store::TokenStore::load()?;
+    let token = store.get_valid(&urn).ok_or_else(|| {
+        anyhow::anyhow!(
+            "No valid token for {} ({}).\nRun `corky youtube auth` to authenticate.",
+            author,
+            urn,
+        )
+    })?;
+    Ok(token.access_token.clone())
+}
+
+/// Run `youtube playlist create`.
+pub fn run_playlist_create(title: &str, description: &str, visibility: &str) -> Result<()> {
+    let access_token = get_youtube_token()?;
+    let playlist_id = youtube::create_playlist(&access_token, title, description, visibility)?;
+    println!("Created playlist: https://www.youtube.com/playlist?list={}", playlist_id);
+    println!("Playlist ID: {}", playlist_id);
+    Ok(())
+}
+
+/// Run `youtube playlist add`.
+pub fn run_playlist_add(playlist_id: &str, video_id: &str, position: Option<u32>) -> Result<()> {
+    let access_token = get_youtube_token()?;
+    let item_id = youtube::add_to_playlist(&access_token, playlist_id, video_id, position)?;
+    println!("Added video {} to playlist {}", video_id, playlist_id);
+    println!("PlaylistItem ID: {}", item_id);
+    Ok(())
+}
+
+/// Run `youtube playlist list`.
+pub fn run_playlist_list() -> Result<()> {
+    let access_token = get_youtube_token()?;
+    let playlists = youtube::list_playlists(&access_token)?;
+
+    if playlists.is_empty() {
+        println!("No playlists found.");
+        return Ok(());
+    }
+
+    for (id, title, privacy, count) in &playlists {
+        println!("{} | {} | {} | {} videos", id, title, privacy, count);
+    }
+    Ok(())
+}
+
+/// Run `youtube playlist remove`.
+pub fn run_playlist_remove(playlist_id: &str, video_id: &str) -> Result<()> {
+    let access_token = get_youtube_token()?;
+    youtube::remove_from_playlist(&access_token, playlist_id, video_id)?;
+    println!("Removed video {} from playlist {}", video_id, playlist_id);
+    Ok(())
+}
+
 /// Run the `social edit` command: update a published post's commentary.
 pub fn run_edit(file: &Path, body: Option<&str>) -> Result<()> {
     let content = std::fs::read_to_string(file)?;

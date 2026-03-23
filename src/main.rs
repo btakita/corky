@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 
-use corky::cli::{CalCommands, Cli, Commands, ContactCommands, DocCommands, DraftCommands, FilterCommands, LabelCommands, LinkedinCommands, MailboxCommands, ScheduleCommands, SkillCommands, SlackCommands, SyncCommands, TopicCommands, YoutubeCommands};
+use corky::cli::{CalCommands, Cli, Commands, ContactCommands, DocCommands, DraftCommands, FilterCommands, LabelCommands, LinkedinCommands, MailboxCommands, PlaylistCommands, ScheduleCommands, SkillCommands, SlackCommands, SyncCommands, TopicCommands, YoutubeCommands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -197,6 +197,18 @@ fn main() -> Result<()> {
             YoutubeCommands::Comment { file, body } => {
                 corky::social::run_youtube_comment(&file, &body)
             }
+            YoutubeCommands::Playlist(cmd) => match cmd {
+                PlaylistCommands::Create { title, description, visibility } => {
+                    corky::social::run_playlist_create(&title, &description, &visibility)
+                }
+                PlaylistCommands::Add { playlist_id, video_id, position } => {
+                    corky::social::run_playlist_add(&playlist_id, &video_id, position)
+                }
+                PlaylistCommands::List => corky::social::run_playlist_list(),
+                PlaylistCommands::Remove { playlist_id, video_id } => {
+                    corky::social::run_playlist_remove(&playlist_id, &video_id)
+                }
+            },
             YoutubeCommands::Check => corky::social::run_check(),
             YoutubeCommands::List { status } => corky::social::run_list(status.as_deref()),
         },

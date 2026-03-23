@@ -5,8 +5,8 @@
 mod common;
 
 use corky::social::youtube::{
-    get_channel_id_at, map_visibility, update_video_at, upload_video_at,
-    VideoMetadata,
+    add_to_playlist_at, create_playlist_at, get_channel_id_at, list_playlists_at,
+    map_visibility, remove_from_playlist_at, update_video_at, upload_video_at, VideoMetadata,
 };
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -241,4 +241,144 @@ fn yt_u8_upload_missing_file() {
     );
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not found"));
+}
+
+// YT-P1: create_playlist returns playlist ID
+#[test]
+fn yt_p1_create_playlist() {
+    let server = Server::http("127.0.0.1:0").unwrap();
+    let addr = server.server_addr().to_ip().unwrap();
+    let api_base = format!("http://{}", addr);
+
+    let handle = std::thread::spawn(move || {
+        let req = server.recv().unwrap();
+        assert!(req.url().contains("/youtube/v3/playlists"));
+        assert!(req.url().contains("part=snippet,status"));
+        assert_eq!(req.method().as_str(), "POST");
+        let body = r#"{"id":"PL_test_123","snippet":{"title":"My Playlist"}}"#;
+        req.respond(
+            Response::from_string(body)
+                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_status_code(200),
+        )
+        .unwrap();
+    });
+
+    let result = create_playlist_at(&api_base, "fake_token", "My Playlist", "A description", "public");
+    handle.join().unwrap();
+    assert_eq!(result.unwrap(), "PL_test_123");
+}
+
+// YT-P2: add_to_playlist returns item ID
+#[test]
+fn yt_p2_add_to_playlist() {
+    let server = Server::http("127.0.0.1:0").unwrap();
+    let addr = server.server_addr().to_ip().unwrap();
+    let api_base = format!("http://{}", addr);
+
+    let handle = std::thread::spawn(move || {
+        let req = server.recv().unwrap();
+        assert!(req.url().contains("/youtube/v3/playlistItems"));
+        assert_eq!(req.method().as_str(), "POST");
+        let body = r#"{"id":"PLI_item_456"}"#;
+        req.respond(
+            Response::from_string(body)
+                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_status_code(200),
+        )
+        .unwrap();
+    });
+
+    let result = add_to_playlist_at(&api_base, "fake_token", "PL_test_123", "VIDEO_123", None);
+    handle.join().unwrap();
+    assert_eq!(result.unwrap(), "PLI_item_456");
+}
+
+// YT-P3: list_playlists parses response
+#[test]
+fn yt_p3_list_playlists() {
+    let server = Server::http("127.0.0.1:0").unwrap();
+    let addr = server.server_addr().to_ip().unwrap();
+    let api_base = format!("http://{}", addr);
+
+    let handle = std::thread::spawn(move || {
+        let req = server.recv().unwrap();
+        assert!(req.url().contains("/youtube/v3/playlists"));
+        assert!(req.url().contains("mine=true"));
+        let body = r#"{"items":[
+            {"id":"PL1","snippet":{"title":"Playlist One"},"status":{"privacyStatus":"public"},"contentDetails":{"itemCount":5}},
+            {"id":"PL2","snippet":{"title":"Playlist Two"},"status":{"privacyStatus":"private"},"contentDetails":{"itemCount":0}}
+        ]}"#;
+        req.respond(
+            Response::from_string(body)
+                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_status_code(200),
+        )
+        .unwrap();
+    });
+
+    let result = list_playlists_at(&api_base, "fake_token");
+    handle.join().unwrap();
+    let playlists = result.unwrap();
+    assert_eq!(playlists.len(), 2);
+    assert_eq!(playlists[0], ("PL1".to_string(), "Playlist One".to_string(), "public".to_string(), 5));
+    assert_eq!(playlists[1], ("PL2".to_string(), "Playlist Two".to_string(), "private".to_string(), 0));
+}
+
+// YT-P4: remove_from_playlist finds and deletes item
+#[test]
+fn yt_p4_remove_from_playlist() {
+    let server = Server::http("127.0.0.1:0").unwrap();
+    let addr = server.server_addr().to_ip().unwrap();
+    let api_base = format!("http://{}", addr);
+
+    let handle = std::thread::spawn(move || {
+        // Request 1: List playlistItems to find the item ID
+        let req = server.recv().unwrap();
+        assert!(req.url().contains("/youtube/v3/playlistItems"));
+        assert!(req.url().contains("playlistId=PL1"));
+        assert!(req.url().contains("videoId=VID1"));
+        let body = r#"{"items":[{"id":"PLI_item_789"}]}"#;
+        req.respond(
+            Response::from_string(body)
+                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_status_code(200),
+        )
+        .unwrap();
+
+        // Request 2: Delete the playlistItem
+        let req = server.recv().unwrap();
+        assert!(req.url().contains("/youtube/v3/playlistItems"));
+        assert!(req.url().contains("id=PLI_item_789"));
+        assert_eq!(req.method().as_str(), "DELETE");
+        req.respond(Response::from_string("").with_status_code(204)).unwrap();
+    });
+
+    let result = remove_from_playlist_at(&api_base, "fake_token", "PL1", "VID1");
+    handle.join().unwrap();
+    assert!(result.is_ok());
+}
+
+// YT-P5: remove_from_playlist fails when video not in playlist
+#[test]
+fn yt_p5_remove_from_playlist_not_found() {
+    let server = Server::http("127.0.0.1:0").unwrap();
+    let addr = server.server_addr().to_ip().unwrap();
+    let api_base = format!("http://{}", addr);
+
+    let handle = std::thread::spawn(move || {
+        let req = server.recv().unwrap();
+        let body = r#"{"items":[]}"#;
+        req.respond(
+            Response::from_string(body)
+                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_status_code(200),
+        )
+        .unwrap();
+    });
+
+    let result = remove_from_playlist_at(&api_base, "fake_token", "PL1", "VID_MISSING");
+    handle.join().unwrap();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("not found in playlist"));
 }

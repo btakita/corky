@@ -577,6 +577,17 @@ pub enum YoutubeCommands {
         profile: Option<String>,
     },
 
+    /// Validate profiles in .corky.toml
+    Check,
+
+    /// Post a comment on a published YouTube video
+    Comment {
+        /// Path to the draft file (must have post_id in frontmatter)
+        file: PathBuf,
+        /// Comment text
+        body: String,
+    },
+
     /// Create a new YouTube video draft
     Draft {
         /// Post body text (description)
@@ -595,6 +606,23 @@ pub enum YoutubeCommands {
         tags: Vec<String>,
     },
 
+    /// Edit a published YouTube video's metadata
+    Edit {
+        /// Path to the draft file (must have post_id in frontmatter)
+        file: PathBuf,
+    },
+
+    /// List YouTube drafts
+    List {
+        /// Filter by status: draft, ready, published
+        #[arg(long)]
+        status: Option<String>,
+    },
+
+    /// Manage YouTube playlists
+    #[command(subcommand)]
+    Playlist(PlaylistCommands),
+
     /// Publish a ready YouTube draft (upload video)
     Publish {
         /// Path to the draft file
@@ -603,29 +631,42 @@ pub enum YoutubeCommands {
         #[arg(long)]
         dry_run: bool,
     },
+}
 
-    /// Edit a published YouTube video's metadata
-    Edit {
-        /// Path to the draft file (must have post_id in frontmatter)
-        file: PathBuf,
+#[derive(Subcommand)]
+pub enum PlaylistCommands {
+    /// Create a new YouTube playlist
+    Create {
+        /// Playlist title
+        title: String,
+        /// Playlist description
+        #[arg(long, default_value = "")]
+        description: String,
+        /// Visibility: public, unlisted, private
+        #[arg(long, default_value = "public")]
+        visibility: String,
     },
 
-    /// Post a comment on a published YouTube video
-    Comment {
-        /// Path to the draft file (must have post_id in frontmatter)
-        file: PathBuf,
-        /// Comment text
-        body: String,
-    },
-
-    /// Validate profiles in .corky.toml
-    Check,
-
-    /// List YouTube drafts
-    List {
-        /// Filter by status: draft, ready, published
+    /// Add a video to a playlist
+    Add {
+        /// Playlist ID
+        playlist_id: String,
+        /// Video ID
+        video_id: String,
+        /// Position in playlist (0-based)
         #[arg(long)]
-        status: Option<String>,
+        position: Option<u32>,
+    },
+
+    /// List your playlists
+    List,
+
+    /// Remove a video from a playlist
+    Remove {
+        /// Playlist ID
+        playlist_id: String,
+        /// Video ID
+        video_id: String,
     },
 }
 

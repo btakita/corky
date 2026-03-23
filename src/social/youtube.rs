@@ -340,6 +340,220 @@ pub fn upload_captions_at(
     }
 }
 
+/// Create a new YouTube playlist.
+///
+/// Returns the playlist ID on success.
+pub fn create_playlist(
+    access_token: &str,
+    title: &str,
+    description: &str,
+    visibility: &str,
+) -> Result<String> {
+    create_playlist_at(API_BASE, access_token, title, description, visibility)
+}
+
+/// Create a playlist with configurable API base URL (for testing).
+pub fn create_playlist_at(
+    api_base: &str,
+    access_token: &str,
+    title: &str,
+    description: &str,
+    visibility: &str,
+) -> Result<String> {
+    let privacy_status = map_visibility(visibility)?;
+
+    let body = serde_json::json!({
+        "snippet": {
+            "title": title,
+            "description": description
+        },
+        "status": {
+            "privacyStatus": privacy_status
+        }
+    });
+
+    let url = format!("{}/youtube/v3/playlists?part=snippet,status", api_base);
+
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .set("Content-Type", "application/json")
+        .send_json(&body);
+
+    match resp {
+        Ok(r) => {
+            let resp_body: serde_json::Value = r.into_json()?;
+            let playlist_id = resp_body["id"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("Missing playlist 'id' in response"))?
+                .to_string();
+            Ok(playlist_id)
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let err_body = resp.into_string().unwrap_or_default();
+            bail!("YouTube playlist create failed (HTTP {}): {}", status, err_body);
+        }
+        Err(e) => bail!("YouTube playlist create request failed: {}", e),
+    }
+}
+
+/// Add a video to a YouTube playlist.
+///
+/// Returns the playlistItem ID on success.
+pub fn add_to_playlist(
+    access_token: &str,
+    playlist_id: &str,
+    video_id: &str,
+    position: Option<u32>,
+) -> Result<String> {
+    add_to_playlist_at(API_BASE, access_token, playlist_id, video_id, position)
+}
+
+/// Add to playlist with configurable API base URL (for testing).
+pub fn add_to_playlist_at(
+    api_base: &str,
+    access_token: &str,
+    playlist_id: &str,
+    video_id: &str,
+    position: Option<u32>,
+) -> Result<String> {
+    let mut snippet = serde_json::json!({
+        "playlistId": playlist_id,
+        "resourceId": {
+            "kind": "youtube#video",
+            "videoId": video_id
+        }
+    });
+
+    if let Some(pos) = position {
+        snippet["position"] = serde_json::json!(pos);
+    }
+
+    let body = serde_json::json!({ "snippet": snippet });
+    let url = format!("{}/youtube/v3/playlistItems?part=snippet", api_base);
+
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .set("Content-Type", "application/json")
+        .send_json(&body);
+
+    match resp {
+        Ok(r) => {
+            let resp_body: serde_json::Value = r.into_json()?;
+            let item_id = resp_body["id"]
+                .as_str()
+                .unwrap_or("unknown")
+                .to_string();
+            Ok(item_id)
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let err_body = resp.into_string().unwrap_or_default();
+            bail!("YouTube playlist add failed (HTTP {}): {}", status, err_body);
+        }
+        Err(e) => bail!("YouTube playlist add request failed: {}", e),
+    }
+}
+
+/// List the authenticated user's YouTube playlists.
+///
+/// Returns a vec of (playlist_id, title, visibility, item_count).
+pub fn list_playlists(
+    access_token: &str,
+) -> Result<Vec<(String, String, String, u64)>> {
+    list_playlists_at(API_BASE, access_token)
+}
+
+/// List playlists with configurable API base URL (for testing).
+pub fn list_playlists_at(
+    api_base: &str,
+    access_token: &str,
+) -> Result<Vec<(String, String, String, u64)>> {
+    let url = format!(
+        "{}/youtube/v3/playlists?part=snippet,status,contentDetails&mine=true&maxResults=50",
+        api_base
+    );
+
+    let resp = ureq::get(&url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .call()
+        .map_err(|e| anyhow::anyhow!("YouTube playlists list failed: {}", e))?;
+
+    let body: serde_json::Value = resp.into_json()?;
+    let items = body["items"].as_array().unwrap_or(&Vec::new()).clone();
+
+    let mut result = Vec::new();
+    for item in &items {
+        let id = item["id"].as_str().unwrap_or("").to_string();
+        let title = item["snippet"]["title"].as_str().unwrap_or("").to_string();
+        let privacy = item["status"]["privacyStatus"].as_str().unwrap_or("").to_string();
+        let count = item["contentDetails"]["itemCount"].as_u64().unwrap_or(0);
+        result.push((id, title, privacy, count));
+    }
+
+    Ok(result)
+}
+
+/// Remove a video from a YouTube playlist.
+///
+/// Finds the playlistItem by video ID and deletes it.
+pub fn remove_from_playlist(
+    access_token: &str,
+    playlist_id: &str,
+    video_id: &str,
+) -> Result<()> {
+    remove_from_playlist_at(API_BASE, access_token, playlist_id, video_id)
+}
+
+/// Remove from playlist with configurable API base URL (for testing).
+pub fn remove_from_playlist_at(
+    api_base: &str,
+    access_token: &str,
+    playlist_id: &str,
+    video_id: &str,
+) -> Result<()> {
+    // First, find the playlistItem ID for this video
+    let list_url = format!(
+        "{}/youtube/v3/playlistItems?part=id,snippet&playlistId={}&videoId={}&maxResults=1",
+        api_base, playlist_id, video_id
+    );
+
+    let list_resp = ureq::get(&list_url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .call()
+        .map_err(|e| anyhow::anyhow!("YouTube playlistItems list failed: {}", e))?;
+
+    let list_body: serde_json::Value = list_resp.into_json()?;
+    let items = list_body["items"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("Missing 'items' in playlistItems response"))?;
+
+    if items.is_empty() {
+        bail!("Video {} not found in playlist {}", video_id, playlist_id);
+    }
+
+    let item_id = items[0]["id"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing playlistItem 'id'"))?;
+
+    // Delete the playlistItem
+    let delete_url = format!(
+        "{}/youtube/v3/playlistItems?id={}",
+        api_base, item_id
+    );
+
+    let resp = ureq::delete(&delete_url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .call();
+
+    match resp {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(status, resp)) => {
+            let err_body = resp.into_string().unwrap_or_default();
+            bail!("YouTube playlist remove failed (HTTP {}): {}", status, err_body);
+        }
+        Err(e) => bail!("YouTube playlist remove request failed: {}", e),
+    }
+}
+
 /// Insert a top-level comment on a YouTube video.
 ///
 /// Uses the YouTube Data API v3 commentThreads.insert endpoint.

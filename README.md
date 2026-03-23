@@ -63,7 +63,10 @@ corky filter auth               # Authenticate for Gmail filter API
 corky linkedin draft              # Create LinkedIn draft
 corky linkedin publish FILE      # Publish to LinkedIn
 corky linkedin comment FILE TEXT # Comment on a published post
-corky youtube comment FILE TEXT # Comment on a published video
+corky youtube comment FILE TEXT      # Comment on a published video
+corky youtube playlist add PL VID   # Add video to playlist
+corky youtube playlist create TITLE # Create a playlist
+corky youtube playlist list         # List your playlists
 corky schedule run              # Publish due scheduled items
 corky topics list               # Show configured topics
 corky watch                     # Poll, sync, and publish scheduled
