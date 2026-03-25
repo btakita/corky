@@ -631,6 +631,12 @@ pub enum YoutubeCommands {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Delete a YouTube video by its video ID
+    Delete {
+        /// YouTube video ID (e.g., dQw4w9WgXcQ)
+        video_id: String,
+    },
 }
 
 #[derive(Subcommand)]

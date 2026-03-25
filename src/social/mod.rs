@@ -238,6 +238,14 @@ pub fn run_youtube_comment(file: &Path, body: &str) -> Result<()> {
     Ok(())
 }
 
+/// Run the `youtube delete` command: delete a YouTube video by ID.
+pub fn run_youtube_delete(video_id: &str) -> Result<()> {
+    let access_token = get_youtube_token()?;
+    youtube::delete_video(&access_token, video_id)?;
+    println!("Deleted YouTube video: {}", video_id);
+    Ok(())
+}
+
 /// Get a valid YouTube access token using the first YouTube profile found.
 fn get_youtube_token() -> Result<String> {
     let profiles = ProfilesFile::load()?;

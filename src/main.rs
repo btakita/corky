@@ -193,6 +193,7 @@ fn main() -> Result<()> {
                 &tags,
             ),
             YoutubeCommands::Publish { file, dry_run } => corky::social::run_publish(&file, dry_run),
+            YoutubeCommands::Delete { video_id } => corky::social::run_youtube_delete(&video_id),
             YoutubeCommands::Edit { file } => corky::social::run_youtube_edit(&file),
             YoutubeCommands::Comment { file, body } => {
                 corky::social::run_youtube_comment(&file, &body)

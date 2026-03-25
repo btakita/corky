@@ -554,6 +554,38 @@ pub fn remove_from_playlist_at(
     }
 }
 
+/// Delete a YouTube video by its video ID.
+///
+/// Uses the YouTube Data API v3 videos.delete endpoint.
+pub fn delete_video(
+    access_token: &str,
+    video_id: &str,
+) -> Result<()> {
+    delete_video_at(API_BASE, access_token, video_id)
+}
+
+/// Delete a video with configurable API base URL (for testing).
+pub fn delete_video_at(
+    api_base: &str,
+    access_token: &str,
+    video_id: &str,
+) -> Result<()> {
+    let url = format!("{}/youtube/v3/videos?id={}", api_base, video_id);
+
+    let resp = ureq::delete(&url)
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .call();
+
+    match resp {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(status, resp)) => {
+            let err_body = resp.into_string().unwrap_or_default();
+            bail!("YouTube video delete failed (HTTP {}): {}", status, err_body);
+        }
+        Err(e) => bail!("YouTube video delete request failed: {}", e),
+    }
+}
+
 /// Insert a top-level comment on a YouTube video.
 ///
 /// Uses the YouTube Data API v3 commentThreads.insert endpoint.
