@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 
-use corky::cli::{CalCommands, Cli, Commands, ContactCommands, DocCommands, DraftCommands, FilterCommands, LabelCommands, LinkedinCommands, MailboxCommands, PlaylistCommands, ScheduleCommands, SkillCommands, SlackCommands, SyncCommands, TopicCommands, YoutubeCommands};
+use corky::cli::{CalCommands, Cli, Commands, ContactCommands, DocCommands, DraftCommands, FilterCommands, LabelCommands, LinkedinCommands, MailboxCommands, PlaylistCommands, RagieCommands, ScheduleCommands, SiftCommands, SkillCommands, SlackCommands, SyncCommands, TopicCommands, YoutubeCommands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -285,6 +285,22 @@ fn main() -> Result<()> {
         Commands::Transcribe { file, model, language, output, speakers, diarize } => {
             corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize)
         }
+        Commands::Search { query, backend, all } => {
+            corky::search::run(&query, backend.as_deref(), all)
+        }
+        Commands::Sift(cmd) => match cmd {
+            SiftCommands::Index { watch } => corky::search::sift::SiftBackend::run_index(watch),
+            SiftCommands::Status => corky::search::sift::SiftBackend::run_status(),
+        },
+        Commands::Ragie(cmd) => match cmd {
+            RagieCommands::Push { full } => corky::search::ragie::RagieBackend::run_push(full),
+            RagieCommands::Sync => corky::search::ragie::RagieBackend::run_sync(),
+            RagieCommands::Search { query } => {
+                // Direct Ragie search — use the unified search with ragie backend
+                corky::search::run(&query, Some("ragie"), false)
+            }
+            RagieCommands::Status => corky::search::ragie::RagieBackend::run_status(),
+        },
         Commands::Doctor { provider } => corky::doctor::run(provider.as_deref()),
         Commands::Upgrade => corky::upgrade::run(),
     }

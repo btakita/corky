@@ -232,6 +232,28 @@ pub enum Commands {
         diarize: bool,
     },
 
+    /// Search across configured backends
+    Search {
+        /// Query string
+        query: String,
+
+        /// Specific backend(s): "sift", "ragie", or comma-separated
+        #[arg(long)]
+        backend: Option<String>,
+
+        /// Query all configured backends
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// Sift local search management
+    #[command(subcommand)]
+    Sift(SiftCommands),
+
+    /// Ragie cloud search management
+    #[command(subcommand)]
+    Ragie(RagieCommands),
+
     /// Check environment, config, and account health
     Doctor {
         /// Check a specific provider (gmail, gmail-api, imap, etc.)
@@ -932,4 +954,35 @@ pub enum CalCommands {
         #[arg(long)]
         account: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum SiftCommands {
+    /// Build or rebuild the local Sift index
+    Index {
+        /// Watch for file changes and re-index
+        #[arg(long)]
+        watch: bool,
+    },
+    /// Show Sift index status
+    Status,
+}
+
+#[derive(Subcommand)]
+pub enum RagieCommands {
+    /// Push conversations to Ragie
+    Push {
+        /// Full re-push (ignore incremental state)
+        #[arg(long)]
+        full: bool,
+    },
+    /// Compare local vs Ragie-indexed documents
+    Sync,
+    /// Query Ragie directly
+    Search {
+        /// Query string
+        query: String,
+    },
+    /// Show Ragie account and index status
+    Status,
 }

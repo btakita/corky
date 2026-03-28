@@ -40,6 +40,34 @@ pub struct CorkyConfig {
     pub profiles: HashMap<String, Profile>,
     #[serde(default)]
     pub imports: Vec<ImportConfig>,
+    #[serde(default)]
+    pub search: Option<SearchConfig>,
+}
+
+/// Search subsystem config.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SearchConfig {
+    #[serde(default)]
+    pub default_backends: Vec<String>,
+    #[serde(default)]
+    pub backends: HashMap<String, SearchBackendConfig>,
+}
+
+/// Per-backend config (type + settings).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SearchBackendConfig {
+    /// Backend type: "sift", "ragie", etc.
+    #[serde(rename = "type", default)]
+    pub backend_type: String,
+    /// Sift: path to the local index directory.
+    #[serde(default)]
+    pub index_path: Option<String>,
+    /// Ragie/Pinecone: pass(1) path for API key.
+    #[serde(default)]
+    pub api_key_pass: Option<String>,
+    /// Pinecone: index name.
+    #[serde(default)]
+    pub index_name: Option<String>,
 }
 
 /// Gmail API config + filter rules (lives in .corky.toml under [gmail]).

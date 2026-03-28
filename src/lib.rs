@@ -22,4 +22,5 @@ pub mod schedule;
 pub mod social;
 pub mod topics;
 pub mod transcribe;
+pub mod search;
 pub mod upgrade;
