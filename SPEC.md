@@ -708,7 +708,32 @@ Syncs `contacts/{name}/CLAUDE.md` between root contacts/ and each mailbox contac
 
 Only `CLAUDE.md` is synced; `CLAUDE.local.md` and other files are skipped.
 
-### 5.25 filter auth
+### 5.25 contact push
+
+```
+corky contact push [PLATFORM] [--name NAME...]
+```
+
+Push local contacts to external platforms. Currently supports Google Contacts via the People API.
+
+**Platforms:** `google` (default when no platform specified)
+
+**Behavior:**
+- Reads contacts from `.corky.toml` `[contacts.*]` and `mail/contacts/{name}/AGENTS.md`
+- Maps local fields → Google Person: name, emails, organization, title, phone, LinkedIn URL
+- Creates new contacts or updates existing ones (tracked by `resourceName` in `.people-sync-state.json`)
+- Falls back to create if an update target returns 404 (deleted on Google side)
+
+**Field extraction from AGENTS.md:**
+- `**Role:**` → title + organization (splits on " at ")
+- `**Organization:**` / `**Company:**` / `**Org:**` → organization
+- `**Title:**` → title
+- `**Phone:**` → phone number
+- `**LinkedIn:**` → URL
+
+**OAuth:** Reuses Gmail client credentials (`[gmail]` in `.corky.toml`), requests `https://www.googleapis.com/auth/contacts` scope. Tokens stored as `people:default`.
+
+### 5.26 filter auth
 
 ```
 corky filter auth [--account NAME]
@@ -810,7 +835,7 @@ Models auto-download from HuggingFace to `~/.cache/corky/models/` (or custom pat
 2. **Speaker labels** (`--speakers "Ron,Brian"`): YAML frontmatter + bold speaker names with timestamps. Uses whisper's tdrz speaker turn detection.
 3. **Diarization** (`--diarize`): Uses pyannote-rs (ONNX Runtime) for speaker segmentation and embedding-based clustering. More accurate than tdrz for mono phone recordings where both speakers share the same audio channel.
 
-**Diarization pipeline** (requires `diarize` feature):
+**Diarization pipeline** (enabled by default):
 
 1. Run whisper transcription → timestamped text segments
 2. Convert f32 audio to i16 for pyannote-rs
@@ -885,7 +910,7 @@ No user action needed — GPU support is enabled automatically when hardware is 
 | T1 | File not found | Exit with error message |
 | T2 | Unknown model name | Exit with list of known models |
 | T3 | No ffmpeg installed | Error with install instructions per OS |
-| T4 | `--diarize` without feature | Error: "Diarization support not compiled" |
+| T4 | `--diarize` without feature | N/A — diarize is a default feature |
 | T5 | No speakers detected | Output with "Unknown" speaker labels |
 | T6 | Single speaker detected | All segments labeled as that speaker |
 | T7 | Interactive prompt, user skips | Label as "Speaker N" |

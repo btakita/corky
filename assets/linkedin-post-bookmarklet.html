@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LinkedIn Post to Markdown — Bookmarklet</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+h1 { font-size: 1.5rem; }
+a.bookmarklet { display: inline-block; padding: 0.75rem 1.5rem; background: #0a66c2; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 1.1rem; cursor: grab; }
+a.bookmarklet:hover { background: #004182; }
+pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; border-radius: 4px; font-size: 0.85rem; }
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.note { background: #fff3cd; padding: 0.75rem; border-radius: 4px; border-left: 4px solid #ffc107; }
+</style>
+</head>
+<body>
+<h1>LinkedIn Post to Markdown</h1>
+<p>Drag this to your bookmark bar:</p>
+<p><a class="bookmarklet" href="javascript:void(function(){const L=console.log.bind(console),S=(s,r)=&gt;{for(const c of s){const e=r.querySelector(c);if(e){L('[li2md] matched:',c);return e}}L('[li2md] no match in:',s);return null},A=(s,r)=&gt;{const a=[];for(const c of s){const found=r.querySelectorAll(c);if(found.length){L('[li2md] matched',found.length,'for:',c)}a.push(...found)}return a},T=e=&gt;e?e.textContent.trim().replace(/\s+/g,' '):'',FN=['Alex Morgan','Jordan Lee','Sam Chen','Riley Park','Casey Kim','Quinn Davis','Avery Brooks','Drew Santos','Jamie Walsh','Taylor Reed','Morgan Scott','Blake Turner','Reese Grant','Hayden Cole','Ellis Hart','Rowan Pierce','Sage Ellis','Jules Frost','Finley Shaw','Kit Palmer'],NM={};let NC=0;const anon=n=&gt;{if(!n||n==='Unknown')return'Unknown';if(!NM[n]){NM[n]=FN[NC%FN.length];NC++}return NM[n]};function notify(msg){L('[li2md]',msg);let d=document.getElementById('__li2md');if(!d){d=document.createElement('div');d.id='__li2md';Object.assign(d.style,{position:'fixed',top:'12px',right:'12px',zIndex:'999999',background:'#0a66c2',color:'#fff',padding:'10px 18px',borderRadius:'8px',fontFamily:'system-ui',fontSize:'14px',fontWeight:'600',boxShadow:'0 2px 12px rgba(0,0,0,.3)',transition:'opacity .3s'});document.body.appendChild(d)}d.style.opacity='1';d.textContent=msg}function done(msg){notify(msg);setTimeout(()=&gt;{const d=document.getElementById('__li2md');if(d)d.style.opacity='0'},3000)}async function expandAll(){const maxRounds=20;for(let i=0;i&lt;maxRounds;i++){const btns=[];document.querySelectorAll('button').forEach(b=&gt;{const t=b.textContent.trim().toLowerCase();if(((t.includes('comment')||t.includes('repl'))&&(t.includes('more')||t.includes('load')||t.includes('previous')))||t==='see more replies'){btns.push(b)}});const showMore=document.querySelectorAll('button.feed-shared-inline-show-more-text__see-more-less-toggle');btns.push(...showMore);if(btns.length===0){L('[li2md] no expand buttons found');break}notify('Expanding... round '+(i+1)+' ('+btns.length+' buttons)');for(const b of btns){b.scrollIntoView({block:'center'});['pointerover','pointerenter','pointerdown','pointerup','click'].forEach(type=&gt;b.dispatchEvent(new PointerEvent(type,{bubbles:true})));await new Promise(r=&gt;setTimeout(r,300))}await new Promise(r=&gt;setTimeout(r,800))}await new Promise(r=&gt;setTimeout(r,500))}function scrapePost(){L('[li2md] scraping post...');const post=document.querySelector('div.feed-shared-update-v2[data-urn]')||document.querySelector('.scaffold-finite-scroll__content');if(!post){L('[li2md] WARNING: no post container found, using document.body');L('[li2md] Try these selectors manually:');L('[li2md]   div.feed-shared-update-v2[data-urn]');L('[li2md]   .scaffold-finite-scroll__content')}const root=post||document.body;let authorEl=S(['span.update-components-actor__title','span.update-components-actor__name','.profile-rail-card__name span[aria-hidden=true]'],root);if(!authorEl){const ctl=root.querySelector('[aria-label^="Open control menu for post by"]')||document.querySelector('[aria-label^="Open control menu for post by"]');if(ctl){const m=ctl.getAttribute('aria-label').match(/post by (.+)/);if(m){authorEl={textContent:m[1]};L('[li2md] author from aria-label:',m[1])}}}const author=T(authorEl)||'Unknown Author';L('[li2md] author:',author);const timeEl=S(['span.update-components-actor__sub-description span[aria-hidden=true]','span.update-components-actor__sub-description','time'],root);const time=T(timeEl)||'';const bodyEl=S(['div.update-components-text.relative','div.update-components-text','div.feed-shared-update-v2__commentary span[dir=ltr]','[data-testid="expandable-text-box"]','span[dir=ltr]'],root);let body=T(bodyEl)||'';L('[li2md] body length:',body.length);const urn=window.location.href.match(/activity:(\d+)/);const postUrl=window.location.href.split('?')[0];let md='# LinkedIn Post\n\n';md+='**Author:** '+anon(author)+'\n';if(time)md+='**Posted:** '+time+'\n';md+='**URL:** '+postUrl+'\n';if(urn)md+='**URN:** urn:li:activity:'+urn[1]+'\n';for(const[real,alias]of Object.entries(NM)){body=body.split(real).join(alias)}md+='\n---\n\n'+body+'\n\n---\n\n';return md}function scrapeComments(){L('[li2md] scraping comments...');const commentEls=A(['.comments-comment-item','.comments-comments-list__comment-item','article.comments-comment-item','.comments-comment-entity'],document);L('[li2md] found',commentEls.length,'comment elements');if(commentEls.length===0)return'*No comments found.*\n';let md='## Comments ('+commentEls.length+')\n\n';const seen=new Set();commentEls.forEach((c,i)=&gt;{const nameEl=S(['.comments-post-meta__name-text span','.comments-post-meta__actor-link span','span.comments-comment-meta__description-title','.comments-comment-meta__name'],c);const name=T(nameEl)||'Unknown';const anonName=anon(name);const textEl=S(['.comments-comment-item-content-body','.comments-comment-item__main-content','span[dir=ltr]'],c);let text=T(textEl)||'';const timeEl=S(['time.comments-comment-meta__data','time'],c);const ts=T(timeEl)||'';const key=anonName+'|'+text.substring(0,50);if(seen.has(key))return;seen.add(key);for(const[real,alias]of Object.entries(NM)){text=text.split(real).join(alias)}md+='**'+anonName+'**';if(ts)md+=' — '+ts;md+='\n&gt; '+text.replace(/\n/g,'\n&gt; ')+'\n\n'});return md}async function run(){try{notify('Expanding comments...');await expandAll();notify('Scraping post...');const postMd=scrapePost();const commentsMd=scrapeComments();const full=postMd+commentsMd;L('[li2md] total output length:',full.length);const urn=window.location.href.match(/activity:(\d+)/);const urnSlug=urn?urn[1]:'post';let authorEl2=document.querySelector('span.update-components-actor__title')||document.querySelector('span.update-components-actor__name');if(!authorEl2){const ctl=document.querySelector('[aria-label^="Open control menu for post by"]');if(ctl){const m=ctl.getAttribute('aria-label').match(/post by (.+)/);if(m)authorEl2={textContent:m[1]}}}const authorName=authorEl2?authorEl2.textContent.trim():'unknown';const authorSlug=authorName.replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase().replace(/^-|-$/g,'');const d=new Date();const ymd=''+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');const blob=new Blob([full],{type:'text/markdown'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=ymd+'-linkedin-'+authorSlug+'-'+urnSlug+'.md';a.click();done('Saved: '+a.download+' ('+full.length+' chars)')}catch(e){L('[li2md] ERROR:',e);notify('Error: '+e.message)}}run()}());">LinkedIn to MD</a></p>
+
+<h2>Usage — Option 1: Bookmarklet</h2>
+<ol>
+<li>Navigate to a LinkedIn post page (<code>linkedin.com/feed/update/...</code>)</li>
+<li>Click the bookmarklet</li>
+<li>It will auto-expand all comments, scrape the post + comments, and save as a markdown file</li>
+<li>Open the downloaded file or move it to your project</li>
+</ol>
+
+<h2>Usage — Option 2: Console Paste (if bookmarklet is blocked by CSP)</h2>
+<ol>
+<li>Navigate to a LinkedIn post page</li>
+<li>Click the button below to copy the script to your clipboard</li>
+<li>Open DevTools (F12) → Console tab</li>
+<li>Paste and press Enter</li>
+</ol>
+<p><button id="copyBtn" style="padding: 0.5rem 1rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem;">Copy Script to Clipboard</button></p>
+<script>
+document.getElementById('copyBtn').addEventListener('click', function() {
+  const script = document.querySelector('details pre code').textContent;
+  navigator.clipboard.writeText(script).then(() => {
+    this.textContent = 'Copied!';
+    setTimeout(() => this.textContent = 'Copy Script to Clipboard', 2000);
+  });
+});
+</script>
+
+<div class="note">
+<strong>Note:</strong> LinkedIn lazy-loads comments. The script clicks "Load more" buttons automatically, but for posts with 100+ comments this may take a few seconds. A blue notification badge shows progress.
+</div>
+
+<h2>Output Format</h2>
+<pre><code># LinkedIn Post
+
+**Author:** Alex Morgan
+**Posted:** 2d ago
+**URL:** https://www.linkedin.com/feed/update/urn:li:activity:1234567890/
+**URN:** urn:li:activity:1234567890
+
+---
+
+Post content goes here...
+
+---
+
+## Comments (3)
+
+**Jordan Lee** — 1d ago
+> Great post! I've been thinking about this too.
+
+**Sam Chen** — 12h ago
+> This is exactly what we need.
+</code></pre>
+
+<h2>Source</h2>
+<details>
+<summary>Readable source code</summary>
+<pre><code>// LinkedIn Post to Markdown Bookmarklet
+// Expands all comments, scrapes post + comments, copies as markdown
+
+const L = console.log.bind(console);
+
+const S = (selectors, root) => {
+  for (const s of selectors) {
+    const el = root.querySelector(s);
+    if (el) { L('[li2md] matched:', s); return el; }
+  }
+  L('[li2md] no match in:', selectors);
+  return null;
+};
+
+const A = (selectors, root) => {
+  const all = [];
+  for (const s of selectors) {
+    const found = root.querySelectorAll(s);
+    if (found.length) L('[li2md] matched', found.length, 'for:', s);
+    all.push(...found);
+  }
+  return all;
+};
+
+const T = el => el ? el.textContent.trim().replace(/\s+/g, ' ') : '';
+
+// Anonymization: maps real names → fake names from a pool
+const fakeNames = [
+  'Alex Morgan', 'Jordan Lee', 'Sam Chen', 'Riley Park',
+  'Casey Kim', 'Quinn Davis', 'Avery Brooks', 'Drew Santos',
+  'Jamie Walsh', 'Taylor Reed', 'Morgan Scott', 'Blake Turner',
+  'Reese Grant', 'Hayden Cole', 'Ellis Hart', 'Rowan Pierce',
+  'Sage Ellis', 'Jules Frost', 'Finley Shaw', 'Kit Palmer'
+];
+const nameMap = {};  // real name → fake name
+let nameCount = 0;   // must be let, not const (incremented)
+function anon(name) {
+  if (!name || name === 'Unknown') return 'Unknown';
+  if (!nameMap[name]) {
+    nameMap[name] = fakeNames[nameCount % fakeNames.length];
+    nameCount++;
+  }
+  return nameMap[name];
+}
+
+function anonymizeText(text) {
+  for (const [real, alias] of Object.entries(nameMap)) {
+    text = text.split(real).join(alias);
+  }
+  return text;
+}
+
+function notify(msg) {
+  let d = document.getElementById('__li2md');
+  if (!d) {
+    d = document.createElement('div');
+    d.id = '__li2md';
+    Object.assign(d.style, {
+      position: 'fixed', top: '12px', right: '12px',
+      zIndex: '999999', background: '#0a66c2', color: '#fff',
+      padding: '10px 18px', borderRadius: '8px',
+      fontFamily: 'system-ui', fontSize: '14px', fontWeight: '600',
+      boxShadow: '0 2px 12px rgba(0,0,0,.3)', transition: 'opacity .3s'
+    });
+    document.body.appendChild(d);
+  }
+  d.style.opacity = '1';
+  d.textContent = msg;
+}
+
+function done(msg) {
+  notify(msg);
+  setTimeout(() => {
+    const d = document.getElementById('__li2md');
+    if (d) d.style.opacity = '0';
+  }, 3000);
+}
+
+async function expandAll() {
+  const maxRounds = 20;
+  for (let i = 0; i < maxRounds; i++) {
+    const btns = [];
+    document.querySelectorAll('button').forEach(b => {
+      const t = b.textContent.trim().toLowerCase();
+      if (
+        ((t.includes('comment') || t.includes('repl')) &&
+         (t.includes('more') || t.includes('load') || t.includes('previous')))
+        || t === 'see more replies'
+      ) btns.push(b);
+    });
+    // Also expand truncated text
+    const showMore = document.querySelectorAll(
+      'button.feed-shared-inline-show-more-text__see-more-less-toggle'
+    );
+    btns.push(...showMore);
+    if (btns.length === 0) break;
+    notify('Expanding... round ' + (i + 1));
+    for (const b of btns) {
+      b.scrollIntoView({ block: 'center' });
+      ['pointerover','pointerenter','pointerdown','pointerup','click']
+        .forEach(type => b.dispatchEvent(new PointerEvent(type, { bubbles: true })));
+      await new Promise(r => setTimeout(r, 300));
+    }
+    await new Promise(r => setTimeout(r, 800));
+  }
+  await new Promise(r => setTimeout(r, 500));
+}
+
+function scrapePost() {
+  const post = document.querySelector('div.feed-shared-update-v2[data-urn]')
+    || document.querySelector('.scaffold-finite-scroll__content')
+    || document.body;
+
+  // Try semantic selectors first, then SDUI aria-label fallback
+  let authorEl = S([
+    'span.update-components-actor__title',
+    'span.update-components-actor__name',
+    '.profile-rail-card__name span[aria-hidden=true]'
+  ], post);
+  if (!authorEl) {
+    const ctl = document.querySelector('[aria-label^="Open control menu for post by"]');
+    if (ctl) {
+      const m = ctl.getAttribute('aria-label').match(/post by (.+)/);
+      if (m) authorEl = { textContent: m[1] };
+    }
+  }
+  const author = T(authorEl) || 'Unknown Author';
+
+  const headline = T(S([
+    'span.update-components-actor__description',
+    '.profile-rail-card__description span[aria-hidden=true]'
+  ], post)) || '';
+
+  const time = T(S([
+    'span.update-components-actor__sub-description span[aria-hidden=true]',
+    'span.update-components-actor__sub-description',
+    'time'
+  ], post)) || '';
+
+  const body = T(S([
+    'div.update-components-text.relative',
+    'div.update-components-text',
+    'div.feed-shared-update-v2__commentary span[dir=ltr]',
+    '[data-testid="expandable-text-box"]',  // SDUI fallback
+    'span[dir=ltr]'
+  ], post)) || '';
+  L('[li2md] author:', author, '| body length:', body.length);
+
+  const urn = window.location.href.match(/activity:(\d+)/);
+  const postUrl = window.location.href.split('?')[0];
+
+  let md = '# LinkedIn Post\n\n';
+  md += '**Author:** ' + anon(author) + '\n';
+  if (time) md += '**Posted:** ' + time + '\n';
+  md += '**URL:** ' + postUrl + '\n';
+  if (urn) md += '**URN:** urn:li:activity:' + urn[1] + '\n';
+  md += '\n---\n\n' + anonymizeText(body) + '\n\n---\n\n';
+  return md;
+}
+
+function scrapeComments() {
+  const commentEls = A([
+    '.comments-comment-item',
+    '.comments-comments-list__comment-item',
+    'article.comments-comment-item',
+    '.comments-comment-entity'
+  ], document);
+
+  if (commentEls.length === 0) return '*No comments found.*\n';
+
+  let md = '## Comments (' + commentEls.length + ')\n\n';
+  const seen = new Set();
+
+  commentEls.forEach(c => {
+    const name = T(S([
+      '.comments-post-meta__name-text span',
+      '.comments-post-meta__actor-link span',
+      'span.comments-comment-meta__description-title',
+      '.comments-comment-meta__name'
+    ], c)) || 'Unknown';
+    const anonName = anon(name);
+
+    let text = T(S([
+      '.comments-comment-item-content-body',
+      '.comments-comment-item__main-content',
+      'span[dir=ltr]'
+    ], c)) || '';
+
+    const ts = T(S(['time.comments-comment-meta__data', 'time'], c)) || '';
+
+    const key = anonName + '|' + text.substring(0, 50);
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    text = anonymizeText(text);
+    md += '**' + anonName + '**';
+    if (ts) md += ' — ' + ts;
+    md += '\n> ' + text.replace(/\n/g, '\n> ') + '\n\n';
+  });
+
+  return md;
+}
+
+async function run() {
+  notify('Expanding comments...');
+  await expandAll();
+  notify('Scraping post...');
+  const postMd = scrapePost();
+  const commentsMd = scrapeComments();
+  const full = postMd + commentsMd;
+  // Save as file download with author slug in filename
+  const urn = window.location.href.match(/activity:(\d+)/);
+  const urnSlug = urn ? urn[1] : 'post';
+  let authorEl2 = document.querySelector('span.update-components-actor__title')
+    || document.querySelector('span.update-components-actor__name');
+  if (!authorEl2) {
+    const ctl = document.querySelector('[aria-label^="Open control menu for post by"]');
+    if (ctl) {
+      const m = ctl.getAttribute('aria-label').match(/post by (.+)/);
+      if (m) authorEl2 = { textContent: m[1] };
+    }
+  }
+  const authorName = authorEl2 ? authorEl2.textContent.trim() : 'unknown';
+  const authorSlug = authorName.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()
+    .replace(/^-|-$/g, '');
+  const d = new Date();
+  const ymd = '' + d.getFullYear() + String(d.getMonth()+1).padStart(2,'0')
+    + String(d.getDate()).padStart(2,'0');
+  const blob = new Blob([full], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ymd + '-linkedin-' + authorSlug + '-' + urnSlug + '.md';
+  a.click();
+  done('Saved: ' + a.download + ' (' + full.length + ' chars)');
+}
+
+run();
+</code></pre>
+</details>
+</body>
+</html>

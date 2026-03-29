@@ -55,6 +55,7 @@ corky sync                      # Incremental IMAP sync
 corky unanswered                # Threads awaiting a reply
 corky draft push FILE           # Save as email draft
 corky mailbox add NAME --label LABEL  # Share threads
+corky contact push [google]     # Push contacts to Google Contacts (People API)
 corky contact sync              # Sync contact CLAUDE.md between root and mailboxes
 corky filter push               # Push Gmail filters from .corky.toml
 corky filter push --dry-run     # Preview filter changes
@@ -92,7 +93,7 @@ corky transcribe call.amr --diarize --speakers "Alice,Bob" -o transcript.md
 
 Diarization uses [pyannote-rs](https://github.com/thewh1teagle/pyannote-rs) (ONNX Runtime) to detect and label speakers. When run without `--speakers`, corky shows text excerpts per speaker and prompts you to assign names interactively. ONNX models auto-download on first use — no gated HuggingFace access required.
 
-**Feature flags:** Transcription (CPU) is enabled by default. GPU acceleration is auto-detected — `make install` and `install.sh` detect NVIDIA CUDA (Linux) or Apple Metal (macOS) and build with the appropriate GPU backend, falling back to CPU-only if the GPU build fails. For manual control: `cargo install --path . --features transcribe-cuda` (Linux) or `--features transcribe-metal` (macOS). Diarization requires `--features diarize`. Video formats (mov, mkv, webm, etc.) are transcribed via ffmpeg; audio formats use symphonia with ffmpeg fallback.
+**Feature flags:** Transcription (CPU) is enabled by default. GPU acceleration is auto-detected — `make install` and `install.sh` detect NVIDIA CUDA (Linux) or Apple Metal (macOS) and build with the appropriate GPU backend, falling back to CPU-only if the GPU build fails. For manual control: `cargo install --path . --features transcribe-cuda` (Linux) or `--features transcribe-metal` (macOS). Diarization is enabled by default. Video formats (mov, mkv, webm, etc.) are transcribed via ffmpeg; audio formats use symphonia with ffmpeg fallback.
 
 > This feature was designed collaboratively using [agent-doc](https://github.com/btakita/agent-doc) interactive document sessions.
 

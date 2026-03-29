@@ -52,7 +52,7 @@ pulldown-cmark = "0.12"
 base64 = "0.22"
 
 [features]
-default = ["transcribe"]
+default = ["transcribe", "diarize"]
 vendored-openssl = ["openssl"]
 transcribe = ["whisper-rs", "symphonia", "rubato", "hound"]
 transcribe-cuda = ["transcribe", "whisper-rs/cuda"]

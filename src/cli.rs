@@ -227,7 +227,7 @@ pub enum Commands {
         #[arg(long, value_delimiter = ',')]
         speakers: Vec<String>,
 
-        /// Use pyannote-rs for speaker diarization (requires --features diarize)
+        /// Use pyannote-rs for speaker diarization
         #[arg(long)]
         diarize: bool,
     },
@@ -284,6 +284,16 @@ pub enum ContactCommands {
     Info {
         /// Contact name
         name: String,
+    },
+
+    /// Push contacts to external platforms (Google Contacts)
+    Push {
+        /// Platform to push to (default: all). Options: google
+        platform: Option<String>,
+
+        /// Specific contact names to push (default: all)
+        #[arg(long = "name")]
+        names: Vec<String>,
     },
 
     /// Sync CLAUDE.md files between root contacts/ and mailbox contacts/

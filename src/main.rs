@@ -80,6 +80,12 @@ fn main() -> Result<()> {
                 }
             }
             ContactCommands::Info { name } => corky::contact::info::run(&name),
+            ContactCommands::Push { platform, names } => {
+                match platform.as_deref() {
+                    None | Some("google") => corky::contact::push::run_google(&names),
+                    Some(p) => anyhow::bail!("Unknown platform: {}. Supported: google", p),
+                }
+            }
             ContactCommands::Sync => corky::contact::sync::run(),
         },
         Commands::ContactAdd {
