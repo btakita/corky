@@ -294,7 +294,13 @@ fn save_sync_state(state: &PeopleSyncState) -> Result<()> {
 
 fn extract_contact_payload(name: &str, emails: &[String]) -> ContactPayload {
     let contacts_dir = resolve::contacts_dir();
-    let agents_path = contacts_dir.join(name).join("AGENTS.md");
+    let contact_dir = contacts_dir.join(name);
+    let agents_path = contact_dir.join("AGENTS.md");
+    let agents_path = if agents_path.exists() {
+        agents_path
+    } else {
+        contact_dir.join("CLAUDE.md")
+    };
 
     let mut display_name = name
         .split('-')
@@ -522,6 +528,7 @@ fn discover_contacts() -> Result<BTreeMap<String, crate::config::contact::Contac
             if path.is_dir() && let Some(name) = path.file_name().and_then(|n| n.to_str()) && !contacts.contains_key(name) {
                 let mut emails = Vec::new();
                 let agents_path = path.join("AGENTS.md");
+                let agents_path = if agents_path.exists() { agents_path } else { path.join("CLAUDE.md") };
                 if let Ok(content) = std::fs::read_to_string(&agents_path) {
                     for line in content.lines() {
                         let trimmed = line.trim();
