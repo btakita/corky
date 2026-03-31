@@ -4,6 +4,23 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.22.2
+
+- **Gmail API body decode fix**: Handle padded URL-safe base64 in message bodies. Gmail sometimes sends base64 with padding characters; `URL_SAFE_NO_PAD` decoder silently rejected these, producing empty bodies. Now falls back to `URL_SAFE` decoder.
+- **Gmail API attachment body fix**: Fetch message body via attachments API when Gmail returns `attachmentId` instead of inline `data` (common for `multipart/related` emails with embedded images).
+
+## 0.22.1
+
+- **Contact push CLAUDE.md fallback**: `corky contact push google` now reads `CLAUDE.md` when `AGENTS.md` is absent, fixing silent field omission for contacts using the symlink convention.
+- **Diarize default feature**: Diarization is now a default Cargo feature — no `--features diarize` needed.
+
+## 0.22.0
+
+- **Search backends**: Unified `corky search` command with pluggable backends (sift local, ragie cloud).
+- **Sift indexing**: `corky sift index/status` for local full-text search.
+- **Ragie cloud search**: `corky ragie push/sync/search/status` for cloud-hosted search via Ragie API.
+- **SearchConfig**: Backend configuration in `.corky.toml`.
+
 ## 0.21.0
 
 - **YouTube playlists**: `corky youtube playlist create/add/list/remove` — full playlist management via Data API v3. Create playlists, add/remove videos, list all playlists. Uses existing `youtube.force-ssl` OAuth scope.
