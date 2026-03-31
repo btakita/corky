@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.23.0
+
+- **Single-thread refetch**: `corky sync refetch <THREAD_ID>` — re-fetch all messages in a Gmail thread via the Threads API, bypassing historyId state. Rebuilds the conversation file with fresh body content. Useful when body extraction failed on initial sync (e.g., base64 padding, attachmentId issues).
+
 ## 0.22.2
 
 - **Gmail API body decode fix**: Handle padded URL-safe base64 in message bodies. Gmail sometimes sends base64 with padding characters; `URL_SAFE_NO_PAD` decoder silently rejected these, producing empty bodies. Now falls back to `URL_SAFE` decoder.

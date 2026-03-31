@@ -397,6 +397,7 @@ corky install-skill NAME
 corky sync                   # incremental IMAP sync (default)
 corky sync full              # full IMAP resync (ignore saved state)
 corky sync account NAME      # sync one account
+corky sync refetch THREAD_ID # re-fetch a single thread by Gmail thread ID
 corky sync routes            # apply routing to existing conversations
 corky sync mailbox [NAME]    # push/pull shared mailboxes
 ```
@@ -405,6 +406,7 @@ Bare `corky sync` runs incremental IMAP sync for all configured accounts.
 Subcommands:
 - `full`: ignore saved state, re-fetch all messages within `sync_days`
 - `account NAME`: sync only the named account
+- `refetch THREAD_ID`: re-fetch a single Gmail thread by ID, bypassing sync state (see §6.8)
 - `routes`: apply `[routing]` rules to existing `conversations/*.md` files,
   copying matching threads into mailbox `conversations/` directories
 - `mailbox [NAME]`: git push/pull shared mailbox repos (alias for `mailbox sync`)
@@ -1017,6 +1019,19 @@ sync_days = 30
 **404 resilience:** Individual messages that return HTTP 404 (deleted between listing and fetch) are logged and skipped. The sync continues with remaining messages rather than aborting the entire account.
 
 **Shutdown handling:** Checks `AtomicBool` shutdown signal per-message and every 5 pages of listing. Returns early with partial results if interrupted.
+
+**Single-thread refetch (`sync refetch THREAD_ID`):**
+Re-fetches all messages in a single Gmail thread, bypassing `historyId` state. Useful when a message was synced but body extraction failed (e.g., `attachmentId` or base64 padding issues fixed in a later release).
+
+1. Scans `conversations/` for a file matching the `**Thread ID**` metadata
+2. Extracts account name and labels from the existing file
+3. Deletes the old file to allow fresh content merge
+4. Calls `GET /threads/{threadId}?format=full` — returns all messages in one API call
+5. Re-merges each message via `merge_message_to_file()` (creates fresh file)
+6. Also refreshes routed copies in mailbox directories
+7. If no existing file found, tries all `gmail-api` accounts
+
+No sync state is modified — `last_history_id` is untouched.
 
 **Merge and orphan cleanup:** Same as IMAP (§6.4, §6.5) — messages merge into thread files, full sync deletes untouched files.
 

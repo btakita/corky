@@ -63,6 +63,7 @@ fn main() -> Result<()> {
                 corky::sync::sms_import::run(&path, &label, &out_dir, &account)
             }
             Some(SyncCommands::Imports) => corky::sync::imports::run_from_config(),
+            Some(SyncCommands::Refetch { thread_id }) => corky::sync::refetch(&thread_id),
         },
         Commands::SyncAuth => corky::sync::auth::run(),
         Commands::ListFolders { account } => corky::sync::folders::run(account.as_deref()),

@@ -633,6 +633,33 @@ fn fetch_message(token: &str, message_id: &str) -> Result<Option<GmailMessage>> 
     }
 }
 
+// --- Thread API ---
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ThreadResponse {
+    #[allow(dead_code)]
+    id: String,
+    #[serde(default)]
+    messages: Vec<GmailMessage>,
+}
+
+/// Fetch all messages in a thread by thread ID.
+/// Returns converted Message structs ready for merge.
+pub fn fetch_thread_messages(token: &str, thread_id: &str) -> Result<Vec<super::types::Message>> {
+    let url = format!("{}/threads/{}?format=full", GMAIL_API, thread_id);
+    let resp = api_get(token, &url)?;
+    let thread: ThreadResponse = resp.into_json().context("Failed to parse thread")?;
+
+    let messages: Vec<super::types::Message> = thread
+        .messages
+        .iter()
+        .map(|msg| gmail_to_message(msg, token))
+        .collect();
+
+    Ok(messages)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -777,5 +804,99 @@ mod tests {
         let body: Body = serde_json::from_str(&json).unwrap();
         assert_eq!(body.data, Some(encoded));
         assert!(body.attachment_id.is_none());
+    }
+
+    #[test]
+    fn test_thread_response_deserialize() {
+        let json = format!(
+            r#"{{
+                "id": "thread123",
+                "messages": [
+                    {{
+                        "id": "msg1",
+                        "threadId": "thread123",
+                        "labelIds": ["INBOX"],
+                        "payload": {{
+                            "headers": [
+                                {{"name": "From", "value": "alice@example.com"}},
+                                {{"name": "Subject", "value": "Test thread"}}
+                            ],
+                            "body": {{"data": "{}"}},
+                            "mimeType": "text/plain"
+                        }},
+                        "historyId": "12345",
+                        "internalDate": "1700000000000"
+                    }},
+                    {{
+                        "id": "msg2",
+                        "threadId": "thread123",
+                        "labelIds": ["INBOX"],
+                        "payload": {{
+                            "headers": [
+                                {{"name": "From", "value": "bob@example.com"}},
+                                {{"name": "Subject", "value": "Re: Test thread"}}
+                            ],
+                            "body": {{"data": "{}"}},
+                            "mimeType": "text/plain"
+                        }},
+                        "historyId": "12346",
+                        "internalDate": "1700001000000"
+                    }}
+                ]
+            }}"#,
+            b64("Hello from Alice"),
+            b64("Reply from Bob"),
+        );
+        let thread: ThreadResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(thread.id, "thread123");
+        assert_eq!(thread.messages.len(), 2);
+        assert_eq!(thread.messages[0].id, "msg1");
+        assert_eq!(thread.messages[1].id, "msg2");
+    }
+
+    #[test]
+    fn test_thread_response_to_messages() {
+        let json = format!(
+            r#"{{
+                "id": "thread456",
+                "messages": [
+                    {{
+                        "id": "m1",
+                        "threadId": "thread456",
+                        "payload": {{
+                            "headers": [
+                                {{"name": "From", "value": "sender@example.com"}},
+                                {{"name": "To", "value": "recipient@example.com"}},
+                                {{"name": "Subject", "value": "Refetch test"}},
+                                {{"name": "Date", "value": "Mon, 1 Jan 2024 00:00:00 +0000"}}
+                            ],
+                            "body": {{"data": "{}"}},
+                            "mimeType": "text/plain"
+                        }}
+                    }}
+                ]
+            }}"#,
+            b64("Body content here"),
+        );
+        let thread: ThreadResponse = serde_json::from_str(&json).unwrap();
+        let messages: Vec<_> = thread
+            .messages
+            .iter()
+            .map(|msg| gmail_to_message(msg, ""))
+            .collect();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].from, "sender@example.com");
+        assert_eq!(messages[0].to, "recipient@example.com");
+        assert_eq!(messages[0].subject, "Refetch test");
+        assert_eq!(messages[0].body, "Body content here");
+        assert_eq!(messages[0].thread_id, "thread456");
+    }
+
+    #[test]
+    fn test_thread_response_empty_messages() {
+        let json = r#"{"id": "empty_thread", "messages": []}"#;
+        let thread: ThreadResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(thread.id, "empty_thread");
+        assert!(thread.messages.is_empty());
     }
 }

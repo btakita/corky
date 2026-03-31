@@ -52,6 +52,7 @@ See the [getting started guide](https://btakita.github.io/corky/getting-started/
 
 ```sh
 corky sync                      # Incremental IMAP sync
+corky sync refetch THREAD_ID    # Re-fetch a single Gmail thread
 corky unanswered                # Threads awaiting a reply
 corky draft push FILE           # Save as email draft
 corky mailbox add NAME --label LABEL  # Share threads
