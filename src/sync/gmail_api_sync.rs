@@ -80,9 +80,12 @@ struct Part {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Body {
     #[serde(default)]
     data: Option<String>,
+    #[serde(default)]
+    attachment_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -183,34 +186,59 @@ fn base64url_decode(data: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
+/// Fetch attachment data by ID (for parts where Gmail returns attachmentId instead of inline data).
+fn fetch_attachment(token: &str, message_id: &str, attachment_id: &str) -> Result<String> {
+    let url = format!(
+        "{}/messages/{}/attachments/{}",
+        GMAIL_API, message_id, attachment_id
+    );
+    let resp = api_get(token, &url)?.into_string()?;
+    let body: Body = serde_json::from_str(&resp)?;
+    body.data
+        .map(|d| base64url_decode(&d))
+        .unwrap_or_else(|| Ok(String::new()))
+}
+
+/// Resolve body data — inline or via attachment fetch.
+fn resolve_body_data(body: &Body, token: &str, message_id: &str) -> String {
+    if let Some(data) = &body.data {
+        return base64url_decode(data).unwrap_or_default();
+    }
+    if let Some(att_id) = &body.attachment_id {
+        return fetch_attachment(token, message_id, att_id).unwrap_or_default();
+    }
+    String::new()
+}
+
 /// Extract text/plain body from Gmail MIME payload.
-fn extract_body_from_payload(payload: &Payload) -> String {
+fn extract_body_from_payload(payload: &Payload, token: &str, message_id: &str) -> String {
     // Single-part message
     if payload.parts.is_empty() {
         if let Some(mime) = &payload.mime_type
             && mime == "text/plain"
-                && let Some(body) = &payload.body
-                    && let Some(data) = &body.data {
-                        return base64url_decode(data).unwrap_or_default();
-                    }
+                && let Some(body) = &payload.body {
+                    return resolve_body_data(body, token, message_id);
+                }
         return String::new();
     }
 
     // Multipart — walk parts looking for text/plain
-    extract_body_from_parts(&payload.parts)
+    extract_body_from_parts(&payload.parts, token, message_id)
 }
 
-fn extract_body_from_parts(parts: &[Part]) -> String {
+fn extract_body_from_parts(parts: &[Part], token: &str, message_id: &str) -> String {
     for part in parts {
         if let Some(mime) = &part.mime_type
             && mime == "text/plain"
-                && let Some(body) = &part.body
-                    && let Some(data) = &body.data {
-                        return base64url_decode(data).unwrap_or_default();
+                && let Some(body) = &part.body {
+                    let text = resolve_body_data(body, token, message_id);
+                    if !text.is_empty() {
+                        return text;
                     }
+                }
         // Recurse into nested parts
         if !part.parts.is_empty() {
-            let nested = extract_body_from_parts(&part.parts);
+            let nested = extract_body_from_parts(&part.parts, token, message_id);
             if !nested.is_empty() {
                 return nested;
             }
@@ -229,12 +257,12 @@ fn get_header(headers: &[Header], name: &str) -> String {
 }
 
 /// Convert a Gmail API message to our sync Message struct.
-fn gmail_to_message(msg: &GmailMessage) -> Message {
+fn gmail_to_message(msg: &GmailMessage, token: &str) -> Message {
     let payload = msg.payload.as_ref();
     let headers = payload.map(|p| &p.headers[..]).unwrap_or(&[]);
 
     let body = payload
-        .map(extract_body_from_payload)
+        .map(|p| extract_body_from_payload(p, token, &msg.id))
         .unwrap_or_default();
 
     // Convert internalDate (epoch millis) to RFC 2822
@@ -388,7 +416,7 @@ pub fn sync_account(
                     max_history_id = Some(max_history_id.map_or(hid, |cur| cur.max(hid)));
                 }
 
-            let message = gmail_to_message(&gmail_msg);
+            let message = gmail_to_message(&gmail_msg, &token);
 
             // Use Gmail's threadId as the thread key (better than subject heuristic)
             let thread_key = &gmail_msg.thread_id;
@@ -601,5 +629,152 @@ fn fetch_message(token: &str, message_id: &str) -> Result<Option<GmailMessage>> 
             bail!("Gmail API error (HTTP {}): {}", status, body);
         }
         Err(e) => Err(e.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+
+    fn b64(s: &str) -> String {
+        URL_SAFE_NO_PAD.encode(s)
+    }
+
+    #[test]
+    fn test_extract_body_simple_text_plain() {
+        let payload = Payload {
+            headers: vec![],
+            parts: vec![],
+            body: Some(Body {
+                data: Some(b64("Hello world")),
+                attachment_id: None,
+            }),
+            mime_type: Some("text/plain".into()),
+        };
+        let body = extract_body_from_payload(&payload, "", "");
+        assert_eq!(body, "Hello world");
+    }
+
+    #[test]
+    fn test_extract_body_multipart_alternative() {
+        let payload = Payload {
+            headers: vec![],
+            parts: vec![
+                Part {
+                    mime_type: Some("text/plain".into()),
+                    headers: vec![],
+                    body: Some(Body {
+                        data: Some(b64("Plain text")),
+                        attachment_id: None,
+                    }),
+                    parts: vec![],
+                },
+                Part {
+                    mime_type: Some("text/html".into()),
+                    headers: vec![],
+                    body: Some(Body {
+                        data: Some(b64("<p>HTML</p>")),
+                        attachment_id: None,
+                    }),
+                    parts: vec![],
+                },
+            ],
+            body: None,
+            mime_type: Some("multipart/alternative".into()),
+        };
+        let body = extract_body_from_payload(&payload, "", "");
+        assert_eq!(body, "Plain text");
+    }
+
+    #[test]
+    fn test_extract_body_multipart_related_nested() {
+        // multipart/related → multipart/alternative → text/plain
+        let payload = Payload {
+            headers: vec![],
+            parts: vec![
+                Part {
+                    mime_type: Some("multipart/alternative".into()),
+                    headers: vec![],
+                    body: None,
+                    parts: vec![
+                        Part {
+                            mime_type: Some("text/plain".into()),
+                            headers: vec![],
+                            body: Some(Body {
+                                data: Some(b64("Nested plain text")),
+                                attachment_id: None,
+                            }),
+                            parts: vec![],
+                        },
+                        Part {
+                            mime_type: Some("text/html".into()),
+                            headers: vec![],
+                            body: Some(Body {
+                                data: Some(b64("<p>Nested HTML</p>")),
+                                attachment_id: None,
+                            }),
+                            parts: vec![],
+                        },
+                    ],
+                },
+                Part {
+                    mime_type: Some("image/jpeg".into()),
+                    headers: vec![],
+                    body: Some(Body {
+                        data: None,
+                        attachment_id: Some("att123".into()),
+                    }),
+                    parts: vec![],
+                },
+            ],
+            body: None,
+            mime_type: Some("multipart/related".into()),
+        };
+        let body = extract_body_from_payload(&payload, "", "");
+        assert_eq!(body, "Nested plain text");
+    }
+
+    #[test]
+    fn test_extract_body_empty_data_no_attachment() {
+        let payload = Payload {
+            headers: vec![],
+            parts: vec![],
+            body: Some(Body {
+                data: None,
+                attachment_id: None,
+            }),
+            mime_type: Some("text/plain".into()),
+        };
+        let body = extract_body_from_payload(&payload, "", "");
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn test_resolve_body_data_prefers_inline() {
+        let body = Body {
+            data: Some(b64("inline data")),
+            attachment_id: Some("should_not_be_used".into()),
+        };
+        let result = resolve_body_data(&body, "", "");
+        assert_eq!(result, "inline data");
+    }
+
+    #[test]
+    fn test_body_deserializes_attachment_id() {
+        let json = r#"{"data": null, "attachmentId": "abc123", "size": 1024}"#;
+        let body: Body = serde_json::from_str(json).unwrap();
+        assert!(body.data.is_none());
+        assert_eq!(body.attachment_id, Some("abc123".into()));
+    }
+
+    #[test]
+    fn test_body_deserializes_inline_data() {
+        let encoded = b64("hello");
+        let json = format!(r#"{{"data": "{}"}}"#, encoded);
+        let body: Body = serde_json::from_str(&json).unwrap();
+        assert_eq!(body.data, Some(encoded));
+        assert!(body.attachment_id.is_none());
     }
 }

@@ -1007,7 +1007,7 @@ sync_days = 30
 **Full sync:**
 1. `GET /messages?labelIds={label}&q=after:{sync_days ago}` with pagination
 2. For each message ID: `GET /messages/{id}?format=full`
-3. Parse MIME payload for text/plain body, extract headers (From, To, Cc, Date, Subject)
+3. Parse MIME payload for text/plain body, extract headers (From, To, Cc, Date, Subject). For parts where Gmail returns `attachmentId` instead of inline `data` (common with `multipart/related` messages), fetches body via `GET /messages/{id}/attachments/{attachmentId}`
 4. Thread ID from Gmail preserved as dedup key
 5. Label IDs resolved to human-readable names via `GET /labels`
 6. Multi-label messages written to each label's mailbox + extra routes
