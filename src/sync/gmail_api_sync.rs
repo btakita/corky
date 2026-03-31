@@ -176,12 +176,13 @@ fn fetch_label_maps(token: &str) -> Result<(HashMap<String, String>, HashMap<Str
 
 // --- Message parsing ---
 
-/// Base64url decode (Gmail uses URL-safe base64 without padding).
+/// Base64url decode (Gmail uses URL-safe base64, sometimes with padding).
 fn base64url_decode(data: &str) -> Result<String> {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
     use base64::Engine;
     let bytes = URL_SAFE_NO_PAD
         .decode(data)
+        .or_else(|_| URL_SAFE.decode(data))
         .context("base64url decode failed")?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
