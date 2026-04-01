@@ -34,6 +34,7 @@ fn test_roundtrip_single_message() {
             body: "Let's meet at 3pm.".to_string(),
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        tracking: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -96,6 +97,7 @@ fn test_roundtrip_multiple_messages() {
             },
         ],
         last_date: "Mon, 10 Feb 2025 11:00:00 +0000".to_string(),
+        tracking: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -667,6 +669,7 @@ fn test_thread_to_markdown_format() {
             body: "Body text here.".to_string(),
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        tracking: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -692,6 +695,7 @@ fn test_thread_to_markdown_empty_labels() {
         accounts: vec![],
         messages: vec![],
         last_date: String::new(),
+        tracking: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -734,6 +738,7 @@ fn test_manifest_generation() {
             body: "Test body".to_string(),
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        tracking: vec![],
     };
 
     std::fs::write(

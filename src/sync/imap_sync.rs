@@ -21,14 +21,33 @@ use crate::util::{slugify, thread_key_from_subject};
 static THREAD_ID_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\*\*Thread ID\*\*:\s*(.+)$").unwrap());
 
-/// Extract text/plain body from a parsed email.
+/// Extract body from a parsed email, preferring HTML→markdown over plain text.
 fn extract_body(parsed: &mailparse::ParsedMail) -> String {
     if parsed.subparts.is_empty() {
         if let Ok(body) = parsed.get_body() {
+            if parsed.ctype.mimetype == "text/html" {
+                return html_to_markdown(&body);
+            }
             return body;
         }
         return String::new();
     }
+    // First pass: look for direct text/html child
+    for part in &parsed.subparts {
+        let ctype = part.ctype.mimetype.as_str();
+        if ctype == "text/html" {
+            let has_disposition = part
+                .headers
+                .iter()
+                .any(|h| h.get_key_ref().eq_ignore_ascii_case("Content-Disposition"));
+            if !has_disposition
+                && let Ok(body) = part.get_body()
+            {
+                return html_to_markdown(&body);
+            }
+        }
+    }
+    // Second pass: look for text/plain or recurse into nested multipart
     for part in &parsed.subparts {
         let ctype = part.ctype.mimetype.as_str();
         if ctype == "text/plain" {
@@ -37,16 +56,26 @@ fn extract_body(parsed: &mailparse::ParsedMail) -> String {
                 .iter()
                 .any(|h| h.get_key_ref().eq_ignore_ascii_case("Content-Disposition"));
             if !has_disposition
-                && let Ok(body) = part.get_body() {
-                    return body;
-                }
+                && let Ok(body) = part.get_body()
+            {
+                return body;
+            }
         }
-        let nested = extract_body(part);
-        if !nested.is_empty() {
-            return nested;
+        if !part.subparts.is_empty() {
+            let nested = extract_body(part);
+            if !nested.is_empty() {
+                return nested;
+            }
         }
     }
     String::new()
+}
+
+/// Convert HTML to markdown via htmd (raw conversion, no cleanup).
+fn html_to_markdown(html: &str) -> String {
+    htmd::HtmlToMarkdown::new()
+        .convert(html)
+        .unwrap_or_else(|_| html.to_string())
 }
 
 /// Parse an RFC 2822 date string, falling back to epoch on failure.
@@ -170,7 +199,17 @@ pub fn merge_message_to_file(
         return Ok(existing_file);
     }
 
-    thread.messages.push(message.clone());
+    // Clean markdown body and detect tracking domains
+    let mut message = message.clone();
+    let (cleaned_body, msg_tracking) = super::markdown_clean::clean_markdown(&message.body);
+    message.body = cleaned_body;
+    for domain in msg_tracking {
+        if !thread.tracking.contains(&domain) {
+            thread.tracking.push(domain);
+        }
+    }
+
+    thread.messages.push(message);
     thread.messages.sort_by_key(|m| parse_msg_date(&m.date));
     thread.last_date = thread
         .messages
@@ -587,6 +626,66 @@ mod tests {
 
         assert!(routes_a.contains_key("shared-label"));
         assert!(routes_b.contains_key("shared-label"));
+    }
+
+    // --- extract_body tests ---
+
+    fn make_parsed_mail(content_type: &str, body: &str) -> mailparse::ParsedMail<'static> {
+        let raw = format!(
+            "Content-Type: {}\r\n\r\n{}",
+            content_type, body
+        );
+        // Leak to get 'static lifetime for test convenience
+        let leaked: &'static str = Box::leak(raw.into_boxed_str());
+        mailparse::parse_mail(leaked.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn extract_body_plain_text_only() {
+        let parsed = make_parsed_mail("text/plain", "Hello world");
+        let body = extract_body(&parsed);
+        assert_eq!(body, "Hello world");
+    }
+
+    #[test]
+    fn extract_body_html_only() {
+        let parsed = make_parsed_mail("text/html", "<p>Hello <b>world</b></p>");
+        let body = extract_body(&parsed);
+        assert!(body.contains("Hello"), "expected Hello in: {body}");
+        assert!(body.contains("world"), "expected world in: {body}");
+    }
+
+    #[test]
+    fn extract_body_multipart_prefers_html() {
+        let raw = b"Content-Type: multipart/alternative; boundary=boundary123\r\n\r\n\
+--boundary123\r\n\
+Content-Type: text/plain\r\n\r\n\
+Plain text\r\n\
+--boundary123\r\n\
+Content-Type: text/html\r\n\r\n\
+<p>HTML <b>text</b></p>\r\n\
+--boundary123--";
+        let parsed = mailparse::parse_mail(raw).unwrap();
+        let body = extract_body(&parsed);
+        // Should prefer HTML→markdown over plain
+        assert!(body.contains("HTML"), "expected HTML content in: {body}");
+        assert!(body.contains("text"), "expected text content in: {body}");
+    }
+
+    #[test]
+    fn extract_body_multipart_plain_fallback_when_no_html() {
+        let raw = b"Content-Type: multipart/mixed; boundary=boundary456\r\n\r\n\
+--boundary456\r\n\
+Content-Type: text/plain\r\n\r\n\
+Only plain text\r\n\
+--boundary456\r\n\
+Content-Type: image/png\r\n\
+Content-Disposition: attachment\r\n\r\n\
+fake-image-data\r\n\
+--boundary456--";
+        let parsed = mailparse::parse_mail(raw).unwrap();
+        let body = extract_body(&parsed);
+        assert_eq!(body, "Only plain text\r\n");
     }
 
     // --- Bug 3: Shutdown signal smoke test ---

@@ -7,6 +7,10 @@ Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 ## 0.23.0
 
 - **Single-thread refetch**: `corky sync refetch <THREAD_ID>` — re-fetch all messages in a Gmail thread via the Threads API, bypassing historyId state. Rebuilds the conversation file with fresh body content. Useful when body extraction failed on initial sync (e.g., base64 padding, attachmentId issues).
+- **HTML-first email body extraction**: Prefer `text/html` (converted to markdown via `htmd`) over `text/plain` for email bodies. Falls back to plain text when no HTML part exists. Previously HTML-only emails produced empty bodies.
+- **Markdown cleanup**: Post-conversion cleanup strips `@media` CSS blocks, tracking pixel images, inline `style` attributes, and excessive blank lines from converted email bodies.
+- **Tracking pixel detection**: Detect tracking pixel domains in email bodies and record them in a `**Tracking**` metadata line in conversation file headers. Supports `/wf/open`, `/analytics/open`, 1x1 images, and other common patterns.
+- **META_RE regex fix**: Fixed `\s*` matching `\n` in metadata regex, causing metadata lines with empty values to swallow subsequent lines.
 
 ## 0.22.2
 

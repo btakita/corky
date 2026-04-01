@@ -211,33 +211,52 @@ fn resolve_body_data(body: &Body, token: &str, message_id: &str) -> String {
     String::new()
 }
 
-/// Extract text/plain body from Gmail MIME payload.
+/// Extract body from Gmail MIME payload, preferring HTML→markdown over plain text.
 fn extract_body_from_payload(payload: &Payload, token: &str, message_id: &str) -> String {
     // Single-part message
     if payload.parts.is_empty() {
         if let Some(mime) = &payload.mime_type
-            && mime == "text/plain"
-                && let Some(body) = &payload.body {
-                    return resolve_body_data(body, token, message_id);
+            && let Some(body) = &payload.body
+        {
+            let raw = resolve_body_data(body, token, message_id);
+            if !raw.is_empty() {
+                if mime == "text/html" {
+                    return html_to_markdown(&raw);
                 }
+                return raw;
+            }
+        }
         return String::new();
     }
 
-    // Multipart — walk parts looking for text/plain
+    // Multipart — walk parts preferring HTML
     extract_body_from_parts(&payload.parts, token, message_id)
 }
 
 fn extract_body_from_parts(parts: &[Part], token: &str, message_id: &str) -> String {
+    // First pass: look for direct text/html child
+    for part in parts {
+        if let Some(mime) = &part.mime_type
+            && mime == "text/html"
+            && let Some(body) = &part.body
+        {
+            let text = resolve_body_data(body, token, message_id);
+            if !text.is_empty() {
+                return html_to_markdown(&text);
+            }
+        }
+    }
+    // Second pass: look for text/plain or recurse into nested multipart
     for part in parts {
         if let Some(mime) = &part.mime_type
             && mime == "text/plain"
-                && let Some(body) = &part.body {
-                    let text = resolve_body_data(body, token, message_id);
-                    if !text.is_empty() {
-                        return text;
-                    }
-                }
-        // Recurse into nested parts
+            && let Some(body) = &part.body
+        {
+            let text = resolve_body_data(body, token, message_id);
+            if !text.is_empty() {
+                return text;
+            }
+        }
         if !part.parts.is_empty() {
             let nested = extract_body_from_parts(&part.parts, token, message_id);
             if !nested.is_empty() {
@@ -246,6 +265,13 @@ fn extract_body_from_parts(parts: &[Part], token: &str, message_id: &str) -> Str
         }
     }
     String::new()
+}
+
+/// Convert HTML to markdown via htmd (raw conversion, no cleanup).
+fn html_to_markdown(html: &str) -> String {
+    htmd::HtmlToMarkdown::new()
+        .convert(html)
+        .unwrap_or_else(|_| html.to_string())
 }
 
 /// Extract a header value by name (case-insensitive).
@@ -713,12 +739,12 @@ mod tests {
             mime_type: Some("multipart/alternative".into()),
         };
         let body = extract_body_from_payload(&payload, "", "");
-        assert_eq!(body, "Plain text");
+        assert_eq!(body, "HTML");
     }
 
     #[test]
     fn test_extract_body_multipart_related_nested() {
-        // multipart/related → multipart/alternative → text/plain
+        // multipart/related → multipart/alternative → prefers text/html
         let payload = Payload {
             headers: vec![],
             parts: vec![
@@ -761,7 +787,7 @@ mod tests {
             mime_type: Some("multipart/related".into()),
         };
         let body = extract_body_from_payload(&payload, "", "");
-        assert_eq!(body, "Nested plain text");
+        assert_eq!(body, "Nested HTML");
     }
 
     #[test]

@@ -7,6 +7,7 @@ pub mod imap_sync;
 pub mod imports;
 pub mod manifest;
 pub mod markdown;
+pub mod markdown_clean;
 pub mod routes;
 pub mod slack_import;
 pub mod sms_import;

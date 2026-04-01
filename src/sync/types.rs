@@ -29,6 +29,8 @@ pub struct Thread {
     pub messages: Vec<Message>,
     #[serde(default)]
     pub last_date: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tracking: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

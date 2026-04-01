@@ -102,6 +102,7 @@ Mailbox resolution (when no explicit name given):
 **Accounts**: {account1}, {account2}
 **Thread ID**: {thread_key}
 **Last updated**: {RFC 2822 date}
+**Tracking**: {domain1}, {domain2}   ← only present when tracking pixels detected
 
 ---
 
@@ -942,7 +943,8 @@ From RFC822:
 - To: `email.header.decode_header()` (comma-separated recipients)
 - CC: `email.header.decode_header()` (comma-separated recipients)
 - Date: raw header string
-- Body: walk multipart for `text/plain` without `Content-Disposition`, or get payload for non-multipart
+- Body: walk multipart preferring `text/html` (converted to markdown via `htmd`) without `Content-Disposition`, falling back to `text/plain`, or get payload for non-multipart. Post-conversion cleanup strips `@media` CSS blocks, tracking pixel images, and inline `style` attributes.
+- Tracking: tracking pixel domains detected during body cleanup are accumulated on the thread's `**Tracking**` metadata line.
 - Thread key: `thread_key_from_subject(subject)`
 
 ### 6.4 Merge
@@ -1009,7 +1011,7 @@ sync_days = 30
 **Full sync:**
 1. `GET /messages?labelIds={label}&q=after:{sync_days ago}` with pagination
 2. For each message ID: `GET /messages/{id}?format=full`
-3. Parse MIME payload for text/plain body, extract headers (From, To, Cc, Date, Subject). For parts where Gmail returns `attachmentId` instead of inline `data` (common with `multipart/related` messages), fetches body via `GET /messages/{id}/attachments/{attachmentId}`
+3. Parse MIME payload preferring `text/html` body (converted to markdown via `htmd`), falling back to `text/plain`. Extract headers (From, To, Cc, Date, Subject). For parts where Gmail returns `attachmentId` instead of inline `data` (common with `multipart/related` messages), fetches body via `GET /messages/{id}/attachments/{attachmentId}`
 4. Thread ID from Gmail preserved as dedup key
 5. Label IDs resolved to human-readable names via `GET /labels`
 6. Multi-label messages written to each label's mailbox + extra routes

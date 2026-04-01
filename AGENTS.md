@@ -72,6 +72,7 @@ See README.md for full config reference (.corky.toml, Gmail OAuth).
 - **Dedup**: Messages deduplicated by `(sender, date)` tuple when merging into existing files.
 - **Slug collisions**: Different threads with same slug get `-2`, `-3` suffix.
 - **Orphan cleanup**: On `sync full`, files not touched during sync are deleted.
+- **HTML-first body extraction**: Prefers `text/html` (converted to markdown via `htmd`) over `text/plain`. Falls back to plain text when no HTML part exists.
 
 ## File Formats
 

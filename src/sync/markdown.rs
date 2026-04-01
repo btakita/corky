@@ -6,7 +6,7 @@ use regex::Regex;
 use super::types::{Message, Thread};
 use crate::util::thread_key_from_subject;
 
-static META_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*\*(.+?)\*\*:\s*(.+)$").unwrap());
+static META_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*\*(.+?)\*\*:[ ]*(.+)$").unwrap());
 static MSG_HEADER_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^## (.+?) \u{2014} (.+)$").unwrap());
 
@@ -21,8 +21,11 @@ pub fn thread_to_markdown(thread: &Thread) -> String {
         format!("**Accounts**: {}", accounts_str),
         format!("**Thread ID**: {}", thread.id),
         format!("**Last updated**: {}", thread.last_date),
-        String::new(),
     ];
+    if !thread.tracking.is_empty() {
+        lines.push(format!("**Tracking**: {}", thread.tracking.join(", ")));
+    }
+    lines.push(String::new());
     for msg in &thread.messages {
         lines.push("---".to_string());
         lines.push(String::new());
@@ -82,6 +85,11 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
                 .filter(|s| !s.is_empty())
                 .collect()
         })
+        .unwrap_or_default();
+
+    let tracking = meta
+        .get("Tracking")
+        .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
 
     // Split into message sections on "## Sender — Date"
@@ -160,6 +168,7 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
         accounts,
         messages,
         last_date,
+        tracking,
     })
 }
 
@@ -185,6 +194,7 @@ mod tests {
                 body: "Hello there!".to_string(),
             }],
             last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+            tracking: vec![],
         };
 
         let md = thread_to_markdown(&thread);
@@ -217,6 +227,7 @@ mod tests {
                 body: "Hello there!".to_string(),
             }],
             last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+            tracking: vec![],
         };
 
         let md = thread_to_markdown(&thread);
@@ -246,5 +257,40 @@ mod tests {
         let md = "# Subject\n\n**Labels**: label1, label2\n**Thread ID**: test\n**Last updated**: Mon, 1 Jan 2024 00:00:00 +0000\n";
         let parsed = parse_thread_markdown(md).unwrap();
         assert_eq!(parsed.labels, vec!["label1", "label2"]);
+    }
+
+    #[test]
+    fn test_tracking_roundtrip() {
+        let thread = Thread {
+            id: "track-test".to_string(),
+            subject: "Tracked Email".to_string(),
+            labels: vec!["inbox".to_string()],
+            accounts: vec!["test".to_string()],
+            messages: vec![],
+            last_date: String::new(),
+            tracking: vec!["sendgrid.net".to_string(), "outlier.ai".to_string()],
+        };
+
+        let md = thread_to_markdown(&thread);
+        assert!(md.contains("**Tracking**: sendgrid.net, outlier.ai"));
+
+        let parsed = parse_thread_markdown(&md).unwrap();
+        assert_eq!(parsed.tracking, vec!["sendgrid.net", "outlier.ai"]);
+    }
+
+    #[test]
+    fn test_no_tracking_line_when_empty() {
+        let thread = Thread {
+            id: "no-track".to_string(),
+            subject: "Clean Email".to_string(),
+            labels: vec![],
+            accounts: vec![],
+            messages: vec![],
+            last_date: String::new(),
+            tracking: vec![],
+        };
+
+        let md = thread_to_markdown(&thread);
+        assert!(!md.contains("**Tracking**"));
     }
 }
