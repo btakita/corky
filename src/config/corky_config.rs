@@ -149,6 +149,16 @@ pub struct TranscriptionConfig {
     /// Language code (e.g. "en"). Empty = auto-detect.
     #[serde(default)]
     pub language: String,
+    /// Cascading chunk diarization for long audio (default: true)
+    #[serde(default = "default_true")]
+    pub adaptive_chunk: bool,
+    /// LLM-based speaker attribution for Unknown segments (default: true)
+    #[serde(default = "default_true")]
+    pub resolve_unknown: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_model() -> String {

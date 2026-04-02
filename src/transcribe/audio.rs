@@ -269,6 +269,25 @@ fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
     Ok(output)
 }
 
+/// Split audio samples into chunks of a given duration.
+///
+/// Returns `(offset_secs, chunk_samples)` pairs. The last chunk may be shorter.
+pub fn chunk_audio(samples: &[f32], chunk_duration_secs: f64, sample_rate: u32) -> Vec<(f64, Vec<f32>)> {
+    let chunk_size = (chunk_duration_secs * sample_rate as f64) as usize;
+    if chunk_size == 0 || samples.is_empty() {
+        return vec![(0.0, samples.to_vec())];
+    }
+
+    samples
+        .chunks(chunk_size)
+        .enumerate()
+        .map(|(i, chunk)| {
+            let offset = i as f64 * chunk_duration_secs;
+            (offset, chunk.to_vec())
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

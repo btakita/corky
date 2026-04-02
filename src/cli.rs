@@ -230,6 +230,14 @@ pub enum Commands {
         /// Use pyannote-rs for speaker diarization
         #[arg(long)]
         diarize: bool,
+
+        /// Disable cascading chunk diarization for long audio
+        #[arg(long)]
+        no_adaptive_chunk: bool,
+
+        /// Disable LLM-based speaker attribution for Unknown segments
+        #[arg(long)]
+        no_resolve_unknown: bool,
     },
 
     /// Search across configured backends
@@ -294,6 +302,12 @@ pub enum ContactCommands {
         /// Specific contact names to push (default: all)
         #[arg(long = "name")]
         names: Vec<String>,
+    },
+
+    /// Delete contacts from Google Contacts by resource name
+    Delete {
+        /// Google resource names (e.g. "people/c123" or just "c123")
+        resource_names: Vec<String>,
     },
 
     /// Sync CLAUDE.md files between root contacts/ and mailbox contacts/

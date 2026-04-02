@@ -87,6 +87,9 @@ fn main() -> Result<()> {
                     Some(p) => anyhow::bail!("Unknown platform: {}. Supported: google", p),
                 }
             }
+            ContactCommands::Delete { resource_names } => {
+                corky::contact::delete::run(&resource_names)
+            }
             ContactCommands::Sync => corky::contact::sync::run(),
         },
         Commands::ContactAdd {
@@ -289,8 +292,8 @@ fn main() -> Result<()> {
                 Ok(())
             }
         },
-        Commands::Transcribe { file, model, language, output, speakers, diarize } => {
-            corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize)
+        Commands::Transcribe { file, model, language, output, speakers, diarize, no_adaptive_chunk, no_resolve_unknown } => {
+            corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize, no_adaptive_chunk, no_resolve_unknown)
         }
         Commands::Search { query, backend, all } => {
             corky::search::run(&query, backend.as_deref(), all)

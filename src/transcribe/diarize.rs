@@ -182,6 +182,207 @@ fn reassign_unknown_segments(segments: &mut [DiarizedSegment]) {
     }
 }
 
+/// Diarize audio in chunks, then merge speaker IDs across chunks using embedding similarity.
+///
+/// Each chunk is diarized independently, then speaker IDs are unified across chunks
+/// by comparing representative embeddings.
+pub fn diarize_chunked(
+    chunks: &[(f64, Vec<f32>)],
+    sample_rate: u32,
+    max_speakers: usize,
+    cache_dir: Option<&str>,
+) -> Result<Vec<DiarizedSegment>> {
+    let seg_model = model::resolve_onnx_model(SEGMENTATION_MODEL, cache_dir)?;
+    let emb_model = model::resolve_onnx_model(EMBEDDING_MODEL, cache_dir)?;
+
+    // Per-chunk: diarized segments + representative embeddings per speaker
+    let mut all_segments: Vec<Vec<DiarizedSegment>> = Vec::new();
+    let mut chunk_embeddings: Vec<HashMap<usize, Vec<f32>>> = Vec::new();
+
+    for (chunk_idx, (offset, samples)) in chunks.iter().enumerate() {
+        eprintln!(
+            "Diarizing chunk {}/{} (offset {:.0}s, {:.1}s)...",
+            chunk_idx + 1,
+            chunks.len(),
+            offset,
+            samples.len() as f64 / sample_rate as f64,
+        );
+
+        let samples_i16 = f32_to_i16(samples);
+        let segments = pyannote_rs::get_segments(&samples_i16, sample_rate, &seg_model)
+            .map_err(|e| anyhow::anyhow!("Segmentation failed on chunk {}: {:?}", chunk_idx, e))?;
+
+        let mut extractor = EmbeddingExtractor::new(&emb_model)
+            .map_err(|e| anyhow::anyhow!("Failed to load embedding model: {:?}", e))?;
+        let mut manager = EmbeddingManager::new(max_speakers);
+        let threshold = 0.5;
+
+        let mut chunk_segs = Vec::new();
+        let mut embeddings_by_speaker: HashMap<usize, Vec<f32>> = HashMap::new();
+
+        for segment in segments {
+            let segment = segment.map_err(|e| anyhow::anyhow!("Segment error: {:?}", e))?;
+            match extractor.compute(&segment.samples) {
+                Ok(embedding) => {
+                    let embedding_vec: Vec<f32> = embedding.collect();
+                    let speaker_id =
+                        if manager.get_all_speakers().len() == max_speakers {
+                            manager
+                                .get_best_speaker_match(embedding_vec.clone())
+                                .map_err(|e| anyhow::anyhow!("Speaker match error: {:?}", e))
+                                .unwrap_or(0)
+                        } else {
+                            manager
+                                .search_speaker(embedding_vec.clone(), threshold)
+                                .unwrap_or(0)
+                        };
+
+                    let (_, confidence) = compute_confidence(&embedding_vec, &manager);
+
+                    // Store first embedding per speaker as representative
+                    embeddings_by_speaker
+                        .entry(speaker_id)
+                        .or_insert_with(|| embedding_vec.clone());
+
+                    chunk_segs.push(DiarizedSegment {
+                        start: segment.start + offset,
+                        end: segment.end + offset,
+                        speaker_id,
+                        confidence,
+                    });
+                }
+                Err(_) => {
+                    chunk_segs.push(DiarizedSegment {
+                        start: segment.start + offset,
+                        end: segment.end + offset,
+                        speaker_id: 0,
+                        confidence: 0.0,
+                    });
+                }
+            }
+        }
+
+        reassign_unknown_segments(&mut chunk_segs);
+        all_segments.push(chunk_segs);
+        chunk_embeddings.push(embeddings_by_speaker);
+    }
+
+    // Merge speaker IDs across chunks using embedding similarity
+    let merged = merge_cross_chunk_speakers(all_segments, &chunk_embeddings, max_speakers);
+
+    let unique_speakers: std::collections::HashSet<usize> =
+        merged.iter().map(|s| s.speaker_id).filter(|&id| id != 0).collect();
+    eprintln!(
+        "Chunked diarization complete: {} segments, {} speakers across {} chunks",
+        merged.len(),
+        unique_speakers.len(),
+        chunks.len()
+    );
+
+    Ok(merged)
+}
+
+/// Merge speaker IDs across chunks by matching representative embeddings.
+///
+/// Speakers in chunk 0 keep their IDs. For subsequent chunks, each speaker's
+/// representative embedding is compared against all known speakers. If a match
+/// exceeds threshold, the ID is remapped; otherwise a new global ID is assigned.
+fn merge_cross_chunk_speakers(
+    chunk_segments: Vec<Vec<DiarizedSegment>>,
+    chunk_embeddings: &[HashMap<usize, Vec<f32>>],
+    max_speakers: usize,
+) -> Vec<DiarizedSegment> {
+    let threshold = 0.5;
+
+    // Global speaker embeddings: global_id -> embedding
+    let mut global_embeddings: HashMap<usize, Vec<f32>> = HashMap::new();
+    let mut next_global_id: usize = 1;
+
+    // Per-chunk ID remapping: chunk_local_id -> global_id
+    let mut all_remaps: Vec<HashMap<usize, usize>> = Vec::new();
+
+    for embs in chunk_embeddings {
+        let mut remap: HashMap<usize, usize> = HashMap::new();
+
+        for (&local_id, embedding) in embs {
+            if local_id == 0 {
+                continue;
+            }
+
+            // Find best matching global speaker
+            let mut best_global = 0usize;
+            let mut best_sim = 0.0f32;
+            for (&gid, gemb) in &global_embeddings {
+                let sim = cosine_similarity(embedding, gemb);
+                if sim > best_sim {
+                    best_sim = sim;
+                    best_global = gid;
+                }
+            }
+
+            if best_sim >= threshold && best_global != 0 {
+                remap.insert(local_id, best_global);
+            } else if global_embeddings.len() < max_speakers {
+                // New speaker (only if under max_speakers limit)
+                let gid = next_global_id;
+                next_global_id += 1;
+                global_embeddings.insert(gid, embedding.clone());
+                remap.insert(local_id, gid);
+            } else {
+                // Max speakers reached — force-assign to best match
+                if best_global != 0 {
+                    remap.insert(local_id, best_global);
+                } else if let Some(&fallback) = global_embeddings.keys().next() {
+                    remap.insert(local_id, fallback);
+                }
+            }
+        }
+
+        all_remaps.push(remap);
+    }
+
+    // Apply remapping
+    let mut result = Vec::new();
+    for (chunk_idx, segments) in chunk_segments.into_iter().enumerate() {
+        let remap = &all_remaps[chunk_idx];
+        for mut seg in segments {
+            if let Some(&global_id) = remap.get(&seg.speaker_id) {
+                seg.speaker_id = global_id;
+            }
+            result.push(seg);
+        }
+    }
+
+    result
+}
+
+/// Evaluate diarization quality. Returns true if the result is acceptable.
+pub fn quality_ok(segments: &[DiarizedSegment], expected_min_speakers: usize) -> bool {
+    if segments.is_empty() {
+        return false;
+    }
+
+    let unique: std::collections::HashSet<usize> = segments
+        .iter()
+        .map(|s| s.speaker_id)
+        .filter(|&id| id != 0)
+        .collect();
+
+    // Fail if fewer speakers than expected
+    if unique.len() < expected_min_speakers && expected_min_speakers > 1 {
+        return false;
+    }
+
+    // Fail if >30% unknown
+    let unknown_count = segments.iter().filter(|s| s.speaker_id == 0).count();
+    let unknown_ratio = unknown_count as f64 / segments.len() as f64;
+    if unknown_ratio > 0.3 {
+        return false;
+    }
+
+    true
+}
+
 /// A merged segment: whisper text + speaker ID + confidence.
 #[derive(Debug, Clone)]
 pub struct MergedSegment {

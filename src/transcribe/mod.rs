@@ -11,6 +11,8 @@ mod audio;
 mod model;
 #[cfg(feature = "diarize")]
 mod diarize;
+#[cfg(feature = "diarize")]
+mod resolve;
 
 #[cfg(feature = "transcribe")]
 pub use engine::run;
@@ -23,6 +25,8 @@ pub fn run(
     _output: Option<&str>,
     _speakers: &[String],
     _diarize: bool,
+    _no_adaptive_chunk: bool,
+    _no_resolve_unknown: bool,
 ) -> anyhow::Result<()> {
     anyhow::bail!(
         "Transcription support not compiled.\n\
