@@ -862,7 +862,7 @@ pub enum DocCommands {
         #[arg(long, short)]
         output: Option<String>,
     },
-    /// Upload a document to Google Drive (coming soon)
+    /// Upload a document to Google Drive
     Upload {
         /// Path to the file to upload
         file: PathBuf,
@@ -870,6 +870,40 @@ pub enum DocCommands {
         /// Share the uploaded file
         #[arg(long)]
         share: bool,
+    },
+    /// Read a Google Doc and export as markdown
+    Read {
+        /// Google Doc URL or document ID
+        doc: String,
+
+        /// Output file (default: stdout)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
+    /// Update a Google Doc from a markdown file
+    Write {
+        /// Google Doc URL or document ID
+        doc: String,
+
+        /// Path to the markdown file
+        file: PathBuf,
+    },
+    /// Read a Google Sheet range as markdown table or CSV
+    Sheet {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Cell range (e.g. "A1:D10", "Sheet1!A1:C5"). Default: first sheet, all data
+        #[arg(long)]
+        range: Option<String>,
+
+        /// Output format: table (default) or csv
+        #[arg(long, default_value = "table", value_parser = ["table", "csv"])]
+        format: String,
+
+        /// Output file (default: stdout)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
     },
 }
 

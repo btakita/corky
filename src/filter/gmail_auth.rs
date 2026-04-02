@@ -35,6 +35,15 @@ pub const GMAIL_SYNC_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readon
 /// `gmail.compose` covers both `messages.send` and `drafts.create`.
 pub const GMAIL_SEND_SCOPE: &str = "https://www.googleapis.com/auth/gmail.compose";
 
+/// OAuth2 scope for Google Drive file upload (restricted to files created by this app).
+pub const DRIVE_FILE_SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
+
+/// OAuth2 scope for Google Docs read/write.
+pub const DOCS_SCOPE: &str = "https://www.googleapis.com/auth/documents";
+
+/// OAuth2 scope for Google Sheets read-only.
+pub const SHEETS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets.readonly";
+
 /// Default scope (filter management) for backwards compatibility.
 const GMAIL_SCOPE: &str = GMAIL_FILTER_SCOPE;
 
