@@ -59,6 +59,68 @@ fn test_roundtrip_single_message() {
 }
 
 #[test]
+fn test_roundtrip_message_id() {
+    let thread = Thread {
+        id: "thread-mid".to_string(),
+        subject: "Message ID Test".to_string(),
+        labels: vec!["inbox".to_string()],
+        accounts: vec!["personal".to_string()],
+        messages: vec![Message {
+            id: "msg-1".to_string(),
+            thread_id: "thread-mid".to_string(),
+            from: "Alice <alice@example.com>".to_string(),
+            to: String::new(),
+            cc: String::new(),
+            date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+            subject: "Message ID Test".to_string(),
+            body: "Testing message ID roundtrip.".to_string(),
+            message_id: Some("<CAxxxxxx1234@mail.gmail.com>".to_string()),
+        }],
+        last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        tracking: vec![],
+    };
+
+    let md = thread_to_markdown(&thread);
+    assert!(md.contains("**Message-ID**: <CAxxxxxx1234@mail.gmail.com>"));
+
+    let parsed = parse_thread_markdown(&md).unwrap();
+    assert_eq!(parsed.messages.len(), 1);
+    assert_eq!(
+        parsed.messages[0].message_id,
+        Some("<CAxxxxxx1234@mail.gmail.com>".to_string())
+    );
+}
+
+#[test]
+fn test_roundtrip_message_id_none() {
+    let thread = Thread {
+        id: "thread-no-mid".to_string(),
+        subject: "No Message ID".to_string(),
+        labels: vec!["inbox".to_string()],
+        accounts: vec!["personal".to_string()],
+        messages: vec![Message {
+            id: "msg-1".to_string(),
+            thread_id: "thread-no-mid".to_string(),
+            from: "Alice <alice@example.com>".to_string(),
+            to: String::new(),
+            cc: String::new(),
+            date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+            subject: "No Message ID".to_string(),
+            body: "No message ID here.".to_string(),
+            message_id: None,
+        }],
+        last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        tracking: vec![],
+    };
+
+    let md = thread_to_markdown(&thread);
+    assert!(!md.contains("**Message-ID**"));
+
+    let parsed = parse_thread_markdown(&md).unwrap();
+    assert_eq!(parsed.messages[0].message_id, None);
+}
+
+#[test]
 fn test_roundtrip_multiple_messages() {
     let thread = Thread {
         id: "thread-2".to_string(),

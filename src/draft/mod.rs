@@ -907,4 +907,23 @@ mod tests {
         assert_eq!(meta.images[0], "screenshot.png");
         assert_eq!(meta.images[1], "photo.jpg");
     }
+
+    #[test]
+    fn test_thread_id_parsed_from_yaml() {
+        let content = "---\nto: bob@example.com\nthread_id: \"19d479af292d8d99\"\nin_reply_to: \"<CA+abc123@mail.gmail.com>\"\nsubject: \"Re: Test Thread\"\n---\nHello Bob";
+        let meta = parse_draft_yaml(content).unwrap();
+        assert_eq!(meta.thread_id, Some("19d479af292d8d99".to_string()));
+        assert_eq!(
+            meta.in_reply_to,
+            Some("<CA+abc123@mail.gmail.com>".to_string())
+        );
+    }
+
+    #[test]
+    fn test_thread_id_none_when_absent() {
+        let content = "---\nto: bob@example.com\nsubject: New Thread\n---\nHello Bob";
+        let meta = parse_draft_yaml(content).unwrap();
+        assert_eq!(meta.thread_id, None);
+        assert_eq!(meta.in_reply_to, None);
+    }
 }

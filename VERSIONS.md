@@ -4,6 +4,14 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.24.0
+
+- **Gmail API threading fix (Bug 1)**: Extract `Message-ID` header during Gmail sync and store as `**Message-ID**` metadata in conversation markdown files. Previously `in_reply_to` in draft YAML accepted Gmail thread IDs instead of RFC 2822 Message-IDs, breaking the `In-Reply-To` email header.
+- **Gmail API threading fix (Bug 2)**: Add `thread_id` field to draft YAML frontmatter. `send_via_gmail_api()` and `push_to_drafts_via_gmail_api()` now include `threadId` in the Gmail API request body, threading replies into existing conversations.
+- **Account-based doc auth**: `--account` flag on `doc upload`, `doc read`, `doc write`, `doc sheet` commands. Uses login hint for OAuth to target specific Google accounts.
+- **Contact delete**: `corky contact delete <RESOURCE_NAME>...` — delete contacts from Google Contacts via People API.
+- **Transcribe resolve**: Model resolution module for transcription.
+
 ## 0.23.0
 
 - **Single-thread refetch**: `corky sync refetch <THREAD_ID>` — re-fetch all messages in a Gmail thread via the Threads API, bypassing historyId state. Rebuilds the conversation file with fresh body content. Useful when body extraction failed on initial sync (e.g., base64 padding, attachmentId issues).

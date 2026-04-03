@@ -108,6 +108,7 @@ Mailbox resolution (when no explicit name given):
 
 ## {Sender Name} <{email}> — {RFC 2822 date}
 
+**Message-ID**: {message-id}
 **To**: {recipient1}, {recipient2}
 **CC**: {cc1}
 
@@ -120,7 +121,7 @@ Mailbox resolution (when no explicit name given):
 {Body text}
 ```
 
-Per-message `**To**:` and `**CC**:` lines are emitted after the message header when non-empty. Old files without these lines parse correctly (fields default to empty).
+Per-message `**Message-ID**:`, `**To**:`, and `**CC**:` lines are emitted after the message header when non-empty. Old files without these lines parse correctly (fields default to empty). `**Message-ID**:` is extracted during Gmail sync and stored per message for use in reply threading (`in_reply_to` in drafts).
 
 Metadata regex: `^\*\*(.+?)\*\*:\s*(.+)$` (multiline)
 Message header regex: `^## (.+?) — (.+)$` (multiline, em dash U+2014)
@@ -138,6 +139,7 @@ author: Brian
 account: personal
 from: brian@example.com
 in_reply_to: "<msg-id>"
+thread_id: "<gmail-thread-id>"
 scheduled_at: null
 attachments:
   - /tmp/screenshot.png
@@ -149,10 +151,13 @@ attachments:
 Body text here.
 ```
 
-Optional fields: `attachments` (list of file paths)
+Optional fields: `attachments` (list of file paths), `thread_id` (Gmail thread ID for threading replies)
 Required fields: `# Subject` heading (in body), `to`, `---` delimiters
 Recommended fields: `status`, `author`
+
 Status values: `draft` → `review` → `approved` → `scheduled` → `sent`
+
+**Threading via `thread_id`:** When present, the value is included as `threadId` in Gmail API send/draft requests. This ensures the reply is placed in the correct Gmail thread, complementing `in_reply_to` which sets the RFC 2822 `In-Reply-To` header.
 Valid send statuses (for draft push --send): `review`, `approved`, `scheduled`
 
 **Legacy format:** The `**Key**: value` format is still supported for backward compatibility:
@@ -736,7 +741,15 @@ Push local contacts to external platforms. Currently supports Google Contacts vi
 
 **OAuth:** Reuses Gmail client credentials (`[gmail]` in `.corky.toml`), requests `https://www.googleapis.com/auth/contacts` scope. Tokens stored as `people:default`.
 
-### 5.26 filter auth
+### 5.26 contact delete
+
+```
+corky contact delete <RESOURCE_NAME>...
+```
+
+Deletes one or more contacts from Google Contacts by resource name. Accepts full resource names (`people/c123456`) or short form (`c123456`). Uses the People API `deleteContact` endpoint with the same OAuth credentials as `contact push`.
+
+### 5.27 filter auth
 
 ```
 corky filter auth [--account NAME]
@@ -1510,9 +1523,19 @@ Run `corky watch` and it handles both IMAP sync and scheduled publishing.
 
 ### 14.1 Overview
 
-`corky doc build` converts markdown files to PDF or DOCX format using external tools (pandoc, weasyprint). CSS templates are supported for styling.
+`corky doc` manages document building and Google Docs/Sheets integration. Subcommands:
 
-### 14.2 CLI Interface
+| Command | Description |
+|---------|-------------|
+| `corky doc build <FILE>` | Convert markdown to PDF or DOCX |
+| `corky doc upload <FILE> [--share] [--account EMAIL]` | Upload a file to Google Drive |
+| `corky doc read <DOC> [-o FILE] [--account EMAIL]` | Read a Google Doc as markdown |
+| `corky doc write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
+| `corky doc sheet <SHEET> [--range R] [--format table\|csv] [-o FILE] [--account EMAIL]` | Read a Google Sheet range |
+
+The `--account EMAIL` flag selects which Google account's OAuth token to use. When omitted, the default account is used. This enables multi-account workflows where different documents belong to different Google accounts.
+
+### 14.2 CLI Interface (build)
 
 ```
 corky doc build <FILE>                      # PDF (default)
@@ -1520,6 +1543,38 @@ corky doc build --format docx <FILE>        # DOCX
 corky doc build --template <NAME> <FILE>    # Named CSS template
 corky doc build -o <OUTPUT> <FILE>          # Custom output path
 ```
+
+### 14.2.1 Google Drive Upload
+
+```
+corky doc upload <FILE> [--share] [--account EMAIL]
+```
+
+Uploads a local file to Google Drive. The MIME type is inferred from the file extension. When `--share` is set, the uploaded file is shared (link-based access). Prints the web link on success.
+
+### 14.2.2 Google Docs Read
+
+```
+corky doc read <DOC_URL_OR_ID> [-o FILE] [--account EMAIL]
+```
+
+Exports a Google Doc as markdown (via HTML export). Output goes to stdout by default or to `-o FILE`.
+
+### 14.2.3 Google Docs Write
+
+```
+corky doc write <DOC_URL_OR_ID> <FILE> [--account EMAIL]
+```
+
+Replaces the content of a Google Doc with the contents of a local markdown file.
+
+### 14.2.4 Google Sheets Read
+
+```
+corky doc sheet <SHEET_URL_OR_ID> [--range RANGE] [--format table|csv] [-o FILE] [--account EMAIL]
+```
+
+Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `--range` specifies the cell range (e.g. `A1:D10`, `Sheet1!A1:C5`). Without `--range`, reads all data from the first sheet.
 
 ### 14.3 Format Pipelines
 

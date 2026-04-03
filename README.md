@@ -54,10 +54,11 @@ See the [getting started guide](https://btakita.github.io/corky/getting-started/
 corky sync                      # Incremental IMAP sync
 corky sync refetch THREAD_ID    # Re-fetch a single Gmail thread
 corky unanswered                # Threads awaiting a reply
-corky draft push FILE           # Save as email draft
+corky draft push FILE           # Save as email draft (thread_id in YAML for threading)
 corky mailbox add NAME --label LABEL  # Share threads
 corky contact push [google]     # Push contacts to Google Contacts (People API)
 corky contact sync              # Sync contact CLAUDE.md between root and mailboxes
+corky contact delete RES_NAME   # Delete contact from Google Contacts
 corky filter push               # Push Gmail filters from .corky.toml
 corky filter push --dry-run     # Preview filter changes
 corky filter pull               # Show current Gmail filters
@@ -69,6 +70,7 @@ corky youtube comment FILE TEXT      # Comment on a published video
 corky youtube playlist add PL VID   # Add video to playlist
 corky youtube playlist create TITLE # Create a playlist
 corky youtube playlist list         # List your playlists
+corky doc upload FILE --account a@gmail.com  # Google Docs (account-targeted OAuth)
 corky schedule run              # Publish due scheduled items
 corky topics list               # Show configured topics
 corky watch                     # Poll, sync, and publish scheduled
@@ -152,6 +154,8 @@ corky sync account my-gmail
 ```
 
 This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs.
+
+**Threading:** Synced conversations include a `**Message-ID**` metadata line per message. Draft YAML supports a `thread_id` field (Gmail thread ID) so replies thread correctly via the Gmail API.
 
 **Notes:**
 - If your OAuth app is in testing mode, add the Gmail account as a test user in the Cloud Console
