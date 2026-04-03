@@ -169,6 +169,7 @@ fn import_chat(
             date,
             subject: subject.clone(),
             body,
+            message_id: None,
         };
 
         merge_message_to_file(out_dir, label, account_name, &message, &thread_id)?;
@@ -364,6 +365,7 @@ fn import_html_file(
             date,
             subject: subject.clone(),
             body,
+            message_id: None,
         };
 
         merge_message_to_file(out_dir, label, account_name, &message, &thread_id)?;

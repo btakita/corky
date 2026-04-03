@@ -15,11 +15,12 @@ pub fn parse_sheet_id(input: &str) -> &str {
 }
 
 /// Read a Google Sheet range and output as markdown table or CSV.
-pub fn read(sheet: &str, range: Option<&str>, format: &str, output: Option<&Path>) -> Result<()> {
+pub fn read(sheet: &str, range: Option<&str>, format: &str, output: Option<&Path>, account: Option<&str>) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
-    let token = gmail_auth::get_access_token_with_scope(
+    let token = gmail_auth::get_access_token_for_user(
         Some("default"),
         gmail_auth::SHEETS_READONLY_SCOPE,
+        account,
     )?;
 
     // Build URL with optional range

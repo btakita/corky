@@ -155,6 +155,7 @@ fn convert_legacy_to_yaml(content: &str) -> Result<String> {
         account,
         from,
         in_reply_to,
+        thread_id: None,
         scheduled_at,
         attachments: Vec::new(),
         images: Vec::new(),

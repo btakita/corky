@@ -15,6 +15,8 @@ pub struct Message {
     pub date: String,
     pub subject: String,
     pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

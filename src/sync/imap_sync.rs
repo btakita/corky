@@ -548,6 +548,7 @@ fn sync_label(
             date,
             subject,
             body,
+            message_id: None,
         };
 
         for out_dir in out_dirs {

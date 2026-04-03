@@ -10,7 +10,7 @@ const DRIVE_UPLOAD_URL: &str =
 ///
 /// Uses multipart upload: metadata JSON + file content.
 /// Returns the file's web view link.
-pub fn run(file: &Path, share: bool) -> Result<String> {
+pub fn run(file: &Path, share: bool, account: Option<&str>) -> Result<String> {
     let file_name = file
         .file_name()
         .and_then(|n| n.to_str())
@@ -20,7 +20,7 @@ pub fn run(file: &Path, share: bool) -> Result<String> {
 
     // Get OAuth token with Drive scope
     let token =
-        gmail_auth::get_access_token_with_scope(Some("default"), gmail_auth::DRIVE_FILE_SCOPE)?;
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DRIVE_FILE_SCOPE, account)?;
 
     // Read file content
     let content = std::fs::read(file)?;

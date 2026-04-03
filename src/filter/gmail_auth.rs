@@ -172,8 +172,16 @@ pub fn get_access_token_with_scope(account: Option<&str>, scope: &str) -> Result
 }
 
 /// Get a valid access token with specific scopes and login hint (email).
+///
+/// When `login_hint` is provided, the token is stored under a key derived from
+/// the email (e.g., `gmail:brian.takita@gmail.com`) so different Google accounts
+/// get separate cached tokens.
 pub fn get_access_token_for_user(account: Option<&str>, scope: &str, login_hint: Option<&str>) -> Result<String> {
-    let key = token_key(account);
+    let key = if let Some(hint) = login_hint {
+        format!("gmail:{}", hint)
+    } else {
+        token_key(account)
+    };
     let mut store = TokenStore::load()?;
 
     // Check for existing valid token

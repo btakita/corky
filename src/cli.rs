@@ -870,6 +870,10 @@ pub enum DocCommands {
         /// Share the uploaded file
         #[arg(long)]
         share: bool,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
     },
     /// Read a Google Doc and export as markdown
     Read {
@@ -879,6 +883,10 @@ pub enum DocCommands {
         /// Output file (default: stdout)
         #[arg(long, short)]
         output: Option<PathBuf>,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
     },
     /// Update a Google Doc from a markdown file
     Write {
@@ -887,6 +895,10 @@ pub enum DocCommands {
 
         /// Path to the markdown file
         file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
     },
     /// Read a Google Sheet range as markdown table or CSV
     Sheet {
@@ -904,6 +916,10 @@ pub enum DocCommands {
         /// Output file (default: stdout)
         #[arg(long, short)]
         output: Option<PathBuf>,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
     },
 }
 

@@ -32,6 +32,7 @@ fn test_roundtrip_single_message() {
             date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             subject: "Meeting Tomorrow".to_string(),
             body: "Let's meet at 3pm.".to_string(),
+        message_id: None,
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
@@ -74,6 +75,7 @@ fn test_roundtrip_multiple_messages() {
                 date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
                 subject: "Project Update".to_string(),
                 body: "Here's the update.".to_string(),
+        message_id: None,
             },
             Message {
                 id: "msg-2".to_string(),
@@ -84,6 +86,7 @@ fn test_roundtrip_multiple_messages() {
                 date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
                 subject: "Re: Project Update".to_string(),
                 body: "Thanks for the update!".to_string(),
+        message_id: None,
             },
             Message {
                 id: "msg-3".to_string(),
@@ -94,6 +97,7 @@ fn test_roundtrip_multiple_messages() {
                 date: "Mon, 10 Feb 2025 11:00:00 +0000".to_string(),
                 subject: "Re: Project Update".to_string(),
                 body: "No problem. Let me know if you need more.".to_string(),
+        message_id: None,
             },
         ],
         last_date: "Mon, 10 Feb 2025 11:00:00 +0000".to_string(),
@@ -155,6 +159,7 @@ fn test_merge_message_creates_new_file() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Hello World".to_string(),
         body: "Hi there!".to_string(),
+        message_id: None,
     };
 
     let result = merge_message_to_file(
@@ -195,6 +200,7 @@ fn test_merge_message_appends_to_existing() {
         date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
         subject: "Test Thread".to_string(),
         body: "First message".to_string(),
+        message_id: None,
     };
 
     let msg2 = Message {
@@ -206,6 +212,7 @@ fn test_merge_message_appends_to_existing() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Re: Test Thread".to_string(),
         body: "Second message".to_string(),
+        message_id: None,
     };
 
     merge_message_to_file(&out_dir, "inbox", "personal", &msg1, "test thread").unwrap();
@@ -241,6 +248,7 @@ fn test_dedup_same_sender_date_skipped() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Dedup Test".to_string(),
         body: "Original message".to_string(),
+        message_id: None,
     };
 
     // Merge the same message twice
@@ -275,6 +283,7 @@ fn test_dedup_different_sender_same_date_not_skipped() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Multi Sender".to_string(),
         body: "From Alice".to_string(),
+        message_id: None,
     };
 
     let msg2 = Message {
@@ -286,6 +295,7 @@ fn test_dedup_different_sender_same_date_not_skipped() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Multi Sender".to_string(),
         body: "From Bob".to_string(),
+        message_id: None,
     };
 
     merge_message_to_file(&out_dir, "inbox", "personal", &msg1, "multi sender").unwrap();
@@ -320,6 +330,7 @@ fn test_label_accumulation() {
         date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
         subject: "Label Accumulation".to_string(),
         body: "First".to_string(),
+        message_id: None,
     };
 
     let msg2 = Message {
@@ -331,6 +342,7 @@ fn test_label_accumulation() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Re: Label Accumulation".to_string(),
         body: "Second".to_string(),
+        message_id: None,
     };
 
     // Merge from different labels and accounts
@@ -369,6 +381,7 @@ fn test_label_not_duplicated() {
         date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
         subject: "No Dup Label".to_string(),
         body: "First".to_string(),
+        message_id: None,
     };
 
     let msg2 = Message {
@@ -380,6 +393,7 @@ fn test_label_not_duplicated() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Re: No Dup Label".to_string(),
         body: "Second".to_string(),
+        message_id: None,
     };
 
     // Same label used twice
@@ -421,6 +435,7 @@ fn test_slug_collision_suffix() {
         date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
         subject: "Same Subject".to_string(),
         body: "Thread A".to_string(),
+        message_id: None,
     };
 
     let msg2 = Message {
@@ -432,6 +447,7 @@ fn test_slug_collision_suffix() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Same Subject".to_string(),
         body: "Thread B".to_string(),
+        message_id: None,
     };
 
     let path1 = merge_message_to_file(&out_dir, "inbox", "personal", &msg1, "thread-a")
@@ -471,6 +487,7 @@ fn test_messages_sorted_by_date() {
         date: "Tue, 11 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Order Test".to_string(),
         body: "Late message".to_string(),
+        message_id: None,
     };
 
     let msg_early = Message {
@@ -482,6 +499,7 @@ fn test_messages_sorted_by_date() {
         date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
         subject: "Order Test".to_string(),
         body: "Early message".to_string(),
+        message_id: None,
     };
 
     // Insert late first, then early
@@ -561,6 +579,7 @@ fn test_mtime_set_on_write() {
         date: "Tue, 15 Jul 2025 12:00:00 +0000".to_string(),
         subject: "Mtime Test".to_string(),
         body: "Test body".to_string(),
+        message_id: None,
     };
 
     let path = merge_message_to_file(&out_dir, "inbox", "personal", &msg, "mtime test")
@@ -667,6 +686,7 @@ fn test_thread_to_markdown_format() {
             date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             subject: "Format Test".to_string(),
             body: "Body text here.".to_string(),
+        message_id: None,
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
@@ -736,6 +756,7 @@ fn test_manifest_generation() {
             date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             subject: "Manifest Subject".to_string(),
             body: "Test body".to_string(),
+        message_id: None,
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
@@ -778,6 +799,7 @@ fn test_empty_label_not_added() {
         date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         subject: "Empty Label".to_string(),
         body: "Test".to_string(),
+        message_id: None,
     };
 
     merge_message_to_file(&out_dir, "", "", &msg, "empty label").unwrap();

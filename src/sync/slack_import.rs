@@ -153,6 +153,7 @@ pub fn run(zip_path: &Path, label: &str, out_dir: &Path, account_name: &str) -> 
                     date,
                     subject: subject.clone(),
                     body,
+                    message_id: None,
                 };
 
                 merge_message_to_file(out_dir, &label_name, account_name, &message, &thread_key)?;

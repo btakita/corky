@@ -310,6 +310,13 @@ fn gmail_to_message(msg: &GmailMessage, token: &str) -> Message {
         String::new()
     };
 
+    let message_id_hdr = get_header(headers, "Message-ID");
+    let message_id = if message_id_hdr.is_empty() {
+        None
+    } else {
+        Some(message_id_hdr)
+    };
+
     Message {
         id: msg.id.clone(),
         thread_id: msg.thread_id.clone(),
@@ -319,6 +326,7 @@ fn gmail_to_message(msg: &GmailMessage, token: &str) -> Message {
         date,
         subject: get_header(headers, "Subject"),
         body,
+        message_id,
     }
 }
 

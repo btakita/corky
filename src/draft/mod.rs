@@ -47,6 +47,8 @@ pub struct EmailDraftMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_reply_to: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduled_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<String>,
@@ -372,6 +374,7 @@ fn send_via_gmail_api(
     email: &Message,
     account_name: &str,
     user: &str,
+    thread_id: Option<&str>,
 ) -> Result<()> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
@@ -381,7 +384,10 @@ fn send_via_gmail_api(
     let raw_bytes = email.formatted();
     let encoded = URL_SAFE_NO_PAD.encode(&raw_bytes);
 
-    let body = serde_json::json!({ "raw": encoded });
+    let mut body = serde_json::json!({ "raw": encoded });
+    if let Some(tid) = thread_id {
+        body["threadId"] = serde_json::Value::String(tid.to_string());
+    }
 
     match ureq::post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
         .set("Authorization", &format!("Bearer {}", token))
@@ -405,6 +411,7 @@ fn push_to_drafts_via_gmail_api(
     email: &Message,
     account_name: &str,
     user: &str,
+    thread_id: Option<&str>,
 ) -> Result<()> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
@@ -414,8 +421,12 @@ fn push_to_drafts_via_gmail_api(
     let raw_bytes = email.formatted();
     let encoded = URL_SAFE_NO_PAD.encode(&raw_bytes);
 
+    let mut msg_json = serde_json::json!({ "raw": encoded });
+    if let Some(tid) = thread_id {
+        msg_json["threadId"] = serde_json::Value::String(tid.to_string());
+    }
     let body = serde_json::json!({
-        "message": { "raw": encoded }
+        "message": msg_json
     });
 
     match ureq::post("https://gmail.googleapis.com/gmail/v1/users/me/drafts")
@@ -576,15 +587,14 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
     }
 
     let text = std::fs::read_to_string(file)?;
-    let (attachments, images) = if is_yaml_format(&text) {
-        let meta = parse_draft_yaml(&text);
-        (
-            meta.as_ref().map(|m| m.attachments.clone()).unwrap_or_default(),
-            meta.as_ref().map(|m| m.images.clone()).unwrap_or_default(),
-        )
+    let yaml_meta = if is_yaml_format(&text) {
+        parse_draft_yaml(&text)
     } else {
-        (Vec::new(), Vec::new())
+        None
     };
+    let attachments = yaml_meta.as_ref().map(|m| m.attachments.clone()).unwrap_or_default();
+    let images = yaml_meta.as_ref().map(|m| m.images.clone()).unwrap_or_default();
+    let draft_thread_id = yaml_meta.as_ref().and_then(|m| m.thread_id.clone());
 
     // Resolve image paths relative to the draft file directory
     let draft_dir = file.parent().unwrap_or(Path::new("."));
@@ -647,7 +657,7 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
 
     if send {
         if use_gmail_api {
-            send_via_gmail_api(&email, &acct_name, &acct.user)?;
+            send_via_gmail_api(&email, &acct_name, &acct.user, draft_thread_id.as_deref())?;
         } else {
             send_email(&email, &acct.smtp_host, acct.smtp_port, &acct.user, &password)?;
         }
@@ -655,7 +665,7 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
         println!("Email sent. Status updated to 'sent'.");
     } else {
         if use_gmail_api {
-            push_to_drafts_via_gmail_api(&email, &acct_name, &acct.user)?;
+            push_to_drafts_via_gmail_api(&email, &acct_name, &acct.user, draft_thread_id.as_deref())?;
         } else {
             push_to_drafts(
                 &email,

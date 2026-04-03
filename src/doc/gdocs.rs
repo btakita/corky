@@ -17,9 +17,9 @@ pub fn parse_doc_id(input: &str) -> &str {
 }
 
 /// Read a Google Doc and return its content as markdown (via HTML export).
-pub fn read(doc: &str, output: Option<&Path>) -> Result<()> {
+pub fn read(doc: &str, output: Option<&Path>, account: Option<&str>) -> Result<()> {
     let doc_id = parse_doc_id(doc);
-    let token = gmail_auth::get_access_token_with_scope(Some("default"), gmail_auth::DOCS_SCOPE)?;
+    let token = gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DOCS_SCOPE, account)?;
 
     // Export as HTML via Drive API (Docs API doesn't have a clean markdown export)
     let url = format!("{}/{}/export?mimeType=text/html", DOCS_EXPORT_URL, doc_id);
@@ -46,9 +46,9 @@ pub fn read(doc: &str, output: Option<&Path>) -> Result<()> {
 /// Strategy: clear the doc, then insert the new content as plain text.
 /// (Full markdown→Docs structural conversion would require building
 /// Docs API batch update requests for each element type.)
-pub fn write(doc: &str, file: &Path) -> Result<()> {
+pub fn write(doc: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let doc_id = parse_doc_id(doc);
-    let token = gmail_auth::get_access_token_with_scope(Some("default"), gmail_auth::DOCS_SCOPE)?;
+    let token = gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DOCS_SCOPE, account)?;
 
     let content = std::fs::read_to_string(file)?;
 

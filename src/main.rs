@@ -287,19 +287,19 @@ fn main() -> Result<()> {
             DocCommands::Build { file, format, template, output } => {
                 corky::doc::build::run(&file, &format, template.as_deref(), output.as_deref())
             }
-            DocCommands::Upload { file, share } => {
-                let link = corky::doc::upload::run(&file, share)?;
+            DocCommands::Upload { file, share, account } => {
+                let link = corky::doc::upload::run(&file, share, account.as_deref())?;
                 println!("{}", link);
                 Ok(())
             }
-            DocCommands::Read { doc, output } => {
-                corky::doc::gdocs::read(&doc, output.as_deref())
+            DocCommands::Read { doc, output, account } => {
+                corky::doc::gdocs::read(&doc, output.as_deref(), account.as_deref())
             }
-            DocCommands::Write { doc, file } => {
-                corky::doc::gdocs::write(&doc, &file)
+            DocCommands::Write { doc, file, account } => {
+                corky::doc::gdocs::write(&doc, &file, account.as_deref())
             }
-            DocCommands::Sheet { sheet, range, format, output } => {
-                corky::doc::sheets::read(&sheet, range.as_deref(), &format, output.as_deref())
+            DocCommands::Sheet { sheet, range, format, output, account } => {
+                corky::doc::sheets::read(&sheet, range.as_deref(), &format, output.as_deref(), account.as_deref())
             }
         },
         Commands::Transcribe { file, model, language, output, speakers, diarize, no_adaptive_chunk, no_resolve_unknown } => {

@@ -172,6 +172,7 @@ pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Resu
                         .cloned()
                         .unwrap_or_else(|| sms.address.clone()),
                     body: sms.body.clone(),
+                    message_id: None,
                 };
 
                 threads.entry(phone).or_default().push(message);
@@ -246,6 +247,7 @@ pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Resu
                         .cloned()
                         .unwrap_or_else(|| phone.clone()),
                     body,
+                    message_id: None,
                 };
 
                 threads.entry(phone).or_default().push(message);

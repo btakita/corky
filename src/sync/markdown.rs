@@ -31,6 +31,9 @@ pub fn thread_to_markdown(thread: &Thread) -> String {
         lines.push(String::new());
         lines.push(format!("## {} \u{2014} {}", msg.from, msg.date));
         lines.push(String::new());
+        if let Some(ref mid) = msg.message_id {
+            lines.push(format!("**Message-ID**: {}", mid));
+        }
         if !msg.to.is_empty() {
             lines.push(format!("**To**: {}", msg.to));
         }
@@ -98,6 +101,7 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
     let mut current_date = String::new();
     let mut current_to = String::new();
     let mut current_cc = String::new();
+    let mut current_message_id: Option<String> = None;
     let mut body_lines: Vec<&str> = Vec::new();
     let mut in_message = false;
     let mut in_msg_meta = false; // after header, before body
@@ -115,12 +119,14 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
                     date: current_date.clone(),
                     subject: subject.clone(),
                     body: body_lines.join("\n").trim().to_string(),
+                    message_id: current_message_id.clone(),
                 });
             }
             current_from = cap[1].to_string();
             current_date = cap[2].to_string();
             current_to = String::new();
             current_cc = String::new();
+            current_message_id = None;
             body_lines.clear();
             in_message = true;
             in_msg_meta = true;
@@ -130,6 +136,7 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
                     match cap[1].to_string().as_str() {
                         "To" => current_to = cap[2].trim().to_string(),
                         "CC" => current_cc = cap[2].trim().to_string(),
+                        "Message-ID" => current_message_id = Some(cap[2].trim().to_string()),
                         _ => {} // ignore other per-message metadata
                     }
                 } else if line.trim().is_empty() {
@@ -158,6 +165,7 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
             date: current_date,
             subject: subject.clone(),
             body: body_lines.join("\n").trim().to_string(),
+            message_id: current_message_id,
         });
     }
 
@@ -192,6 +200,7 @@ mod tests {
                 date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
                 subject: "Hello World".to_string(),
                 body: "Hello there!".to_string(),
+                message_id: None,
             }],
             last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             tracking: vec![],
@@ -225,6 +234,7 @@ mod tests {
                 date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
                 subject: "Hello World".to_string(),
                 body: "Hello there!".to_string(),
+                message_id: None,
             }],
             last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             tracking: vec![],
