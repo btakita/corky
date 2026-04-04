@@ -38,31 +38,21 @@ Manage email, calendar, documents, and communications from the command line.
 - `corky filter push` — push local filters to Gmail (destructive, manual only)
 - `corky filter auth` — Gmail OAuth2 for filter management
 
-### Imports
-- `corky sync sms-import <FILE.xml>` — import SMS Backup & Restore XML
-- `corky sync telegram-import <DIR>` — import Telegram Desktop JSON export
-- `corky slack import <FILE.zip>` — import Slack workspace export
-
-### Transcription
-- `corky transcribe <FILE> [--diarize] [--speakers "Name1,Name2"]` — transcribe audio/video
-
 ### System
 - `corky watch` — IMAP polling + filter drift detection daemon
 - `corky skill install` — install Claude Code skills
 - `corky audit-docs` — audit instruction files
-
-## Workflows
-
-### Check schedule
-1. Run `corky cal list` to see upcoming events
-2. For availability questions, use `corky cal check <START> <END>`
-3. To create meetings, use `corky cal create`
 
 ## Related Skills
 
 Email drafting, LinkedIn posting, and their runbooks are installed as separate skills:
 - `.claude/skills/email/` — email drafting, sending, inbox review
 - `.claude/skills/linkedin/` — LinkedIn post drafting and publishing
+
+## Runbooks
+
+- `imports` — [runbooks/imports.md](runbooks/imports.md)
+- `transcription` — [runbooks/transcription.md](runbooks/transcription.md)
 
 ## Success Criteria
 - Drafts sound like the user wrote them

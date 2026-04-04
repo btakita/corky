@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.25.1
+
+- **Skill runbook extraction**: Extract on-demand runbooks from SKILL.md files to reduce always-loaded context (21% reduction). 4 new runbooks: gmail-config, browser-paste, imports, transcription. Email SKILL.md trimmed from 107 to 66 lines, corky SKILL.md from 71 to 61 lines.
+
 ## 0.25.0
 
 - **Multi-skill install**: `corky skill install` now writes 3 skills (corky, email, linkedin) plus runbooks. Each skill gets its own `SKILL.md` under `.claude/skills/{name}/`. Email skill includes 4 runbooks (`draft-reply`, `email-send`, `enrich-contact`, `review-inbox`). LinkedIn skill includes 1 runbook (`linkedin-post`). Corky `SKILL.md` trimmed to general corky commands only.

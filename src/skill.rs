@@ -23,9 +23,17 @@ const EMAIL_RUNBOOK_REVIEW: &str = include_str!("../skills/email/runbooks/review
 const EMAIL_RUNBOOK_DRAFT: &str = include_str!("../skills/email/runbooks/draft-reply.md");
 const EMAIL_RUNBOOK_ENRICH: &str = include_str!("../skills/email/runbooks/enrich-contact.md");
 
+// Email runbooks (new)
+const EMAIL_RUNBOOK_GMAIL_CONFIG: &str = include_str!("../skills/email/runbooks/gmail-config.md");
+const EMAIL_RUNBOOK_BROWSER_PASTE: &str = include_str!("../skills/email/runbooks/browser-paste.md");
+
 // LinkedIn skill + runbooks
 const LINKEDIN_SKILL: &str = include_str!("../skills/linkedin/SKILL.md");
 const LINKEDIN_RUNBOOK_POST: &str = include_str!("../skills/linkedin/runbooks/linkedin-post.md");
+
+// Corky runbooks
+const CORKY_RUNBOOK_IMPORTS: &str = include_str!("../skills/corky/runbooks/imports.md");
+const CORKY_RUNBOOK_TRANSCRIPTION: &str = include_str!("../skills/corky/runbooks/transcription.md");
 
 /// Current binary version (from Cargo.toml).
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -43,8 +51,12 @@ const EXTRA_FILES: &[BundledFile] = &[
     BundledFile { rel_path: ".claude/skills/email/runbooks/review-inbox.md", content: EMAIL_RUNBOOK_REVIEW },
     BundledFile { rel_path: ".claude/skills/email/runbooks/draft-reply.md", content: EMAIL_RUNBOOK_DRAFT },
     BundledFile { rel_path: ".claude/skills/email/runbooks/enrich-contact.md", content: EMAIL_RUNBOOK_ENRICH },
+    BundledFile { rel_path: ".claude/skills/email/runbooks/gmail-config.md", content: EMAIL_RUNBOOK_GMAIL_CONFIG },
+    BundledFile { rel_path: ".claude/skills/email/runbooks/browser-paste.md", content: EMAIL_RUNBOOK_BROWSER_PASTE },
     BundledFile { rel_path: ".claude/skills/linkedin/SKILL.md", content: LINKEDIN_SKILL },
     BundledFile { rel_path: ".claude/skills/linkedin/runbooks/linkedin-post.md", content: LINKEDIN_RUNBOOK_POST },
+    BundledFile { rel_path: ".claude/skills/corky/runbooks/imports.md", content: CORKY_RUNBOOK_IMPORTS },
+    BundledFile { rel_path: ".claude/skills/corky/runbooks/transcription.md", content: CORKY_RUNBOOK_TRANSCRIPTION },
 ];
 
 fn config() -> SkillConfig {
@@ -200,10 +212,16 @@ mod tests {
         assert!(dir.path().join(".claude/skills/email/runbooks/review-inbox.md").exists());
         assert!(dir.path().join(".claude/skills/email/runbooks/draft-reply.md").exists());
         assert!(dir.path().join(".claude/skills/email/runbooks/enrich-contact.md").exists());
+        assert!(dir.path().join(".claude/skills/email/runbooks/gmail-config.md").exists());
+        assert!(dir.path().join(".claude/skills/email/runbooks/browser-paste.md").exists());
 
         // LinkedIn skill + runbook
         assert!(dir.path().join(".claude/skills/linkedin/SKILL.md").exists());
         assert!(dir.path().join(".claude/skills/linkedin/runbooks/linkedin-post.md").exists());
+
+        // Corky runbooks
+        assert!(dir.path().join(".claude/skills/corky/runbooks/imports.md").exists());
+        assert!(dir.path().join(".claude/skills/corky/runbooks/transcription.md").exists());
     }
 
     #[test]

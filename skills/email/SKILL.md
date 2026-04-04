@@ -39,52 +39,9 @@ Draft a new email or reply to an existing thread.
 
 **IMPORTANT: Never send automatically.** See `runbooks/email-send.md` for full workflow.
 
-**Browser paste workflow (fallback when corky is unavailable):**
-1. Save HTML version: `file:///tmp/<slug>.html`
-2. Instruct user: Open in browser -> Select all (Ctrl+A) -> Copy -> Paste in Gmail
-3. Always use `file:///` protocol paths
-
 ### `html` — Generate HTML for Browser Paste
 
-Save a formatted HTML file from a draft for the browser paste workflow.
-
-**Steps:**
-1. Read the draft markdown file
-2. Convert to styled HTML with Gmail-compatible inline CSS:
-   - `font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6`
-   - Headings: `color: #1a1a1a; border-bottom: 1px solid #ddd`
-   - Subheadings: `color: #444`
-3. Save to `/tmp/<slug>.html`
-4. Print `file:///tmp/<slug>.html` for the user to open
-
-## Gmail Account Configuration
-
-### btak.dev@gmail.com (gmail-api provider)
-
-Uses Gmail API for both sync and send. No SMTP password needed.
-
-```toml
-[accounts."btak.dev"]
-provider = "gmail-api"
-user = "btak.dev@gmail.com"
-labels = ["INBOX"]
-sync_days = 30
-```
-
-- **Sync:** `gmail.readonly` scope (token key: `gmail:btak.dev`)
-- **Send/Draft:** `gmail.compose` scope (token key: `gmail:btak.dev:send`)
-- First use opens browser for OAuth consent; tokens auto-refresh after that
-
-### SMTP Accounts (personal, proton-dev)
-
-```toml
-[accounts.personal]
-provider = "gmail"
-user = "brian.takita@gmail.com"
-password_cmd = "pass email/gmail"
-```
-
-Requires password for both IMAP draft push and SMTP send.
+See `runbooks/browser-paste.md` for the full workflow.
 
 ## Conventions
 
@@ -105,3 +62,5 @@ When executing these operations, read and follow the linked runbook:
 - `review inbox` — [runbooks/review-inbox.md](runbooks/review-inbox.md)
 - `draft reply` — [runbooks/draft-reply.md](runbooks/draft-reply.md)
 - `enrich contact` — [runbooks/enrich-contact.md](runbooks/enrich-contact.md)
+- `gmail config` — [runbooks/gmail-config.md](runbooks/gmail-config.md)
+- `browser paste` — [runbooks/browser-paste.md](runbooks/browser-paste.md)
