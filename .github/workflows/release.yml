@@ -55,7 +55,7 @@ jobs:
         if: matrix.cuda
         uses: Jimver/cuda-toolkit@v0.2.18
         with:
-          cuda: '12.6.3'
+          cuda: '12.6.2'
           method: network
           sub-packages: '["nvcc", "cudart"]'
 

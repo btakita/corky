@@ -60,7 +60,12 @@ const EXTRA_FILES: &[BundledFile] = &[
 ];
 
 fn config() -> SkillConfig {
-    SkillConfig::new("corky", BUNDLED_SKILL, VERSION)
+    SkillConfig::with_environment(
+        "corky",
+        BUNDLED_SKILL,
+        VERSION,
+        agent_kit::detect::Environment::ClaudeCode,
+    )
 }
 
 /// Install a single bundled file, creating directories as needed.
