@@ -17,6 +17,8 @@ corky transcribe <FILE> --diarize --speakers "Brian,Robert"
 - Adaptive chunking is on by default (cascade: full → 10min → 2min → 30s)
 - Unknown speaker resolution via LLM is on by default
 - Opt out: `--no-adaptive-chunk`, `--no-resolve-unknown`
+- Confidence-based re-transcription is on by default (re-runs whisper on low-confidence blocks with smaller windows)
+- Opt out: `--no-confidence-retranscribe`
 
 ## Configuration (.corky.toml)
 ```toml
@@ -25,4 +27,5 @@ model = "large-v3-turbo"
 language = "en"
 adaptive_chunk = true
 resolve_unknown = true
+confidence_threshold = 0.4
 ```

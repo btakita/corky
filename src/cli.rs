@@ -238,6 +238,10 @@ pub enum Commands {
         /// Disable LLM-based speaker attribution for Unknown segments
         #[arg(long)]
         no_resolve_unknown: bool,
+
+        /// Disable confidence-based re-transcription of low-quality segments
+        #[arg(long)]
+        no_confidence_retranscribe: bool,
     },
 
     /// Search across configured backends

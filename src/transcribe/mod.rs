@@ -27,6 +27,7 @@ pub fn run(
     _diarize: bool,
     _no_adaptive_chunk: bool,
     _no_resolve_unknown: bool,
+    _no_confidence_retranscribe: bool,
 ) -> anyhow::Result<()> {
     anyhow::bail!(
         "Transcription support not compiled.\n\

@@ -302,8 +302,8 @@ fn main() -> Result<()> {
                 corky::doc::sheets::read(&sheet, range.as_deref(), &format, output.as_deref(), account.as_deref())
             }
         },
-        Commands::Transcribe { file, model, language, output, speakers, diarize, no_adaptive_chunk, no_resolve_unknown } => {
-            corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize, no_adaptive_chunk, no_resolve_unknown)
+        Commands::Transcribe { file, model, language, output, speakers, diarize, no_adaptive_chunk, no_resolve_unknown, no_confidence_retranscribe } => {
+            corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize, no_adaptive_chunk, no_resolve_unknown, no_confidence_retranscribe)
         }
         Commands::Search { query, backend, all } => {
             corky::search::run(&query, backend.as_deref(), all)

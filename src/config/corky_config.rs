@@ -155,6 +155,14 @@ pub struct TranscriptionConfig {
     /// LLM-based speaker attribution for Unknown segments (default: true)
     #[serde(default = "default_true")]
     pub resolve_unknown: bool,
+    /// Confidence threshold for re-transcription (0.0-1.0, default: 0.4).
+    /// Segments with avg confidence below this are re-transcribed with smaller windows.
+    #[serde(default = "default_confidence_threshold")]
+    pub confidence_threshold: f32,
+}
+
+fn default_confidence_threshold() -> f32 {
+    0.4
 }
 
 fn default_true() -> bool {

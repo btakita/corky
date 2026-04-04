@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.26.0
+
+- **Confidence-based re-transcription**: Automatically re-transcribes low-confidence blocks with smaller audio windows for improved accuracy. Configurable via `[transcription] confidence_threshold = 0.4` in `.corky.toml`. Opt out with `--no-confidence-retranscribe`.
+
 ## 0.25.1
 
 - **Skill runbook extraction**: Extract on-demand runbooks from SKILL.md files to reduce always-loaded context (21% reduction). 4 new runbooks: gmail-config, browser-paste, imports, transcription. Email SKILL.md trimmed from 107 to 66 lines, corky SKILL.md from 71 to 61 lines.

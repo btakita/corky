@@ -831,7 +831,7 @@ Flow:
 ```
 corky transcribe FILE [--model NAME] [--language CODE]
                       [--output FILE] [--speakers NAME,...]
-                      [--diarize]
+                      [--diarize] [--no-confidence-retranscribe]
 ```
 
 Transcribe an audio file to timestamped text using whisper-rs. Included by default (CPU). Use `transcribe-cuda` for GPU acceleration.
@@ -881,6 +881,15 @@ Who is Speaker 2? (name or enter to skip): Brian Takita
 ```
 
 When `--speakers` is provided with `--diarize`, names are mapped to speaker IDs in order of first appearance (no interactive prompt).
+
+**Confidence-based re-transcription:**
+
+After the initial transcription pass, segments with average confidence below the threshold are re-transcribed using a smaller audio window centered on the low-confidence block. This improves accuracy for noisy or overlapping speech sections.
+
+- Threshold: configurable via `[transcription] confidence_threshold` in `.corky.toml` (default: `0.4`)
+- Opt out: `--no-confidence-retranscribe` flag
+- Window: extracts a tighter audio slice around the low-confidence segment and re-runs whisper on just that portion
+- Result: replaces the original low-confidence segments only if the re-transcription produces higher confidence
 
 **ONNX models:** Auto-downloaded from pyannote-rs GitHub releases to `~/.cache/corky/models/`. No gated HuggingFace access required.
 

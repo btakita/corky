@@ -22,6 +22,7 @@ pub fn run(
     diarize: bool,
     no_adaptive_chunk: bool,
     no_resolve_unknown: bool,
+    no_confidence_retranscribe: bool,
 ) -> Result<()> {
     if !file.exists() {
         bail!("Audio file not found: {}", file.display());
@@ -98,11 +99,13 @@ pub fn run(
         duration_secs / elapsed.as_secs_f64()
     );
 
-    // Resolve config-level defaults for adaptive_chunk and resolve_unknown
+    // Resolve config-level defaults for adaptive_chunk, resolve_unknown, confidence_retranscribe
     let adaptive_chunk = !no_adaptive_chunk
         && tc.map(|t| t.adaptive_chunk).unwrap_or(true);
     let resolve_unknown = !no_resolve_unknown
         && tc.map(|t| t.resolve_unknown).unwrap_or(true);
+    let confidence_retranscribe = !no_confidence_retranscribe;
+    let confidence_threshold = tc.map(|t| t.confidence_threshold).unwrap_or(0.4);
 
     // resolve_unknown implies diarize
     let diarize = diarize || resolve_unknown;
@@ -112,8 +115,9 @@ pub fn run(
         #[cfg(feature = "diarize")]
         {
             format_diarized(
-                &state, n_segments, &samples, speakers, duration_secs, cache_dir,
-                adaptive_chunk, resolve_unknown,
+                &ctx, &state, n_segments, &samples, speakers, duration_secs, cache_dir,
+                adaptive_chunk, resolve_unknown, confidence_retranscribe,
+                confidence_threshold, language,
             )?
         }
         #[cfg(not(feature = "diarize"))]
@@ -243,12 +247,24 @@ fn format_speakers(
     Ok(text)
 }
 
-/// Collect whisper segments as structured data (centisecond timestamps + text).
+/// A whisper segment with timestamps, text, and confidence score.
+#[cfg(feature = "diarize")]
+#[derive(Debug, Clone)]
+struct WhisperSeg {
+    t0: i64,
+    t1: i64,
+    text: String,
+    confidence: f32,
+}
+
+/// Collect whisper segments as structured data (centisecond timestamps + text + confidence).
+///
+/// Confidence is the average token probability for the segment (0.0-1.0).
 #[cfg(feature = "diarize")]
 fn collect_whisper_segments(
     state: &whisper_rs::WhisperState,
     n_segments: i32,
-) -> Result<Vec<(i64, i64, String)>> {
+) -> Result<Vec<WhisperSeg>> {
     let mut result = Vec::new();
     for i in 0..n_segments {
         let segment = state
@@ -260,7 +276,22 @@ fn collect_whisper_segments(
             .to_str()
             .map_err(|e| anyhow::anyhow!("Failed to get segment text: {:?}", e))?
             .to_string();
-        result.push((t0, t1, text));
+
+        // Compute avg token probability as confidence
+        let n_tokens = segment.n_tokens();
+        let confidence = if n_tokens > 0 {
+            let mut sum = 0.0f32;
+            for j in 0..n_tokens {
+                if let Some(token) = segment.get_token(j) {
+                    sum += token.token_probability();
+                }
+            }
+            sum / n_tokens as f32
+        } else {
+            0.0
+        };
+
+        result.push(WhisperSeg { t0, t1, text, confidence });
     }
     // Remove whisper repetition hallucinations
     result = filter_repetitions(result);
@@ -273,16 +304,17 @@ fn collect_whisper_segments(
 /// 1. Exact n-gram repeats: "call her tomorrow. call her tomorrow. call her tomorrow."
 /// 2. Escalating repeats: "call her tomorrow tomorrow tomorrow tomorrow..."
 #[cfg(feature = "diarize")]
-fn filter_repetitions(segments: Vec<(i64, i64, String)>) -> Vec<(i64, i64, String)> {
+fn filter_repetitions(segments: Vec<WhisperSeg>) -> Vec<WhisperSeg> {
     let mut cleaned_count = 0;
     let result: Vec<_> = segments
         .into_iter()
-        .map(|(t0, t1, text)| {
-            let cleaned = collapse_repeated_phrases(&text);
-            if cleaned.len() < text.len() {
+        .map(|mut seg| {
+            let cleaned = collapse_repeated_phrases(&seg.text);
+            if cleaned.len() < seg.text.len() {
                 cleaned_count += 1;
             }
-            (t0, t1, cleaned)
+            seg.text = cleaned;
+            seg
         })
         .collect();
     if cleaned_count > 0 {
@@ -390,6 +422,7 @@ const CHUNK_CASCADE: &[f64] = &[600.0, 120.0, 30.0];
 #[cfg(feature = "diarize")]
 #[allow(clippy::too_many_arguments)]
 fn format_diarized(
+    ctx: &WhisperContext,
     state: &whisper_rs::WhisperState,
     n_segments: i32,
     samples: &[f32],
@@ -398,6 +431,9 @@ fn format_diarized(
     cache_dir: Option<&str>,
     adaptive_chunk: bool,
     resolve_unknown: bool,
+    confidence_retranscribe: bool,
+    confidence_threshold: f32,
+    language: Option<&str>,
 ) -> Result<String> {
     use super::diarize;
 
@@ -413,8 +449,27 @@ fn format_diarized(
         diarize::diarize(samples, 16000, max_speakers, cache_dir)?
     };
 
+    // Convert WhisperSeg to the tuple format expected by merge_speakers
+    let whisper_tuples: Vec<(i64, i64, String)> = whisper_segs
+        .iter()
+        .map(|s| (s.t0, s.t1, s.text.clone()))
+        .collect();
+
     // Merge whisper text with diarization speaker labels
-    let mut merged = diarize::merge_speakers(&whisper_segs, &diarized, 16000);
+    let mut merged = diarize::merge_speakers(&whisper_tuples, &diarized, 16000);
+
+    // Inject whisper-level confidence into merged segments
+    // (merge_speakers sets confidence from diarization overlap; override with whisper token prob)
+    for (ms, ws) in merged.iter_mut().zip(whisper_segs.iter()) {
+        ms.confidence = ws.confidence;
+    }
+
+    // Confidence-based re-transcription pass
+    if confidence_retranscribe {
+        retranscribe_low_confidence(
+            &mut merged, ctx, samples, confidence_threshold, language,
+        )?;
+    }
 
     // Determine speaker names
     let speaker_labels = if speakers.is_empty() {
@@ -449,6 +504,258 @@ fn format_diarized(
 
     // Build output
     format_merged_output(&merged, &speaker_labels, duration_secs)
+}
+
+/// A contiguous block of low-confidence segments identified for re-transcription.
+#[cfg(feature = "diarize")]
+#[derive(Debug, Clone)]
+struct LowConfidenceBlock {
+    /// Index of the first segment in the block.
+    start_idx: usize,
+    /// Index one past the last segment in the block.
+    end_idx: usize,
+    /// Average confidence of segments in this block.
+    avg_confidence: f32,
+}
+
+/// Scan merged segments and find contiguous blocks where average confidence is below threshold.
+///
+/// Adjacent low-confidence segments are grouped together. Isolated high-confidence segments
+/// between two low-confidence regions don't break the block (gap tolerance of 1).
+#[cfg(feature = "diarize")]
+fn find_low_confidence_blocks(
+    merged: &[super::diarize::MergedSegment],
+    threshold: f32,
+) -> Vec<LowConfidenceBlock> {
+    if merged.is_empty() {
+        return Vec::new();
+    }
+
+    let mut blocks = Vec::new();
+    let mut block_start: Option<usize> = None;
+
+    for (i, seg) in merged.iter().enumerate() {
+        let is_low = seg.confidence < threshold;
+        if is_low {
+            if block_start.is_none() {
+                block_start = Some(i);
+            }
+        } else if let Some(start) = block_start {
+            // Allow a gap of 1 high-confidence segment between low-confidence regions
+            let next_is_low = merged.get(i + 1).map(|s| s.confidence < threshold).unwrap_or(false);
+            if !next_is_low {
+                // End the block
+                let end = i;
+                let count = end - start;
+                if count > 0 {
+                    let avg = merged[start..end]
+                        .iter()
+                        .map(|s| s.confidence as f64)
+                        .sum::<f64>() / count as f64;
+                    blocks.push(LowConfidenceBlock {
+                        start_idx: start,
+                        end_idx: end,
+                        avg_confidence: avg as f32,
+                    });
+                }
+                block_start = None;
+            }
+        }
+    }
+
+    // Close any trailing block
+    if let Some(start) = block_start {
+        let end = merged.len();
+        let count = end - start;
+        if count > 0 {
+            let avg = merged[start..end]
+                .iter()
+                .map(|s| s.confidence as f64)
+                .sum::<f64>() / count as f64;
+            blocks.push(LowConfidenceBlock {
+                start_idx: start,
+                end_idx: end,
+                avg_confidence: avg as f32,
+            });
+        }
+    }
+
+    blocks
+}
+
+/// Re-transcribe low-confidence blocks with smaller audio windows.
+///
+/// For each block, extracts the audio for that time range (with 2s padding),
+/// runs whisper on the chunk, and replaces the original segments if the new
+/// transcription has higher average confidence.
+#[cfg(feature = "diarize")]
+fn retranscribe_low_confidence(
+    merged: &mut Vec<super::diarize::MergedSegment>,
+    ctx: &WhisperContext,
+    samples: &[f32],
+    threshold: f32,
+    language: Option<&str>,
+) -> Result<()> {
+    let blocks = find_low_confidence_blocks(merged, threshold);
+    if blocks.is_empty() {
+        return Ok(());
+    }
+
+    eprintln!(
+        "Found {} low-confidence block(s) below threshold {:.2}",
+        blocks.len(),
+        threshold
+    );
+
+    let sample_rate = 16000_u32;
+    let total_samples = samples.len();
+    let mut replaced_count = 0;
+    let mut total_improvement = 0.0f64;
+
+    // Process blocks in reverse order so index shifts don't affect earlier blocks
+    for block in blocks.iter().rev() {
+        // Get time range from merged segments (centisecond timestamps)
+        let block_t0_cs = merged[block.start_idx].t0;
+        let block_t1_cs = merged[block.end_idx - 1].t1;
+
+        // Convert to sample indices with 2s padding
+        let padding_samples = 2 * sample_rate as usize;
+        let start_sample = ((block_t0_cs as f64 * 0.01 * sample_rate as f64) as usize)
+            .saturating_sub(padding_samples);
+        let end_sample = ((block_t1_cs as f64 * 0.01 * sample_rate as f64) as usize + padding_samples)
+            .min(total_samples);
+
+        if end_sample <= start_sample {
+            continue;
+        }
+
+        let chunk = &samples[start_sample..end_sample];
+        let chunk_offset_cs = (start_sample as f64 / sample_rate as f64 * 100.0) as i64;
+
+        eprintln!(
+            "  Re-transcribing block [{} -> {}] ({} segments, avg conf {:.2})",
+            format_timestamp(block_t0_cs),
+            format_timestamp(block_t1_cs),
+            block.end_idx - block.start_idx,
+            block.avg_confidence
+        );
+
+        // Create a new whisper state and transcribe the chunk
+        let mut state = ctx
+            .create_state()
+            .map_err(|e| anyhow::anyhow!("Failed to create whisper state for retranscription: {:?}", e))?;
+
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        if let Some(lang) = language {
+            params.set_language(Some(lang));
+        }
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_timestamps(false);
+        params.set_no_speech_thold(0.8);
+
+        state
+            .full(params, chunk)
+            .map_err(|e| anyhow::anyhow!("Re-transcription failed: {:?}", e))?;
+
+        let n_new = state.full_n_segments();
+        if n_new == 0 {
+            continue;
+        }
+
+        // Collect new segments with confidence
+        let mut new_segs = Vec::new();
+        for i in 0..n_new {
+            let seg = state
+                .get_segment(i)
+                .ok_or_else(|| anyhow::anyhow!("Failed to get re-transcribed segment {}", i))?;
+
+            let n_tokens = seg.n_tokens();
+            let confidence = if n_tokens > 0 {
+                let mut sum = 0.0f32;
+                for j in 0..n_tokens {
+                    if let Some(token) = seg.get_token(j) {
+                        sum += token.token_probability();
+                    }
+                }
+                sum / n_tokens as f32
+            } else {
+                0.0
+            };
+
+            let text = seg
+                .to_str()
+                .map_err(|e| anyhow::anyhow!("Failed to get segment text: {:?}", e))?
+                .to_string();
+
+            // Adjust timestamps: chunk-relative -> absolute (add chunk offset)
+            let t0 = seg.start_timestamp() + chunk_offset_cs;
+            let t1 = seg.end_timestamp() + chunk_offset_cs;
+
+            new_segs.push((t0, t1, text, confidence));
+        }
+
+        // Calculate new average confidence
+        let new_avg_conf = if new_segs.is_empty() {
+            0.0
+        } else {
+            new_segs.iter().map(|s| s.3 as f64).sum::<f64>() / new_segs.len() as f64
+        };
+
+        // Only replace if the new transcription is better
+        if new_avg_conf as f32 > block.avg_confidence {
+            let improvement = new_avg_conf - block.avg_confidence as f64;
+            total_improvement += improvement;
+            replaced_count += 1;
+
+            // Build replacement MergedSegments, preserving original speaker labels
+            let mut replacements: Vec<super::diarize::MergedSegment> = Vec::new();
+            for (t0, t1, text, confidence) in &new_segs {
+                // Find the best matching original speaker for this time range
+                let mid_cs = (t0 + t1) / 2;
+                let speaker_id = merged[block.start_idx..block.end_idx]
+                    .iter()
+                    .min_by_key(|s| {
+                        let s_mid = (s.t0 + s.t1) / 2;
+                        (s_mid - mid_cs).unsigned_abs()
+                    })
+                    .map(|s| s.speaker_id)
+                    .unwrap_or(0);
+
+                replacements.push(super::diarize::MergedSegment {
+                    t0: *t0,
+                    t1: *t1,
+                    text: text.clone(),
+                    speaker_id,
+                    confidence: *confidence,
+                });
+            }
+
+            // Replace the block in merged
+            merged.splice(block.start_idx..block.end_idx, replacements);
+
+            eprintln!(
+                "    Replaced: confidence {:.2} -> {:.2} (+{:.2})",
+                block.avg_confidence, new_avg_conf, improvement
+            );
+        } else {
+            eprintln!(
+                "    Kept original: new confidence {:.2} <= original {:.2}",
+                new_avg_conf, block.avg_confidence
+            );
+        }
+    }
+
+    if replaced_count > 0 {
+        eprintln!(
+            "Re-transcription: replaced {}/{} block(s), avg improvement +{:.2}",
+            replaced_count,
+            blocks.len(),
+            if replaced_count > 0 { total_improvement / replaced_count as f64 } else { 0.0 }
+        );
+    }
+
+    Ok(())
 }
 
 /// Run adaptive diarization: try full audio first, cascade to smaller chunks if quality is poor.
@@ -624,5 +931,90 @@ mod tests {
         assert_eq!(format_timestamp(6000), "00:01:00.000");
         assert_eq!(format_timestamp(360000), "01:00:00.000");
         assert_eq!(format_timestamp(365432), "01:00:54.320");
+    }
+
+    #[cfg(feature = "diarize")]
+    mod confidence_tests {
+        use super::super::*;
+        use crate::transcribe::diarize::MergedSegment;
+
+        fn seg(t0: i64, t1: i64, confidence: f32) -> MergedSegment {
+            MergedSegment {
+                t0,
+                t1,
+                text: "test".to_string(),
+                speaker_id: 1,
+                confidence,
+            }
+        }
+
+        #[test]
+        fn no_blocks_when_all_high_confidence() {
+            let segs = vec![seg(0, 100, 0.9), seg(100, 200, 0.8), seg(200, 300, 0.7)];
+            let blocks = find_low_confidence_blocks(&segs, 0.4);
+            assert!(blocks.is_empty());
+        }
+
+        #[test]
+        fn single_low_confidence_block() {
+            let segs = vec![
+                seg(0, 100, 0.9),
+                seg(100, 200, 0.2),
+                seg(200, 300, 0.3),
+                seg(300, 400, 0.85),
+            ];
+            let blocks = find_low_confidence_blocks(&segs, 0.4);
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].start_idx, 1);
+            assert_eq!(blocks[0].end_idx, 3);
+            assert!((blocks[0].avg_confidence - 0.25).abs() < 0.01);
+        }
+
+        #[test]
+        fn multiple_low_confidence_blocks() {
+            let segs = vec![
+                seg(0, 100, 0.1),   // low
+                seg(100, 200, 0.2), // low
+                seg(200, 300, 0.9), // high
+                seg(300, 400, 0.95),// high
+                seg(400, 500, 0.1), // low
+            ];
+            let blocks = find_low_confidence_blocks(&segs, 0.4);
+            assert_eq!(blocks.len(), 2);
+            assert_eq!(blocks[0].start_idx, 0);
+            assert_eq!(blocks[0].end_idx, 2);
+            assert_eq!(blocks[1].start_idx, 4);
+            assert_eq!(blocks[1].end_idx, 5);
+        }
+
+        #[test]
+        fn empty_segments_no_blocks() {
+            let blocks = find_low_confidence_blocks(&[], 0.4);
+            assert!(blocks.is_empty());
+        }
+
+        #[test]
+        fn all_low_confidence_single_block() {
+            let segs = vec![seg(0, 100, 0.1), seg(100, 200, 0.2), seg(200, 300, 0.15)];
+            let blocks = find_low_confidence_blocks(&segs, 0.4);
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].start_idx, 0);
+            assert_eq!(blocks[0].end_idx, 3);
+        }
+
+        #[test]
+        fn gap_tolerance_bridges_single_high_segment() {
+            // A single high-confidence segment between two low ones should be bridged
+            let segs = vec![
+                seg(0, 100, 0.1),   // low
+                seg(100, 200, 0.5), // high (but sandwiched)
+                seg(200, 300, 0.2), // low
+            ];
+            let blocks = find_low_confidence_blocks(&segs, 0.4);
+            // The gap tolerance allows bridging when the next segment after the high one is low
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].start_idx, 0);
+            assert_eq!(blocks[0].end_idx, 3);
+        }
     }
 }
