@@ -26,4 +26,5 @@ book/
 .kilocode/
 skills-lock.json
 *.iml
+.claude/
 .agent-doc/
