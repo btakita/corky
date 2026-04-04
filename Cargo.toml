@@ -39,8 +39,8 @@ tiny_http = "0.12"
 open = "5"
 serde_yaml = "0.9"
 mime_guess = "2"
-agent-kit = { path = "../agent-kit", version = "0.3" }
-instruction-files = { path = "../instruction-files", version = "0.1" }
+agent-kit = "0.3"
+instruction-files = "0.1"
 whisper-rs = { version = "0.16", optional = true }
 symphonia = { version = "0.5", optional = true, features = ["mp3", "isomp4", "aac", "alac", "pcm", "wav", "flac", "ogg", "vorbis"] }
 rubato = { version = "0.16", optional = true }

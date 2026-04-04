@@ -8,6 +8,7 @@ plan.md
 research.md
 mail
 .idea/
+.cargo/
 tmp/
 
 # Rust

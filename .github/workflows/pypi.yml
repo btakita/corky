@@ -29,11 +29,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clone path dependencies
-        run: |
-          git clone --depth 1 https://github.com/btakita/instruction-files.git ../instruction-files
-          git clone --depth 1 https://github.com/btakita/agent-kit.git ../agent-kit
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -46,8 +41,6 @@ jobs:
           manylinux: auto
           before-script-linux: |
             yum install -y perl-core || apk add --no-cache perl || true
-            git clone --depth 1 https://github.com/btakita/instruction-files.git ../instruction-files
-            git clone --depth 1 https://github.com/btakita/agent-kit.git ../agent-kit
 
       - uses: actions/upload-artifact@v4
         with:
@@ -58,11 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Clone path dependencies
-        run: |
-          git clone --depth 1 https://github.com/btakita/instruction-files.git ../instruction-files
-          git clone --depth 1 https://github.com/btakita/agent-kit.git ../agent-kit
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
