@@ -24,7 +24,6 @@ book/
 .agents/
 .junie/
 .kilocode/
-skills/
 skills-lock.json
 *.iml
 .agent-doc/
