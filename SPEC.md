@@ -378,7 +378,7 @@ corky init --user EMAIL [PATH] [--provider PROVIDER]
 - Generates `.corky.toml` at `{path}/mail/`
 - Installs `voice.md` at `{path}/mail/` if not present
 - If inside a git repo: adds `mail` to `.gitignore`
-- Installs the email skill to `.claude/skills/email/`
+- Installs agent skills to `.claude/skills/{corky,email,linkedin}/`
 - Registers the project dir as a named mailbox in app config
 - `--force`: overwrite existing config; without it, exit 1 if `.corky.toml` exists
 - `--sync`: set `CORKY_DATA` env, run sync
@@ -386,16 +386,18 @@ corky init --user EMAIL [PATH] [--provider PROVIDER]
 - `--labels`: default `correspondence` (comma-separated)
 - `--mailbox-name`: mailbox name to register (default: `"default"`)
 
-### 5.1.1 install-skill
+### 5.1.1 skill install
 
 ```
-corky install-skill NAME
+corky skill install
 ```
 
-- Install an agent skill into the current directory
-- Currently supported: `email` (installs `.claude/skills/email/SKILL.md` and `README.md`)
+- Installs 3 agent skills into `.claude/skills/` in the current directory:
+  - `corky/SKILL.md` — general corky commands
+  - `email/SKILL.md` + 4 runbooks (`draft-reply`, `email-send`, `enrich-contact`, `review-inbox`)
+  - `linkedin/SKILL.md` + 1 runbook (`linkedin-post`)
 - Skips files that already exist (never overwrites)
-- Works from any directory (mailbox repos ship the skill automatically via `mb add`/`mb reset`)
+- Works from any directory (mailbox repos ship the skills automatically via `mb add`/`mb reset`)
 
 ### 5.2 sync
 
@@ -1078,7 +1080,7 @@ No sync state is modified — `last_history_id` is untouched.
 
 Without `--github` (plain directory):
 1. Create `mailboxes/{name}/` with conversations/drafts/contacts subdirectories
-2. Write template files (AGENTS.md, CLAUDE.md symlink, README.md, voice.md, .gitignore, `.claude/skills/email/`)
+2. Write template files (AGENTS.md, CLAUDE.md symlink, README.md, voice.md, .gitignore, `.claude/skills/{corky,email,linkedin}/`)
 3. Update `.corky.toml`
 
 With `--github` (submodule):
@@ -1125,7 +1127,7 @@ Then:
 ### 7.6 Reset
 
 1. `git pull --rebase` (submodules with remote only)
-2. Regenerate: AGENTS.md, CLAUDE.md (symlink), README.md, .gitignore, voice.md, `.claude/skills/email/` at `mailboxes/{name}/`
+2. Regenerate: AGENTS.md, CLAUDE.md (symlink), README.md, .gitignore, voice.md, `.claude/skills/{corky,email,linkedin}/` at `mailboxes/{name}/`
 3. Stage, commit, push (submodules only)
 4. Update submodule ref in parent (submodules only)
 

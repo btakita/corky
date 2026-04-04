@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.25.0
+
+- **Multi-skill install**: `corky skill install` now writes 3 skills (corky, email, linkedin) plus runbooks. Each skill gets its own `SKILL.md` under `.claude/skills/{name}/`. Email skill includes 4 runbooks (`draft-reply`, `email-send`, `enrich-contact`, `review-inbox`). LinkedIn skill includes 1 runbook (`linkedin-post`). Corky `SKILL.md` trimmed to general corky commands only.
+
 ## 0.24.0
 
 - **Gmail API threading fix (Bug 1)**: Extract `Message-ID` header during Gmail sync and store as `**Message-ID**` metadata in conversation markdown files. Previously `in_reply_to` in draft YAML accepted Gmail thread IDs instead of RFC 2822 Message-IDs, breaking the `In-Reply-To` email header.

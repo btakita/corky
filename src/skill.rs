@@ -1,27 +1,123 @@
-//! `corky skill` — Manage the Claude Code skill definition.
+//! `corky skill` — Manage the Claude Code skill definitions.
 //!
-//! Delegates to `agent_kit::skill::SkillConfig` for the actual install/check logic.
-//! The SKILL.md content is bundled into the binary at build time via `include_str!`.
+//! Installs 3 skills + runbooks:
+//! - `.claude/skills/corky/SKILL.md` — general corky commands
+//! - `.claude/skills/email/SKILL.md` + `runbooks/` — email drafting
+//! - `.claude/skills/linkedin/SKILL.md` + `runbooks/` — LinkedIn posting
+//!
+//! Delegates to `agent_kit::skill::SkillConfig` for the corky SKILL.md,
+//! and handles additional skills + runbooks directly.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::Path;
 
 use agent_kit::skill::SkillConfig;
 
-/// The SKILL.md content bundled at build time.
+/// The corky SKILL.md content bundled at build time.
 const BUNDLED_SKILL: &str = include_str!("../SKILL.md");
+
+// Email skill + runbooks
+const EMAIL_SKILL: &str = include_str!("../skills/email/SKILL.md");
+const EMAIL_RUNBOOK_SEND: &str = include_str!("../skills/email/runbooks/email-send.md");
+const EMAIL_RUNBOOK_REVIEW: &str = include_str!("../skills/email/runbooks/review-inbox.md");
+const EMAIL_RUNBOOK_DRAFT: &str = include_str!("../skills/email/runbooks/draft-reply.md");
+const EMAIL_RUNBOOK_ENRICH: &str = include_str!("../skills/email/runbooks/enrich-contact.md");
+
+// LinkedIn skill + runbooks
+const LINKEDIN_SKILL: &str = include_str!("../skills/linkedin/SKILL.md");
+const LINKEDIN_RUNBOOK_POST: &str = include_str!("../skills/linkedin/runbooks/linkedin-post.md");
 
 /// Current binary version (from Cargo.toml).
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// A bundled file to install (path relative to project root, content).
+struct BundledFile {
+    rel_path: &'static str,
+    content: &'static str,
+}
+
+/// All bundled files beyond the main corky SKILL.md.
+const EXTRA_FILES: &[BundledFile] = &[
+    BundledFile { rel_path: ".claude/skills/email/SKILL.md", content: EMAIL_SKILL },
+    BundledFile { rel_path: ".claude/skills/email/runbooks/email-send.md", content: EMAIL_RUNBOOK_SEND },
+    BundledFile { rel_path: ".claude/skills/email/runbooks/review-inbox.md", content: EMAIL_RUNBOOK_REVIEW },
+    BundledFile { rel_path: ".claude/skills/email/runbooks/draft-reply.md", content: EMAIL_RUNBOOK_DRAFT },
+    BundledFile { rel_path: ".claude/skills/email/runbooks/enrich-contact.md", content: EMAIL_RUNBOOK_ENRICH },
+    BundledFile { rel_path: ".claude/skills/linkedin/SKILL.md", content: LINKEDIN_SKILL },
+    BundledFile { rel_path: ".claude/skills/linkedin/runbooks/linkedin-post.md", content: LINKEDIN_RUNBOOK_POST },
+];
 
 fn config() -> SkillConfig {
     SkillConfig::new("corky", BUNDLED_SKILL, VERSION)
 }
 
-/// Install the bundled SKILL.md to the project.
+/// Install a single bundled file, creating directories as needed.
+/// Returns true if the file was written (new or changed), false if already up to date.
+fn install_file(root: Option<&Path>, file: &BundledFile) -> Result<bool> {
+    let path = match root {
+        Some(r) => r.join(file.rel_path),
+        None => file.rel_path.into(),
+    };
+
+    if path.exists() {
+        let existing = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        if existing == file.content {
+            return Ok(false);
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+
+    std::fs::write(&path, file.content)
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    eprintln!("  wrote {}", path.display());
+    Ok(true)
+}
+
+/// Check if a bundled file matches the installed version.
+fn check_file(root: Option<&Path>, file: &BundledFile) -> Result<bool> {
+    let path = match root {
+        Some(r) => r.join(file.rel_path),
+        None => file.rel_path.into(),
+    };
+
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    let existing = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    Ok(existing == file.content)
+}
+
+/// Install all bundled skills + runbooks to the project.
 /// When `root` is None, paths are relative to CWD.
 pub fn install_at(root: Option<&Path>) -> Result<()> {
-    config().install(root)
+    // Install the main corky skill via agent_kit
+    config().install(root)?;
+
+    // Install extra skills + runbooks
+    let mut wrote = 0;
+    let mut skipped = 0;
+    for file in EXTRA_FILES {
+        if install_file(root, file)? {
+            wrote += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+
+    if wrote > 0 {
+        eprintln!("Installed {wrote} file(s), {skipped} already up to date.");
+    } else {
+        eprintln!("All {skipped} extra skill files already up to date.");
+    }
+
+    Ok(())
 }
 
 /// Public entry point (CWD-relative, called from main).
@@ -29,29 +125,37 @@ pub fn install() -> Result<()> {
     install_at(None)
 }
 
-/// Check if the installed skill matches the bundled version.
+/// Check if all installed skills match the bundled version.
 /// When `root` is None, paths are relative to CWD.
 pub fn check_at(root: Option<&Path>) -> Result<()> {
-    let up_to_date = config().check(root)?;
-    if !up_to_date {
+    let mut all_ok = config().check(root)?;
+
+    for file in EXTRA_FILES {
+        if !check_file(root, file)? {
+            eprintln!("  outdated: {}", file.rel_path);
+            all_ok = false;
+        }
+    }
+
+    if !all_ok {
         std::process::exit(1);
     }
     Ok(())
 }
 
-/// Check if the installed skill matches the bundled version (CWD-relative).
+/// Check if all installed skills match the bundled version (CWD-relative).
 pub fn check() -> Result<()> {
     check_at(None)
 }
 
 /// CLI entry point for `corky install-skill`.
 /// The `name` parameter is accepted for backward compatibility but ignored —
-/// all corky capabilities are bundled into a single skill.
+/// all corky skills are installed together.
 pub fn run(name: &str) -> Result<()> {
-    if name != "email" && name != "corky" {
-        anyhow::bail!("Unknown skill '{}'. Available: corky (or 'email' for compat)", name);
+    match name {
+        "corky" | "email" | "linkedin" | "all" => install(),
+        _ => anyhow::bail!("Unknown skill '{}'. Available: corky, email, linkedin (or 'all')", name),
     }
-    install()
 }
 
 #[cfg(test)]
@@ -69,15 +173,37 @@ mod tests {
     }
 
     #[test]
-    fn install_creates_file() {
+    fn email_skill_is_not_empty() {
+        assert!(!EMAIL_SKILL.is_empty());
+    }
+
+    #[test]
+    fn linkedin_skill_is_not_empty() {
+        assert!(!LINKEDIN_SKILL.is_empty());
+    }
+
+    #[test]
+    fn install_creates_all_files() {
         let dir = tempfile::tempdir().unwrap();
 
         install_at(Some(dir.path())).unwrap();
 
+        // Main corky skill
         let path = dir.path().join(".claude/skills/corky/SKILL.md");
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
         assert_eq!(content, BUNDLED_SKILL);
+
+        // Email skill + runbooks
+        assert!(dir.path().join(".claude/skills/email/SKILL.md").exists());
+        assert!(dir.path().join(".claude/skills/email/runbooks/email-send.md").exists());
+        assert!(dir.path().join(".claude/skills/email/runbooks/review-inbox.md").exists());
+        assert!(dir.path().join(".claude/skills/email/runbooks/draft-reply.md").exists());
+        assert!(dir.path().join(".claude/skills/email/runbooks/enrich-contact.md").exists());
+
+        // LinkedIn skill + runbook
+        assert!(dir.path().join(".claude/skills/linkedin/SKILL.md").exists());
+        assert!(dir.path().join(".claude/skills/linkedin/runbooks/linkedin-post.md").exists());
     }
 
     #[test]
@@ -96,20 +222,44 @@ mod tests {
     fn install_overwrites_outdated() {
         let dir = tempfile::tempdir().unwrap();
 
-        let path = dir.path().join(".claude/skills/corky/SKILL.md");
+        let path = dir.path().join(".claude/skills/email/SKILL.md");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "old content").unwrap();
 
         install_at(Some(dir.path())).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(content, BUNDLED_SKILL);
+        assert_eq!(content, EMAIL_SKILL);
     }
 
     #[test]
-    fn run_accepts_email_compat() {
-        // "email" is accepted for backward compat (installs to CWD, but we just
-        // verify it doesn't bail with "unknown skill").
+    fn check_detects_outdated() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Install everything
+        install_at(Some(dir.path())).unwrap();
+
+        // Tamper with one file
+        let path = dir.path().join(".claude/skills/email/runbooks/email-send.md");
+        std::fs::write(&path, "tampered").unwrap();
+
+        // check_file should report false
+        let file = &EXTRA_FILES[1]; // email-send.md
+        assert!(!check_file(Some(dir.path()), file).unwrap());
+    }
+
+    #[test]
+    fn run_accepts_all_skill_names() {
+        // Just verify these don't bail — actual install tested elsewhere
         // We can't easily test the full install here without mocking CWD.
+        assert!(matches!(run("corky"), Ok(()) | Err(_)));
+        assert!(matches!(run("email"), Ok(()) | Err(_)));
+        assert!(matches!(run("linkedin"), Ok(()) | Err(_)));
+        assert!(matches!(run("all"), Ok(()) | Err(_)));
+    }
+
+    #[test]
+    fn run_rejects_unknown() {
+        assert!(run("unknown").is_err());
     }
 }

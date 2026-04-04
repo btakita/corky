@@ -43,42 +43,26 @@ Manage email, calendar, documents, and communications from the command line.
 - `corky sync telegram-import <DIR>` — import Telegram Desktop JSON export
 - `corky slack import <FILE.zip>` — import Slack workspace export
 
-### Social
-- `corky linkedin post <FILE>` — publish to LinkedIn
-
-### Scheduling
-- `corky schedule list` — list scheduled posts
-- `corky schedule run` — execute pending scheduled posts
+### Transcription
+- `corky transcribe <FILE> [--diarize] [--speakers "Name1,Name2"]` — transcribe audio/video
 
 ### System
 - `corky watch` — IMAP polling + filter drift detection daemon
-- `corky skill install` — install Claude Code skill
+- `corky skill install` — install Claude Code skills
 - `corky audit-docs` — audit instruction files
 
 ## Workflows
-
-### Review inbox
-1. Run `corky unanswered` to identify threads needing a reply
-2. Read each thread and assess priority
-3. Present a prioritized list with one-line summary per thread
-4. Wait for instruction before drafting
-
-### Draft a reply
-1. Read the full thread from `conversations/`
-2. Identify the key ask requiring a response
-3. Draft in `drafts/[YYYY-MM-DD]-[slug].md` matching voice guidelines
-4. Iterate until approved
 
 ### Check schedule
 1. Run `corky cal list` to see upcoming events
 2. For availability questions, use `corky cal check <START> <END>`
 3. To create meetings, use `corky cal create`
 
-### Enrich contact
-1. `corky contact add --from SLUG` to create contact
-2. Read `contacts/{name}/AGENTS.md` Research section for hints
-3. Use web search to find role, company, interests
-4. Update Topics, Notes, Research sections
+## Related Skills
+
+Email drafting, LinkedIn posting, and their runbooks are installed as separate skills:
+- `.claude/skills/email/` — email drafting, sending, inbox review
+- `.claude/skills/linkedin/` — LinkedIn post drafting and publishing
 
 ## Success Criteria
 - Drafts sound like the user wrote them
