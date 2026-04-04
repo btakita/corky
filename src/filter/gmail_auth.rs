@@ -20,8 +20,14 @@ const CALLBACK_TIMEOUT_SECS: u64 = 300;
 /// `pass corky/gcp/client_id` and `pass corky/gcp/client_secret`.
 ///
 /// Users can override these via `[gmail]` in `.corky.toml` or env vars.
-pub const DEFAULT_GCP_CLIENT_ID: &str = env!("CORKY_DEFAULT_GCP_CLIENT_ID");
-pub const DEFAULT_GCP_CLIENT_SECRET: &str = env!("CORKY_DEFAULT_GCP_CLIENT_SECRET");
+pub const DEFAULT_GCP_CLIENT_ID: &str = match option_env!("CORKY_DEFAULT_GCP_CLIENT_ID") {
+    Some(v) => v,
+    None => "",
+};
+pub const DEFAULT_GCP_CLIENT_SECRET: &str = match option_env!("CORKY_DEFAULT_GCP_CLIENT_SECRET") {
+    Some(v) => v,
+    None => "",
+};
 
 /// OAuth2 scopes for Gmail filter management.
 /// - gmail.settings.basic: read/write filter settings
