@@ -11,7 +11,7 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use agent_kit::skill::SkillConfig;
+use agent_kit::detect::Environment;
 
 /// The corky SKILL.md content bundled at build time.
 const BUNDLED_SKILL: &str = include_str!("../SKILL.md");
@@ -59,13 +59,54 @@ const EXTRA_FILES: &[BundledFile] = &[
     BundledFile { rel_path: ".claude/skills/corky/runbooks/transcription.md", content: CORKY_RUNBOOK_TRANSCRIPTION },
 ];
 
-fn config() -> SkillConfig {
-    SkillConfig::with_environment(
-        "corky",
-        BUNDLED_SKILL,
-        VERSION,
-        agent_kit::detect::Environment::ClaudeCode,
-    )
+/// Resolve the corky skill file path under the given root.
+fn skill_path(root: Option<&Path>) -> std::path::PathBuf {
+    Environment::ClaudeCode.skill_path("corky", root)
+}
+
+/// Install the main corky SKILL.md.
+fn install_main_skill(root: Option<&Path>) -> Result<()> {
+    let path = skill_path(root);
+
+    if path.exists() {
+        let existing = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        if existing == BUNDLED_SKILL {
+            eprintln!("Skill already up to date (v{VERSION}).");
+            return Ok(());
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+
+    std::fs::write(&path, BUNDLED_SKILL)
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    eprintln!("Installed skill v{VERSION} → {}", path.display());
+    Ok(())
+}
+
+/// Check if the main corky SKILL.md matches the bundled version.
+fn check_main_skill(root: Option<&Path>) -> Result<bool> {
+    let path = skill_path(root);
+
+    if !path.exists() {
+        eprintln!("Not installed. Run `corky skill install` to install.");
+        return Ok(false);
+    }
+
+    let existing = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+
+    if existing == BUNDLED_SKILL {
+        eprintln!("Up to date (v{VERSION}).");
+        Ok(true)
+    } else {
+        eprintln!("Outdated. Run `corky skill install` to update to v{VERSION}.");
+        Ok(false)
+    }
 }
 
 /// Install a single bundled file, creating directories as needed.
@@ -114,8 +155,15 @@ fn check_file(root: Option<&Path>, file: &BundledFile) -> Result<bool> {
 /// Install all bundled skills + runbooks to the project.
 /// When `root` is None, paths are relative to CWD.
 pub fn install_at(root: Option<&Path>) -> Result<()> {
-    // Install the main corky skill via agent_kit
-    config().install(root)?;
+    // Install the main corky skill
+    install_main_skill(root)?;
+
+    // Install dependency skills (instruction-files SKILL.md + runbooks)
+    let dep_root = root.unwrap_or_else(|| Path::new("."));
+    let dep_written = instruction_files::init(dep_root)?;
+    if !dep_written.is_empty() {
+        eprintln!("Installed {} dependency file(s) (instruction-files).", dep_written.len());
+    }
 
     // Install extra skills + runbooks
     let mut wrote = 0;
@@ -145,7 +193,7 @@ pub fn install() -> Result<()> {
 /// Check if all installed skills match the bundled version.
 /// When `root` is None, paths are relative to CWD.
 pub fn check_at(root: Option<&Path>) -> Result<()> {
-    let mut all_ok = config().check(root)?;
+    let mut all_ok = check_main_skill(root)?;
 
     for file in EXTRA_FILES {
         if !check_file(root, file)? {
@@ -227,6 +275,9 @@ mod tests {
         // Corky runbooks
         assert!(dir.path().join(".claude/skills/corky/runbooks/imports.md").exists());
         assert!(dir.path().join(".claude/skills/corky/runbooks/transcription.md").exists());
+
+        // Dependency: instruction-files skill (transitive install)
+        assert!(dir.path().join(".claude/skills/instruction-files/SKILL.md").exists());
     }
 
     #[test]
