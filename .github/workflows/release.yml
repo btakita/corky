@@ -17,6 +17,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: false
+            features: vendored-openssl
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: true
@@ -33,7 +34,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: false
-            features: transcribe-cuda
+            features: transcribe-cuda,vendored-openssl
             suffix: -cuda
             cuda: true
           - target: aarch64-apple-darwin

@@ -16,6 +16,6 @@ jobs:
         with:
           components: clippy
 
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --features vendored-openssl -- -D warnings
 
-      - run: cargo test
+      - run: cargo test --features vendored-openssl
