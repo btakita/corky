@@ -54,7 +54,7 @@ htmd = "0.5"
 
 [features]
 default = ["transcribe", "diarize"]
-vendored-openssl = ["openssl"]
+vendored-openssl = ["openssl", "native-tls/vendored"]
 transcribe = ["whisper-rs", "symphonia", "rubato", "hound"]
 transcribe-cuda = ["transcribe", "whisper-rs/cuda"]
 transcribe-metal = ["transcribe", "whisper-rs/metal"]

@@ -58,7 +58,6 @@ jobs:
         with:
           cuda: '12.6.2'
           method: network
-          sub-packages: '["nvcc", "cudart"]'
 
       - name: Install cross
         if: matrix.use_cross
