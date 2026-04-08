@@ -383,6 +383,54 @@ pub fn quality_ok(segments: &[DiarizedSegment], expected_min_speakers: usize) ->
     true
 }
 
+/// Return the largest contiguous same-speaker block as a fraction of total covered duration.
+///
+/// Groups consecutive segments with the same non-zero speaker_id and finds the longest
+/// run. Returns 0.0 if segments is empty or total duration is zero.
+pub fn max_speaker_span_ratio(segments: &[DiarizedSegment]) -> f64 {
+    if segments.is_empty() {
+        return 0.0;
+    }
+
+    let total = segments.last().map(|s| s.end).unwrap_or(0.0)
+        - segments.first().map(|s| s.start).unwrap_or(0.0);
+    if total <= 0.0 {
+        return 0.0;
+    }
+
+    let mut max_span = 0.0f64;
+    let mut block_start: Option<f64> = None;
+    let mut block_end = 0.0f64;
+    let mut current_speaker = 0usize;
+
+    for seg in segments {
+        if seg.speaker_id == 0 {
+            // Unknown segment — end current block
+            if let Some(bs) = block_start.take() {
+                max_span = max_span.max(block_end - bs);
+            }
+            current_speaker = 0;
+            continue;
+        }
+
+        if seg.speaker_id == current_speaker {
+            block_end = seg.end;
+        } else {
+            if let Some(bs) = block_start.take() {
+                max_span = max_span.max(block_end - bs);
+            }
+            current_speaker = seg.speaker_id;
+            block_start = Some(seg.start);
+            block_end = seg.end;
+        }
+    }
+    if let Some(bs) = block_start {
+        max_span = max_span.max(block_end - bs);
+    }
+
+    max_span / total
+}
+
 /// A merged segment: whisper text + speaker ID + confidence.
 #[derive(Debug, Clone)]
 pub struct MergedSegment {

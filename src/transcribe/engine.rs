@@ -769,11 +769,31 @@ fn run_adaptive_diarization(
     use super::diarize;
     use super::audio;
 
+    // Maximum fraction of total duration a single speaker block may span.
+    // If any block exceeds this, the diarization missed speaker changes and we cascade.
+    const MAX_SPAN_RATIO: f64 = 0.6;
+
+    let is_good = |segs: &[diarize::DiarizedSegment]| -> bool {
+        if !diarize::quality_ok(segs, expected_min) {
+            return false;
+        }
+        let ratio = diarize::max_speaker_span_ratio(segs);
+        if ratio > MAX_SPAN_RATIO {
+            eprintln!(
+                "Diarization span check failed: largest block is {:.0}% of audio (max {:.0}%)",
+                ratio * 100.0,
+                MAX_SPAN_RATIO * 100.0,
+            );
+            return false;
+        }
+        true
+    };
+
     // Try full audio first
     eprintln!("Attempting full-audio diarization...");
     let result = diarize::diarize(samples, 16000, max_speakers, cache_dir)?;
 
-    if diarize::quality_ok(&result, expected_min) {
+    if is_good(&result) {
         eprintln!("Full-audio diarization quality OK");
         return Ok(result);
     }
@@ -792,7 +812,7 @@ fn run_adaptive_diarization(
         let chunks = audio::chunk_audio(samples, chunk_secs, 16000);
         let result = diarize::diarize_chunked(&chunks, 16000, max_speakers, cache_dir)?;
 
-        if diarize::quality_ok(&result, expected_min) {
+        if is_good(&result) {
             eprintln!("Chunked diarization ({:.0}s) quality OK", chunk_secs);
             return Ok(result);
         }
