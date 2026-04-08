@@ -22,6 +22,7 @@ jobs:
             os: ubuntu-latest
             use_cross: true
             features: vendored-openssl
+            no_default_features: true
           - target: x86_64-apple-darwin
             os: macos-14
             use_cross: false
@@ -71,7 +72,7 @@ jobs:
 
       - name: Build (cross)
         if: matrix.use_cross
-        run: cross build --release --target ${{ matrix.target }} ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+        run: cross build --release --target ${{ matrix.target }} ${{ matrix.no_default_features && '--no-default-features' || '' }} ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
         env:
           CROSS_CONTAINER_ENGINE: docker
 
