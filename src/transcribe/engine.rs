@@ -71,8 +71,10 @@ pub fn run(
     params.set_print_progress(true);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
-    // Suppress hallucination on low-quality audio (AMR, noisy)
+    // Suppress hallucination: raise no-speech threshold, suppress blank/non-speech tokens
     params.set_no_speech_thold(0.8);
+    params.set_suppress_blank(true);
+    params.set_suppress_nst(true);
     // Enable tdrz speaker turn detection when speakers are provided
     if !speakers.is_empty() {
         params.set_tdrz_enable(true);
@@ -668,6 +670,8 @@ fn retranscribe_low_confidence(
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
         params.set_no_speech_thold(0.8);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true);
 
         state
             .full(params, chunk)
