@@ -21,6 +21,7 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: true
+            features: vendored-openssl
           - target: x86_64-apple-darwin
             os: macos-14
             use_cross: false
@@ -58,7 +59,7 @@ jobs:
         with:
           cuda: '12.6.2'
           method: network
-          sub-packages: '["nvcc", "cudart-dev", "cuda-libraries-dev"]'
+          sub-packages: '["nvcc", "cudart-dev"]'
 
       - name: Install cross
         if: matrix.use_cross
