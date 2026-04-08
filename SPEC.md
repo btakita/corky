@@ -891,6 +891,15 @@ After the initial transcription pass, segments with average confidence below the
 - Window: extracts a tighter audio slice around the low-confidence segment and re-runs whisper on just that portion
 - Result: replaces the original low-confidence segments only if the re-transcription produces higher confidence
 
+**Silence hallucination suppression:**
+
+Whisper fills silence with invented content (voicemail fragments, repeated phrases). Two params are always enabled:
+
+- `suppress_blank` — prevents blank/empty token output during silence
+- `suppress_nst` — suppresses non-speech tokens (`[BLANK_AUDIO]`, `[MUSIC]`, etc.)
+
+Applied to both the main transcription pass and the confidence re-transcription pass.
+
 **ONNX models:** Auto-downloaded from pyannote-rs GitHub releases to `~/.cache/corky/models/`. No gated HuggingFace access required.
 
 **Output format** (with speakers or diarize):
