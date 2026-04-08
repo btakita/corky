@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.26.2
+
+- **fix(transcribe)**: Stop truncating long transcripts — word-frequency spike detector was falsely triggering on common conversational words ("I", "you", "well", etc.). Stopwords now excluded from frequency check; spike threshold raised from 10 → 15.
+
 ## 0.26.1
 
 - **Transcribe diarize**: Add `max_speaker_span_ratio` — returns the largest contiguous same-speaker block as a fraction of total covered duration. Improves speaker confidence detection.

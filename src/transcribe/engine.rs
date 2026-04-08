@@ -378,18 +378,33 @@ fn collapse_repeated_phrases(text: &str) -> String {
     }
 
     // Pass 2: Word frequency spike detection (escalating patterns)
-    // Scan with a sliding window; if any single word appears 10+ times in 100 words,
-    // that region is hallucinated. Keep text up to where the spike starts, plus
-    // one occurrence of the repeated sentence.
+    // Scan with a sliding window; if any non-stopword appears 15+ times in 100 words,
+    // that region is hallucinated. Keep text up to where the spike starts.
+    // Stopwords are excluded because they naturally appear at high frequency in speech.
+    const STOPWORDS: &[&str] = &[
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of",
+        "with", "by", "from", "as", "is", "was", "are", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could", "should",
+        "may", "might", "shall", "can", "that", "this", "these", "those", "it", "its",
+        "i", "you", "he", "she", "we", "they", "me", "him", "her", "us", "them",
+        "my", "your", "his", "our", "their", "not", "so", "if", "up", "out", "about",
+        "just", "like", "very", "all", "also", "into", "than", "then", "there", "what",
+        "which", "who", "how", "when", "well", "yeah", "know", "really", "think",
+    ];
     let window_size = 100;
-    let spike_threshold = 10;
+    let spike_threshold = 15;
     let mut truncate_at: Option<usize> = None;
 
     for start in 0..result_words.len().saturating_sub(window_size) {
         let end = (start + window_size).min(result_words.len());
         let mut freq: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for w in &result_words[start..end] {
-            *freq.entry(w.to_lowercase()).or_insert(0) += 1;
+            let lower = w.to_lowercase();
+            // Strip trailing punctuation for stopword matching
+            let stripped = lower.trim_end_matches(|c: char| !c.is_alphabetic());
+            if !STOPWORDS.contains(&stripped) {
+                *freq.entry(lower).or_insert(0) += 1;
+            }
         }
         if freq.values().any(|&count| count >= spike_threshold) {
             truncate_at = Some(start);
