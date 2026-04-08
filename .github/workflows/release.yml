@@ -58,6 +58,7 @@ jobs:
         with:
           cuda: '12.6.2'
           method: network
+          sub-packages: '["nvcc", "cudart-dev", "cuda-libraries-dev"]'
 
       - name: Install cross
         if: matrix.use_cross
@@ -65,7 +66,7 @@ jobs:
 
       - name: Build (cross)
         if: matrix.use_cross
-        run: cross build --release --target ${{ matrix.target }} --features vendored-openssl
+        run: cross build --release --target ${{ matrix.target }} ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
         env:
           CROSS_CONTAINER_ENGINE: docker
 
