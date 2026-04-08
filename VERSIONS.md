@@ -4,6 +4,11 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.26.1
+
+- **Transcribe diarize**: Add `max_speaker_span_ratio` — returns the largest contiguous same-speaker block as a fraction of total covered duration. Improves speaker confidence detection.
+- **Transcribe engine**: Refinements to transcription engine pipeline.
+
 ## 0.26.0
 
 - **Confidence-based re-transcription**: Automatically re-transcribes low-confidence blocks with smaller audio windows for improved accuracy. Configurable via `[transcription] confidence_threshold = 0.4` in `.corky.toml`. Opt out with `--no-confidence-retranscribe`.
