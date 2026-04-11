@@ -50,6 +50,15 @@ pub const DOCS_SCOPE: &str = "https://www.googleapis.com/auth/documents";
 /// OAuth2 scope for Google Sheets read-only.
 pub const SHEETS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets.readonly";
 
+/// OAuth2 scope for Google Sheets read/write.
+pub const SHEETS_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets";
+
+/// OAuth2 scope for Google Chat message sending.
+pub const CHAT_SCOPE: &str = "https://www.googleapis.com/auth/chat.messages";
+
+/// OAuth2 scope for Google Tasks read/write.
+pub const TASKS_SCOPE: &str = "https://www.googleapis.com/auth/tasks";
+
 /// Default scope (filter management) for backwards compatibility.
 const GMAIL_SCOPE: &str = GMAIL_FILTER_SCOPE;
 

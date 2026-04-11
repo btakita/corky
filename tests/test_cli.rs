@@ -157,6 +157,90 @@ fn test_cli_unknown_subcommand() {
     cmd.assert().failure();
 }
 
+// ── New command registration tests ─────────────────────────────────────────
+
+#[test]
+fn test_cli_draft_send_requires_file() {
+    let mut cmd = corky_cmd();
+    cmd.args(["draft", "send"]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("FILE"));
+}
+
+#[test]
+fn test_cli_draft_send_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["draft", "send", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("attachment"));
+}
+
+#[test]
+fn test_cli_doc_sheet_write_requires_args() {
+    let mut cmd = corky_cmd();
+    cmd.args(["doc", "sheet-write"]);
+    cmd.assert().failure();
+}
+
+#[test]
+fn test_cli_doc_sheet_write_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["doc", "sheet-write", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("range"));
+}
+
+#[test]
+fn test_cli_chat_send_requires_args() {
+    let mut cmd = corky_cmd();
+    cmd.args(["chat", "send"]);
+    cmd.assert().failure();
+}
+
+#[test]
+fn test_cli_chat_send_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["chat", "send", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("space"));
+}
+
+#[test]
+fn test_cli_tasks_list_registered() {
+    let mut cmd = corky_cmd();
+    cmd.args(["tasks", "list", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("tasklist"));
+}
+
+#[test]
+fn test_cli_tasks_add_requires_title() {
+    let mut cmd = corky_cmd();
+    cmd.args(["tasks", "add"]);
+    cmd.assert().failure();
+}
+
+#[test]
+fn test_cli_tasks_add_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["tasks", "add", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("due"));
+}
+
+#[test]
+fn test_cli_tasks_done_requires_task_id() {
+    let mut cmd = corky_cmd();
+    cmd.args(["tasks", "done"]);
+    cmd.assert().failure();
+}
+
 #[test]
 fn test_cli_init_with_path() {
     let tmp = tempfile::TempDir::new().unwrap();

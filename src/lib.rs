@@ -21,6 +21,7 @@ pub mod audit_docs;
 pub mod schedule;
 pub mod social;
 pub mod topics;
+pub mod tasks;
 pub mod transcribe;
 pub mod search;
 pub mod upgrade;

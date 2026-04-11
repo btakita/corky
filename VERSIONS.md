@@ -4,6 +4,12 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.27.0
+
+- **feat(gws)**: Google Workspace integration — `corky docs read/write` (Google Docs), `corky sheets read/write` (Google Sheets), `corky chat send` (Google Chat), `corky tasks list/add/done` (Google Tasks). All use shared OAuth token flow via `corky filter auth`.
+- **feat(draft)**: `corky draft send` — send drafts via Gmail REST API with file attachment support (`--attachment`). Alternative to SMTP path; no SMTP credentials needed.
+- **feat(draft)**: `corky draft new --thread-id` — attach new drafts to existing Gmail threads.
+
 ## 0.26.3
 
 - **fix(transcribe)**: Add `suppress_blank` and `suppress_nst` whisper params to prevent hallucination into silence. Whisper now stays silent on no-speech regions rather than generating voicemail fragments or repeated phrases.

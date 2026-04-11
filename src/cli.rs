@@ -206,6 +206,14 @@ pub enum Commands {
     #[command(subcommand)]
     Doc(DocCommands),
 
+    /// Google Docs commands
+    #[command(subcommand)]
+    Docs(DocsCommands),
+
+    /// Google Sheets commands
+    #[command(subcommand)]
+    Sheets(SheetsCommands),
+
     /// Transcribe an audio file to text (requires --features transcribe)
     Transcribe {
         /// Path to audio file (WAV, MP3, FLAC, OGG, AMR, etc.)
@@ -265,6 +273,14 @@ pub enum Commands {
     /// Ragie cloud search management
     #[command(subcommand)]
     Ragie(RagieCommands),
+
+    /// Google Chat commands
+    #[command(subcommand)]
+    Chat(ChatCommands),
+
+    /// Google Tasks commands
+    #[command(subcommand)]
+    Tasks(TasksCommands),
 
     /// Check environment, config, and account health
     Doctor {
@@ -399,6 +415,10 @@ pub enum DraftCommands {
         #[arg(long)]
         in_reply_to: Option<String>,
 
+        /// Gmail thread ID to attach this draft to the existing thread
+        #[arg(long)]
+        thread_id: Option<String>,
+
         /// Create in a mailbox's drafts/ instead of root
         #[arg(long)]
         mailbox: Option<String>,
@@ -441,6 +461,19 @@ pub enum DraftCommands {
         /// Send the email immediately instead of saving as a draft
         #[arg(long)]
         send: bool,
+    },
+    /// Send a draft via the Gmail API (supports attachments)
+    Send {
+        /// Path to the draft markdown file
+        file: PathBuf,
+
+        /// File to attach (can be repeated)
+        #[arg(long = "attachment")]
+        attachments: Vec<PathBuf>,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
     },
     /// Migrate legacy drafts to YAML frontmatter
     Migrate {
@@ -925,6 +958,90 @@ pub enum DocCommands {
         #[arg(long)]
         account: Option<String>,
     },
+    /// Write a CSV file to a Google Sheet range
+    SheetWrite {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Target range (e.g. "Sheet1!A1", "A1")
+        range: String,
+
+        /// Path to the CSV file to write
+        file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DocsCommands {
+    /// Read a Google Doc and export as markdown
+    Read {
+        /// Google Doc URL or document ID
+        doc: String,
+
+        /// Output file (default: stdout)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Update a Google Doc from a markdown file
+    Write {
+        /// Google Doc URL or document ID
+        doc: String,
+
+        /// Path to the markdown file
+        file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SheetsCommands {
+    /// Read a Google Sheet range as markdown table or CSV
+    Read {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Cell range (e.g. "A1:D10", "Sheet1!A1:C5"). Default: first sheet, all data
+        #[arg(long)]
+        range: Option<String>,
+
+        /// Output format: table (default) or csv
+        #[arg(long, default_value = "table", value_parser = ["table", "csv"])]
+        format: String,
+
+        /// Output file (default: stdout)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Write a CSV file to a Google Sheet range
+    Write {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Target range (e.g. "Sheet1!A1", "A1")
+        range: String,
+
+        /// Path to the CSV file to write
+        file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1035,6 +1152,68 @@ pub enum CalCommands {
         end: String,
 
         /// Account name (must match the one used for auth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ChatCommands {
+    /// Send a message to a Google Chat space
+    Send {
+        /// Space ID or full resource name (e.g. "XXXXXXXXX" or "spaces/XXXXXXXXX")
+        space: String,
+
+        /// Message text
+        message: String,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TasksCommands {
+    /// List pending tasks
+    List {
+        /// Tasklist ID (default: @default)
+        #[arg(long)]
+        tasklist: Option<String>,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+
+    /// Add a new task
+    Add {
+        /// Task title
+        title: String,
+
+        /// Due date (YYYY-MM-DD or RFC 3339)
+        #[arg(long)]
+        due: Option<String>,
+
+        /// Tasklist ID (default: @default)
+        #[arg(long)]
+        tasklist: Option<String>,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+
+    /// Mark a task as completed
+    Done {
+        /// Task ID (from `corky tasks list`)
+        task_id: String,
+
+        /// Tasklist ID (default: @default)
+        #[arg(long)]
+        tasklist: Option<String>,
+
+        /// Google account email (login hint for OAuth)
         #[arg(long)]
         account: Option<String>,
     },

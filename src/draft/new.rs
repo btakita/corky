@@ -17,6 +17,7 @@ pub fn run(
     account: Option<&str>,
     from: Option<&str>,
     in_reply_to: Option<&str>,
+    thread_id: Option<&str>,
     mailbox: Option<&str>,
     attachments: &[String],
     images: &[String],
@@ -37,7 +38,7 @@ pub fn run(
     let slug = util::slugify(subject);
     let path = unique_path(&drafts_dir, &date, &slug);
 
-    let content = render(subject, to, cc, account, from, in_reply_to, &author, attachments, images);
+    let content = render(subject, to, cc, account, from, in_reply_to, thread_id, &author, attachments, images);
     std::fs::write(&path, content)?;
     println!("{}", path.display());
     Ok(())
@@ -68,6 +69,7 @@ fn render(
     account: Option<&str>,
     from: Option<&str>,
     in_reply_to: Option<&str>,
+    thread_id: Option<&str>,
     author: &str,
     attachments: &[String],
     images: &[String],
@@ -89,6 +91,9 @@ fn render(
     }
     if let Some(in_reply_to) = in_reply_to {
         fm_lines.push(format!("in_reply_to: \"{}\"", in_reply_to));
+    }
+    if let Some(thread_id) = thread_id {
+        fm_lines.push(format!("thread_id: \"{}\"", thread_id));
     }
     if !attachments.is_empty() {
         fm_lines.push("attachments:".to_string());
@@ -119,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_render_minimal() {
-        let out = render("Hello", "a@b.com", None, None, None, None, "", &[], &[]);
+        let out = render("Hello", "a@b.com", None, None, None, None, None, "", &[], &[]);
         assert!(out.starts_with("---\n"));
         assert!(out.contains("to: a@b.com\n"));
         assert!(out.contains("status: draft\n"));
@@ -141,6 +146,7 @@ mod tests {
             Some("personal"),
             Some("me@x.com"),
             Some("<msg-1>"),
+            Some("abc123threadid"),
             "Alice",
             &[],
             &[],
@@ -150,6 +156,7 @@ mod tests {
         assert!(out.contains("account: personal\n"));
         assert!(out.contains("from: me@x.com\n"));
         assert!(out.contains("in_reply_to: \"<msg-1>\"\n"));
+        assert!(out.contains("thread_id: \"abc123threadid\"\n"));
         assert!(out.contains("# Test\n"));
     }
 
@@ -161,6 +168,7 @@ mod tests {
             Some("c@d.com"),
             Some("personal"),
             Some("me@x.com"),
+            None,
             None,
             "Alice",
             &[],
@@ -184,7 +192,7 @@ mod tests {
             "/tmp/screenshot.png".to_string(),
             "/tmp/doc.pdf".to_string(),
         ];
-        let out = render("Test", "a@b.com", None, None, None, None, "", &attachments, &[]);
+        let out = render("Test", "a@b.com", None, None, None, None, None, "", &attachments, &[]);
         assert!(out.contains("attachments:\n"));
         assert!(out.contains("  - /tmp/screenshot.png\n"));
         assert!(out.contains("  - /tmp/doc.pdf\n"));
@@ -205,7 +213,7 @@ mod tests {
             "screenshot.png".to_string(),
             "photo.jpg".to_string(),
         ];
-        let out = render("Test", "a@b.com", None, None, None, None, "", &[], &images);
+        let out = render("Test", "a@b.com", None, None, None, None, None, "", &[], &images);
         assert!(out.contains("images:\n"));
         assert!(out.contains("  - screenshot.png\n"));
         assert!(out.contains("  - photo.jpg\n"));

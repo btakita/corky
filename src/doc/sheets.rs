@@ -3,6 +3,8 @@ use std::path::Path;
 
 use crate::filter::gmail_auth;
 
+const SHEETS_WRITE_API: &str = "https://sheets.googleapis.com/v4/spreadsheets";
+
 const SHEETS_API: &str = "https://sheets.googleapis.com/v4/spreadsheets";
 
 /// Extract a Google Sheets spreadsheet ID from a URL or raw ID.
@@ -84,6 +86,98 @@ pub fn read(sheet: &str, range: Option<&str>, format: &str, output: Option<&Path
     Ok(())
 }
 
+/// Write a CSV file to a Google Sheet range.
+///
+/// Requires `SHEETS_SCOPE` (read/write), not readonly.
+pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Result<()> {
+    let sheet_id = parse_sheet_id(sheet);
+    let token = gmail_auth::get_access_token_for_user(
+        Some("default"),
+        gmail_auth::SHEETS_SCOPE,
+        account,
+    )?;
+
+    let csv_content = std::fs::read_to_string(file)?;
+    let values: Vec<Vec<String>> = csv_content
+        .lines()
+        .map(parse_csv_line)
+        .collect();
+
+    if values.is_empty() {
+        eprintln!("No data in CSV file.");
+        return Ok(());
+    }
+
+    let json_values: Vec<serde_json::Value> = values
+        .into_iter()
+        .map(|row| serde_json::Value::Array(row.into_iter().map(serde_json::Value::String).collect()))
+        .collect();
+
+    let body = serde_json::json!({
+        "values": json_values
+    });
+
+    let url = format!(
+        "{}/{}/values/{}?valueInputOption=USER_ENTERED",
+        SHEETS_WRITE_API,
+        sheet_id,
+        encode_range(range)
+    );
+
+    eprintln!("Writing {} rows to {}...", json_values.len(), range);
+
+    let resp = ureq::put(&url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .send_json(&body);
+
+    match resp {
+        Ok(r) => {
+            let result: serde_json::Value = r.into_json()?;
+            let updated = result["updatedCells"].as_u64().unwrap_or(0);
+            println!("Updated {} cells.", updated);
+            Ok(())
+        }
+        Err(ureq::Error::Status(401, _)) => {
+            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Sheets API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Parse a single CSV line, handling quoted fields.
+fn parse_csv_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' if in_quotes => {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    current.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            }
+            '"' => in_quotes = true,
+            ',' if !in_quotes => {
+                fields.push(current.clone());
+                current.clear();
+            }
+            other => current.push(other),
+        }
+    }
+    fields.push(current);
+    fields
+}
+
 fn format_markdown_table(rows: &[Vec<String>]) -> String {
     if rows.is_empty() {
         return String::new();
@@ -157,6 +251,67 @@ fn encode_range(range: &str) -> String {
         .replace('!', "%21")
         .replace(':', "%3A")
         .replace(' ', "%20")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_sheet_id_raw() {
+        assert_eq!(parse_sheet_id("abc123"), "abc123");
+    }
+
+    #[test]
+    fn test_parse_sheet_id_url() {
+        assert_eq!(
+            parse_sheet_id("https://docs.google.com/spreadsheets/d/abc123/edit"),
+            "abc123"
+        );
+    }
+
+    #[test]
+    fn test_encode_range() {
+        assert_eq!(encode_range("Sheet1!A1:D10"), "Sheet1%21A1%3AD10");
+        assert_eq!(encode_range("A1"), "A1");
+    }
+
+    #[test]
+    fn test_parse_csv_line_simple() {
+        assert_eq!(parse_csv_line("a,b,c"), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_parse_csv_line_quoted() {
+        assert_eq!(parse_csv_line(r#""hello, world",b"#), vec!["hello, world", "b"]);
+    }
+
+    #[test]
+    fn test_parse_csv_line_escaped_quotes() {
+        assert_eq!(parse_csv_line(r#""say ""hi""",b"#), vec!["say \"hi\"", "b"]);
+    }
+
+    #[test]
+    fn test_parse_csv_line_empty_fields() {
+        assert_eq!(parse_csv_line("a,,c"), vec!["a", "", "c"]);
+    }
+
+    #[test]
+    fn test_format_csv_roundtrip() {
+        let rows = vec![
+            vec!["Name".to_string(), "Score".to_string()],
+            vec!["Alice".to_string(), "100".to_string()],
+        ];
+        let csv = format_csv(&rows);
+        assert_eq!(csv, "Name,Score\nAlice,100");
+    }
+
+    #[test]
+    fn test_format_csv_with_commas() {
+        let rows = vec![vec!["hello, world".to_string()]];
+        let csv = format_csv(&rows);
+        assert_eq!(csv, "\"hello, world\"");
+    }
 }
 
 fn api_get(token: &str, url: &str) -> Result<ureq::Response> {

@@ -33,7 +33,7 @@ See `voice.md` (committed) for tone, style, and formatting guidelines.
 ## Drafting Emails
 
 - **Reply vs new thread:** Follow-ups, corrections, and replies to recent emails → threaded reply. New topics → new thread. When ambiguous, default to reply and ask.
-- **Threading a reply:** Find the original email in `mail/conversations/`, extract its Message-ID, set `in_reply_to` in the draft YAML, derive subject as `Re: <original subject>`.
+- **Threading a reply:** Find the original email in `mail/conversations/`, extract its Message-ID and the `**Thread ID**` line. Set both `in_reply_to` (RFC 2822 Message-ID) **and** `thread_id` (Gmail internal ID) in the draft YAML — Gmail requires both to attach the draft to the existing thread. Derive subject as `Re: <original subject>`. Pass via CLI: `corky draft new --in-reply-to "<msg-id>" --thread-id "<thread-id>" ...`
 - **Verify facts:** Before sending, cross-check claims about a contact's platform, tools, or status against their `mail/contacts/<name>/CLAUDE.md`. Don't infer from ambiguous notes — confirm explicitly.
 - **Gmail threading:** Subject changes break threads. Always use `Re: <original>` for replies, never a new subject.
 
@@ -58,6 +58,27 @@ make release                                              # build + symlink to .
 ```
 
 See README.md for full config reference (.corky.toml, Gmail OAuth).
+
+## Google Workspace Integration
+
+Corky has native support for all Google Workspace services. No external plugin required.
+
+Authenticate once:
+
+```bash
+corky filter auth   # Gmail, Drive, Docs, Sheets, Chat, Tasks (shared token flow)
+corky cal auth      # Google Calendar (separate token)
+```
+
+**Command reference:**
+- Gmail send (with attachments) → `corky draft send --attachment <file>`
+- Gmail draft → `corky draft push`
+- Google Docs → `corky docs read <url>` / `corky docs write <url> <file>`
+- Google Drive → `corky doc upload`
+- Google Sheets → `corky sheets read <url>` / `corky sheets write <url> <range> <file>`
+- Google Chat → `corky chat send <space> <message>`
+- Google Tasks → `corky tasks list/add/done`
+- Google Calendar → `corky cal list/create/delete/check`
 
 ## Sync Behavior
 

@@ -463,6 +463,30 @@ Account resolution for sending:
 2. `**From**` field → match by email address
 3. Fall back to default account
 
+### 5.5.1 draft send
+
+```
+corky draft send FILE [--attachment PATH]... [--account EMAIL]
+corky mailbox draft send FILE [--attachment PATH]...
+```
+
+Sends a draft directly via the Gmail REST API (not SMTP). The draft must use YAML frontmatter
+format (run `corky draft migrate` to convert legacy format).
+
+**Key differences from `draft push --send`:**
+- Uses `POST /gmail/v1/users/me/messages/send` (Gmail API, not SMTP)
+- No SMTP credentials required
+- Supports `--attachment` CLI flag (merged with `attachments:` in YAML frontmatter)
+- Encodes message as RFC 2822 MIME, base64url-encoded in the `raw` field
+
+**MIME construction:**
+- No attachments → `text/plain; charset=UTF-8`
+- With attachments → `multipart/mixed` with `text/plain` body + `base64` attachment parts
+- Non-ASCII subjects encoded as RFC 2047 `=?UTF-8?B?...?=`
+- Reply threading: `In-Reply-To` + `References` headers set from `in_reply_to:` YAML field; `threadId` set from `thread_id:` YAML field
+
+**OAuth scope:** `GMAIL_SEND_SCOPE` (`gmail.compose`)
+
 ### 5.6 add-label
 
 ```
@@ -1552,6 +1576,7 @@ Run `corky watch` and it handles both IMAP sync and scheduled publishing.
 | `corky doc read <DOC> [-o FILE] [--account EMAIL]` | Read a Google Doc as markdown |
 | `corky doc write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
 | `corky doc sheet <SHEET> [--range R] [--format table\|csv] [-o FILE] [--account EMAIL]` | Read a Google Sheet range |
+| `corky doc sheet-write <SHEET> <RANGE> <CSV> [--account EMAIL]` | Write CSV data to a Google Sheet range |
 
 The `--account EMAIL` flag selects which Google account's OAuth token to use. When omitted, the default account is used. This enables multi-account workflows where different documents belong to different Google accounts.
 
@@ -1595,6 +1620,28 @@ corky doc sheet <SHEET_URL_OR_ID> [--range RANGE] [--format table|csv] [-o FILE]
 ```
 
 Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `--range` specifies the cell range (e.g. `A1:D10`, `Sheet1!A1:C5`). Without `--range`, reads all data from the first sheet.
+
+### 14.2.5 Google Sheets Write
+
+```
+corky doc sheet-write <SHEET_URL_OR_ID> <RANGE> <CSV_FILE> [--account EMAIL]
+```
+
+Writes the contents of a local CSV file to a Google Sheet range.
+
+**API:** `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{range}?valueInputOption=USER_ENTERED`
+
+**CSV parsing:** Handles quoted fields (commas inside quotes), `""` escape for literal quotes, and empty fields. Each CSV line becomes one row; columns map to cells.
+
+**OAuth scope:** `SHEETS_SCOPE` (`spreadsheets`, read/write) — distinct from `SHEETS_READONLY_SCOPE` used by `doc sheet`.
+
+**Edge cases:**
+
+| ID | Scenario | Behavior |
+|----|----------|----------|
+| SW1 | Empty CSV file | Prints "No data in CSV file." and returns Ok |
+| SW2 | Auth error (401) | Error: "Sheets API: unauthorized. Re-run `corky filter auth`." |
+| SW3 | Quoted commas in CSV | Field preserved correctly (parser handles RFC 4180) |
 
 ### 14.3 Format Pipelines
 
@@ -1846,6 +1893,82 @@ Playlist operations use the YouTube Data API v3 playlists and playlistItems endp
 - Visibility: public, unlisted, or private
 - Category ID defaults to 28 (Science & Technology)
 
+## 19. Google Chat
+
+### 19.1 Overview
+
+`corky chat send` sends a text message to a Google Chat space via the Chat REST API.
+
+### 19.2 CLI Interface
+
+```
+corky chat send <SPACE> <MESSAGE> [--account EMAIL]
+```
+
+`<SPACE>` may be the full resource name (`spaces/XXXXXXXXX`) or just the space ID. The `spaces/` prefix is stripped automatically if present.
+
+### 19.3 Implementation
+
+**API:** `POST https://chat.googleapis.com/v1/spaces/{space_id}/messages`
+
+**Request body:** `{ "text": "<message>" }`
+
+**OAuth scope:** `CHAT_SCOPE` (`https://www.googleapis.com/auth/chat.messages`)
+
+On success, prints the full message resource name (e.g. `spaces/XXXXXXXXX/messages/YYYYYYY`).
+
+### 19.4 Edge Cases
+
+| ID | Scenario | Behavior |
+|----|----------|----------|
+| CH1 | Auth error (401) | Error: "Chat API: unauthorized. Re-run `corky filter auth`." |
+| CH2 | Space ID with prefix | `spaces/ABC` normalized to `ABC` before building URL |
+
+---
+
+## 20. Google Tasks
+
+### 20.1 Overview
+
+`corky tasks` provides basic task management via the Google Tasks REST API.
+
+### 20.2 CLI Interface
+
+```
+corky tasks list [--tasklist ID] [--account EMAIL]
+corky tasks add <TITLE> [--due DATE] [--tasklist ID] [--account EMAIL]
+corky tasks done <TASK_ID> [--tasklist ID] [--account EMAIL]
+```
+
+`--tasklist` defaults to `@default` (the primary task list). `--due` accepts `YYYY-MM-DD` or RFC 3339.
+
+### 20.3 Implementation
+
+**API base:** `https://tasks.googleapis.com/tasks/v1`
+
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| list | GET | `/lists/{tasklist}/tasks?showCompleted=false` |
+| add | POST | `/lists/{tasklist}/tasks` |
+| done | PATCH | `/lists/{tasklist}/tasks/{id}` |
+
+**list** output format: `[{id}] {title}` with optional `(due: YYYY-MM-DD)`.
+
+**done** body: `{ "status": "completed" }` — Google Tasks marks the task hidden from default list views.
+
+**OAuth scope:** `TASKS_SCOPE` (`https://www.googleapis.com/auth/tasks`)
+
+### 20.4 Edge Cases
+
+| ID | Scenario | Behavior |
+|----|----------|----------|
+| TK1 | No pending tasks | Prints "No pending tasks." |
+| TK2 | Auth error (401) | Error: "Tasks API: unauthorized. Re-run `corky filter auth`." |
+| TK3 | Task not found (done) | Error: "Task not found: {id}" |
+| TK4 | Bare date in --due | Appended with `T00:00:00.000Z` for RFC 3339 compliance |
+
+---
+
 ## 18. Self-Hosted Deployment
 
 Corky is fully self-hosted — it runs entirely on the user's machine with no external services beyond the provider APIs (Gmail, LinkedIn, YouTube).
@@ -1861,8 +1984,8 @@ Corky is fully self-hosted — it runs entirely on the user's machine with no ex
 - Email content stays on the local machine
 - OAuth tokens stored locally (`~/.config/corky/`)
 - No analytics, telemetry, or tracking
-- Gmail API scopes: `gmail.readonly`, `gmail.send`, `gmail.settings.basic`, optionally `youtube.readonly`
-- Does NOT request: delete, contacts, calendar, or YouTube modification permissions
+- Google API scopes requested (all optional, per feature): `gmail.readonly`, `gmail.compose`, `gmail.settings.basic`, `drive.file`, `documents`, `spreadsheets`, `spreadsheets.readonly`, `chat.messages`, `tasks`, `calendar`, optionally `youtube.*`
+- Does NOT request: Gmail delete, contacts write, or admin permissions
 - Users can revoke access anytime via Google security settings
 - Full privacy policy: `docs/reference/privacy-policy.md`
 

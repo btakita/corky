@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 
-use corky::cli::{CalCommands, Cli, Commands, ContactCommands, DocCommands, DraftCommands, FilterCommands, LabelCommands, LinkedinCommands, MailboxCommands, PlaylistCommands, RagieCommands, ScheduleCommands, SiftCommands, SkillCommands, SlackCommands, SyncCommands, TopicCommands, YoutubeCommands};
+use corky::cli::{CalCommands, ChatCommands, Cli, Commands, ContactCommands, DocCommands, DocsCommands, DraftCommands, FilterCommands, LabelCommands, LinkedinCommands, MailboxCommands, PlaylistCommands, RagieCommands, ScheduleCommands, SheetsCommands, SiftCommands, SkillCommands, SlackCommands, SyncCommands, TasksCommands, TopicCommands, YoutubeCommands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -301,6 +301,25 @@ fn main() -> Result<()> {
             DocCommands::Sheet { sheet, range, format, output, account } => {
                 corky::doc::sheets::read(&sheet, range.as_deref(), &format, output.as_deref(), account.as_deref())
             }
+            DocCommands::SheetWrite { sheet, range, file, account } => {
+                corky::doc::sheets::write(&sheet, &range, &file, account.as_deref())
+            }
+        },
+        Commands::Docs(cmd) => match cmd {
+            DocsCommands::Read { doc, output, account } => {
+                corky::doc::gdocs::read(&doc, output.as_deref(), account.as_deref())
+            }
+            DocsCommands::Write { doc, file, account } => {
+                corky::doc::gdocs::write(&doc, &file, account.as_deref())
+            }
+        },
+        Commands::Sheets(cmd) => match cmd {
+            SheetsCommands::Read { sheet, range, format, output, account } => {
+                corky::doc::sheets::read(&sheet, range.as_deref(), &format, output.as_deref(), account.as_deref())
+            }
+            SheetsCommands::Write { sheet, range, file, account } => {
+                corky::doc::sheets::write(&sheet, &range, &file, account.as_deref())
+            }
         },
         Commands::Transcribe { file, model, language, output, speakers, diarize, no_adaptive_chunk, no_resolve_unknown, no_confidence_retranscribe } => {
             corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize, no_adaptive_chunk, no_resolve_unknown, no_confidence_retranscribe)
@@ -321,6 +340,22 @@ fn main() -> Result<()> {
             }
             RagieCommands::Status => corky::search::ragie::RagieBackend::run_status(),
         },
+        Commands::Chat(cmd) => match cmd {
+            ChatCommands::Send { space, message, account } => {
+                corky::social::chat::send(&space, &message, account.as_deref())
+            }
+        },
+        Commands::Tasks(cmd) => match cmd {
+            TasksCommands::List { tasklist, account } => {
+                corky::tasks::list::run(tasklist.as_deref(), account.as_deref())
+            }
+            TasksCommands::Add { title, due, tasklist, account } => {
+                corky::tasks::add::run(&title, due.as_deref(), tasklist.as_deref(), account.as_deref())
+            }
+            TasksCommands::Done { task_id, tasklist, account } => {
+                corky::tasks::done::run(&task_id, tasklist.as_deref(), account.as_deref())
+            }
+        },
         Commands::Doctor { provider } => corky::doctor::run(provider.as_deref()),
         Commands::Upgrade => corky::upgrade::run(),
     }
@@ -335,6 +370,7 @@ fn run_draft_command(cmd: DraftCommands) -> anyhow::Result<()> {
             account,
             from,
             in_reply_to,
+            thread_id,
             mailbox,
             attachments,
             images,
@@ -345,6 +381,7 @@ fn run_draft_command(cmd: DraftCommands) -> anyhow::Result<()> {
             account.as_deref(),
             from.as_deref(),
             in_reply_to.as_deref(),
+            thread_id.as_deref(),
             mailbox.as_deref(),
             &attachments,
             &images,
@@ -359,6 +396,9 @@ fn run_draft_command(cmd: DraftCommands) -> anyhow::Result<()> {
             corky::mailbox::validate_draft::run_scoped(&args)
         }
         DraftCommands::Push { file, send } => corky::draft::run(&file, send),
+        DraftCommands::Send { file, attachments, account } => {
+            corky::draft::send::run(&file, &attachments, account.as_deref())
+        }
         DraftCommands::Migrate { dry_run } => corky::draft::migrate::run(dry_run),
     }
 }

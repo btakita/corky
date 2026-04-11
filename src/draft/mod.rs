@@ -3,6 +3,7 @@
 pub mod attach;
 pub mod migrate;
 pub mod new;
+pub mod send;
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};

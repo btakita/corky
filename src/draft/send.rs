@@ -1,0 +1,256 @@
+//! `corky draft send` — send a draft via the Gmail API with optional attachments.
+//!
+//! Unlike `corky draft push --send` (SMTP/lettre), this path:
+//! - Uses the Gmail REST API directly (no SMTP credentials needed)
+//! - Supports file attachments via MIME multipart/mixed
+//! - Handles reply threading (In-Reply-To + threadId)
+
+use anyhow::{bail, Result};
+use base64::Engine as _;
+use std::path::{Path, PathBuf};
+
+use crate::draft::{parse_draft, parse_draft_yaml};
+use crate::filter::gmail_auth;
+
+const GMAIL_SEND_URL: &str =
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+
+/// Send a draft file via the Gmail API.
+///
+/// `extra_attachments` are paths given on the CLI; the draft's own `attachments`
+/// field is also included.
+pub fn run(file: &Path, extra_attachments: &[PathBuf], account: Option<&str>) -> Result<()> {
+    let content = std::fs::read_to_string(file)?;
+    let (_map, subject, body) = parse_draft(file)?;
+
+    let meta = parse_draft_yaml(&content).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Draft must use YAML frontmatter format. Run `corky draft migrate` to convert."
+        )
+    })?;
+
+    // Collect attachments: draft field + CLI extras
+    let mut attachment_paths: Vec<PathBuf> =
+        meta.attachments.iter().map(PathBuf::from).collect();
+    attachment_paths.extend_from_slice(extra_attachments);
+
+    let from = meta.from.as_deref().or(meta.account.as_deref()).unwrap_or("");
+    let effective_account = account
+        .or(meta.account.as_deref())
+        .or(meta.from.as_deref());
+
+    let token = gmail_auth::get_access_token_for_user(
+        Some("default"),
+        gmail_auth::GMAIL_SEND_SCOPE,
+        effective_account,
+    )?;
+
+    let mime = build_mime_message(
+        &meta.to,
+        from,
+        &subject,
+        &body,
+        &meta.in_reply_to,
+        &attachment_paths,
+    )?;
+    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&mime);
+
+    let mut payload = serde_json::json!({ "raw": raw });
+    if let Some(tid) = &meta.thread_id {
+        payload["threadId"] = serde_json::Value::String(tid.clone());
+    }
+
+    eprintln!("Sending to {} — subject: {}", meta.to, subject);
+    if !attachment_paths.is_empty() {
+        eprintln!("Attachments ({}):", attachment_paths.len());
+        for p in &attachment_paths {
+            eprintln!("  {}", p.display());
+        }
+    }
+
+    let resp = ureq::post(GMAIL_SEND_URL)
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .send_json(&payload);
+
+    match resp {
+        Ok(r) => {
+            let body: serde_json::Value = r.into_json()?;
+            let msg_id = body["id"].as_str().unwrap_or("(unknown)");
+            println!("Sent. Message ID: {}", msg_id);
+            Ok(())
+        }
+        Err(ureq::Error::Status(401, _)) => {
+            bail!("Gmail API: unauthorized (401). Re-run `corky filter auth`.")
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Gmail API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Build a RFC 2822 MIME message as bytes.
+///
+/// Returns `multipart/mixed` when attachments are present, otherwise `text/plain`.
+fn build_mime_message(
+    to: &str,
+    from: &str,
+    subject: &str,
+    body: &str,
+    in_reply_to: &Option<String>,
+    attachments: &[PathBuf],
+) -> Result<Vec<u8>> {
+    let boundary = format!("corky_boundary_{}", chrono::Utc::now().timestamp_millis());
+    let mut msg = String::new();
+
+    if !from.is_empty() {
+        msg.push_str(&format!("From: {}\r\n", from));
+    }
+    msg.push_str(&format!("To: {}\r\n", to));
+    msg.push_str(&format!("Subject: {}\r\n", encode_header(subject)));
+    if let Some(mid) = in_reply_to {
+        msg.push_str(&format!("In-Reply-To: {}\r\n", mid));
+        msg.push_str(&format!("References: {}\r\n", mid));
+    }
+    msg.push_str("MIME-Version: 1.0\r\n");
+
+    if attachments.is_empty() {
+        msg.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
+        msg.push_str("\r\n");
+        msg.push_str(body);
+    } else {
+        msg.push_str(&format!(
+            "Content-Type: multipart/mixed; boundary=\"{}\"\r\n",
+            boundary
+        ));
+        msg.push_str("\r\n");
+
+        // Text part
+        msg.push_str(&format!("--{}\r\n", boundary));
+        msg.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
+        msg.push_str("\r\n");
+        msg.push_str(body);
+        msg.push_str("\r\n");
+
+        // Attachment parts
+        for path in attachments {
+            let filename = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "attachment".to_string());
+            let data = std::fs::read(path)?;
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+            let mime_type = mime_guess::from_path(path)
+                .first_or_octet_stream()
+                .to_string();
+
+            msg.push_str(&format!("--{}\r\n", boundary));
+            msg.push_str(&format!(
+                "Content-Type: {}; name=\"{}\"\r\n",
+                mime_type, filename
+            ));
+            msg.push_str("Content-Transfer-Encoding: base64\r\n");
+            msg.push_str(&format!(
+                "Content-Disposition: attachment; filename=\"{}\"\r\n",
+                filename
+            ));
+            msg.push_str("\r\n");
+            // Break base64 into 76-char lines (RFC 2045)
+            for chunk in encoded.as_bytes().chunks(76) {
+                msg.push_str(std::str::from_utf8(chunk)?);
+                msg.push_str("\r\n");
+            }
+        }
+
+        msg.push_str(&format!("--{}--\r\n", boundary));
+    }
+
+    Ok(msg.into_bytes())
+}
+
+/// Encode a header value using RFC 2047 base64 UTF-8 if it contains non-ASCII.
+fn encode_header(value: &str) -> String {
+    if value.is_ascii() {
+        value.to_string()
+    } else {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(value.as_bytes());
+        format!("=?UTF-8?B?{}?=", encoded)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encode_header_ascii() {
+        assert_eq!(encode_header("Hello World"), "Hello World");
+        assert_eq!(encode_header("Re: Meeting"), "Re: Meeting");
+    }
+
+    #[test]
+    fn test_encode_header_utf8() {
+        let encoded = encode_header("Héllo");
+        assert!(encoded.starts_with("=?UTF-8?B?"));
+        assert!(encoded.ends_with("?="));
+    }
+
+    #[test]
+    fn test_build_mime_no_attachments() {
+        let mime = build_mime_message(
+            "alice@example.com",
+            "brian@example.com",
+            "Test Subject",
+            "Hello Alice",
+            &None,
+            &[],
+        )
+        .unwrap();
+        let text = String::from_utf8(mime).unwrap();
+        assert!(text.contains("To: alice@example.com"));
+        assert!(text.contains("Subject: Test Subject"));
+        assert!(text.contains("Content-Type: text/plain"));
+        assert!(text.contains("Hello Alice"));
+        assert!(!text.contains("multipart"));
+    }
+
+    #[test]
+    fn test_build_mime_with_in_reply_to() {
+        let mime = build_mime_message(
+            "alice@example.com",
+            "",
+            "Re: Test",
+            "Body",
+            &Some("<original@example.com>".to_string()),
+            &[],
+        )
+        .unwrap();
+        let text = String::from_utf8(mime).unwrap();
+        assert!(text.contains("In-Reply-To: <original@example.com>"));
+        assert!(text.contains("References: <original@example.com>"));
+    }
+
+    #[test]
+    fn test_build_mime_with_attachment() {
+        use std::io::Write;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.as_file().write_all(b"file content").unwrap();
+        let path = tmp.path().to_path_buf();
+
+        let mime = build_mime_message(
+            "alice@example.com",
+            "brian@example.com",
+            "Subject",
+            "Body",
+            &None,
+            &[path],
+        )
+        .unwrap();
+        let text = String::from_utf8(mime).unwrap();
+        assert!(text.contains("Content-Type: multipart/mixed"));
+        assert!(text.contains("Content-Transfer-Encoding: base64"));
+        assert!(text.contains("Content-Disposition: attachment"));
+    }
+}

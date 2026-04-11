@@ -42,7 +42,8 @@ See the [getting started guide](https://btakita.github.io/corky/getting-started/
 - **Sandboxed sharing** — label-based routing gives collaborators only the threads you choose
 - **AI-native** — files, CLI, and git work the same for humans and agents
 - **Multi-account** — Gmail, Protonmail Bridge, generic IMAP, all in one directory
-- **Social posting** — draft and publish to LinkedIn (and future platforms) via OAuth
+- **Social posting** — draft and publish to LinkedIn and YouTube via OAuth
+- **Google Workspace** — Gmail send with attachments, Docs/Sheets read-write, Chat, Tasks
 - **Scheduling** — schedule email and social drafts for timed publishing
 - **Topics** — organize conversations with shared topic context across mailboxes
 - **Transcription** — whisper-rs audio transcription with speaker diarization via pyannote-rs
@@ -55,6 +56,7 @@ corky sync                      # Incremental IMAP sync
 corky sync refetch THREAD_ID    # Re-fetch a single Gmail thread
 corky unanswered                # Threads awaiting a reply
 corky draft push FILE           # Save as email draft (thread_id in YAML for threading)
+corky draft send FILE           # Send via Gmail API (supports --attachment FILE)
 corky mailbox add NAME --label LABEL  # Share threads
 corky contact push [google]     # Push contacts to Google Contacts (People API)
 corky contact sync              # Sync contact CLAUDE.md between root and mailboxes
@@ -70,7 +72,13 @@ corky youtube comment FILE TEXT      # Comment on a published video
 corky youtube playlist add PL VID   # Add video to playlist
 corky youtube playlist create TITLE # Create a playlist
 corky youtube playlist list         # List your playlists
-corky doc upload FILE --account a@gmail.com  # Google Docs (account-targeted OAuth)
+corky doc upload FILE --account a@gmail.com  # Google Drive upload (account-targeted OAuth)
+corky doc sheet SHEET_URL                   # Read Google Sheet as markdown table
+corky doc sheet-write SHEET_URL RANGE CSV  # Write CSV to Google Sheet range
+corky chat send SPACE_ID "message"          # Send Google Chat message
+corky tasks list                            # List pending Google Tasks
+corky tasks add "Task title" --due 2026-04-20  # Add a task
+corky tasks done TASK_ID                    # Mark task complete
 corky schedule run              # Publish due scheduled items
 corky topics list               # Show configured topics
 corky watch                     # Poll, sync, and publish scheduled

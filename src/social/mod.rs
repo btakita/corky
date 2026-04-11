@@ -1,6 +1,7 @@
 //! Social media posting module.
 
 pub mod auth;
+pub mod chat;
 pub mod draft;
 pub mod linkedin;
 pub mod platform;
