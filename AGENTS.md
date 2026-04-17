@@ -208,3 +208,13 @@ Publish order when instruction-files changes: instruction-files → agent-doc �
 - Update `SPEC.md` in the same commit as the code change (see PR Process)
 - Commits must be clean — no dangling unstaged files. When splitting work across commits, stage all related files (including `Cargo.lock`)
 
+
+
+## Library Context Policy
+
+This library follows the agent-loop library-context policy. Contributors
+authoring `AGENTS.md`, `SKILL.md`, or runbooks in this repo must read:
+
+[Library Context Policy](../instruction-files/LIBRARY_CONTEXT_POLICY.md)
+
+before making changes.
