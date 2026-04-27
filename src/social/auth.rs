@@ -1,6 +1,6 @@
 //! OAuth2 authorization code flow with PKCE for social platforms.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
 
 use super::platform::Platform;
@@ -34,28 +34,29 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
         Platform::LinkedIn => {
             // Try .corky.toml first (inline or _cmd)
             if let Some(cfg) = corky_config::try_load_config(None)
-                && let Some(li) = &cfg.linkedin {
-                    let has_config = !li.client_id.is_empty()
-                        || !li.client_id_cmd.is_empty()
-                        || !li.client_secret.is_empty()
-                        || !li.client_secret_cmd.is_empty();
-                    if has_config {
-                        let client_id = crate::util::resolve_secret(
-                            &li.client_id,
-                            &li.client_id_cmd,
-                            "LinkedIn client_id (check [linkedin] in .corky.toml)",
-                        )?;
-                        let client_secret = crate::util::resolve_secret(
-                            &li.client_secret,
-                            &li.client_secret_cmd,
-                            "LinkedIn client_secret (check [linkedin] in .corky.toml)",
-                        )?;
-                        return Ok(ClientCredentials {
-                            client_id,
-                            client_secret,
-                        });
-                    }
+                && let Some(li) = &cfg.linkedin
+            {
+                let has_config = !li.client_id.is_empty()
+                    || !li.client_id_cmd.is_empty()
+                    || !li.client_secret.is_empty()
+                    || !li.client_secret_cmd.is_empty();
+                if has_config {
+                    let client_id = crate::util::resolve_secret(
+                        &li.client_id,
+                        &li.client_id_cmd,
+                        "LinkedIn client_id (check [linkedin] in .corky.toml)",
+                    )?;
+                    let client_secret = crate::util::resolve_secret(
+                        &li.client_secret,
+                        &li.client_secret_cmd,
+                        "LinkedIn client_secret (check [linkedin] in .corky.toml)",
+                    )?;
+                    return Ok(ClientCredentials {
+                        client_id,
+                        client_secret,
+                    });
                 }
+            }
             // Fall back to env vars
             let client_id = std::env::var("CORKY_LINKEDIN_CLIENT_ID")
                 .context("LinkedIn client_id not found.\nSet [linkedin] in .corky.toml or CORKY_LINKEDIN_CLIENT_ID env var.")?;
@@ -69,28 +70,29 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
         Platform::Youtube => {
             // Try .corky.toml first (inline or _cmd)
             if let Some(cfg) = corky_config::try_load_config(None)
-                && let Some(yt) = &cfg.youtube {
-                    let has_config = !yt.client_id.is_empty()
-                        || !yt.client_id_cmd.is_empty()
-                        || !yt.client_secret.is_empty()
-                        || !yt.client_secret_cmd.is_empty();
-                    if has_config {
-                        let client_id = crate::util::resolve_secret(
-                            &yt.client_id,
-                            &yt.client_id_cmd,
-                            "YouTube client_id (check [youtube] in .corky.toml)",
-                        )?;
-                        let client_secret = crate::util::resolve_secret(
-                            &yt.client_secret,
-                            &yt.client_secret_cmd,
-                            "YouTube client_secret (check [youtube] in .corky.toml)",
-                        )?;
-                        return Ok(ClientCredentials {
-                            client_id,
-                            client_secret,
-                        });
-                    }
+                && let Some(yt) = &cfg.youtube
+            {
+                let has_config = !yt.client_id.is_empty()
+                    || !yt.client_id_cmd.is_empty()
+                    || !yt.client_secret.is_empty()
+                    || !yt.client_secret_cmd.is_empty();
+                if has_config {
+                    let client_id = crate::util::resolve_secret(
+                        &yt.client_id,
+                        &yt.client_id_cmd,
+                        "YouTube client_id (check [youtube] in .corky.toml)",
+                    )?;
+                    let client_secret = crate::util::resolve_secret(
+                        &yt.client_secret,
+                        &yt.client_secret_cmd,
+                        "YouTube client_secret (check [youtube] in .corky.toml)",
+                    )?;
+                    return Ok(ClientCredentials {
+                        client_id,
+                        client_secret,
+                    });
                 }
+            }
             // Fall back to env vars
             let client_id = std::env::var("CORKY_YOUTUBE_CLIENT_ID")
                 .context("YouTube client_id not found.\nSet [youtube] in .corky.toml or CORKY_YOUTUBE_CLIENT_ID env var.")?;
@@ -308,7 +310,12 @@ pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
     let request = server
         .recv_timeout(std::time::Duration::from_secs(CALLBACK_TIMEOUT_SECS))
         .map_err(|e| anyhow::anyhow!("Callback server error: {}", e))?
-        .ok_or_else(|| anyhow::anyhow!("Timed out waiting for OAuth callback ({}s)", CALLBACK_TIMEOUT_SECS))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Timed out waiting for OAuth callback ({}s)",
+                CALLBACK_TIMEOUT_SECS
+            )
+        })?;
 
     // Parse callback
     let url = request.url().to_string();
@@ -316,9 +323,8 @@ pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
     let (code, state) = parse_callback(query)?;
 
     // Respond to the browser
-    let response = tiny_http::Response::from_string(
-        "Authorization successful! You can close this tab."
-    );
+    let response =
+        tiny_http::Response::from_string("Authorization successful! You can close this tab.");
     let _ = request.respond(response);
 
     // Verify state (CSRF protection)
@@ -383,7 +389,10 @@ fn update_profile_urn(profile_name: &str, platform: Platform, urn: &str) -> Resu
 
     // Ensure [profiles.<name>] table exists
     if !profiles.contains_key(profile_name) {
-        profiles.insert(profile_name, toml_edit::Item::Table(toml_edit::Table::new()));
+        profiles.insert(
+            profile_name,
+            toml_edit::Item::Table(toml_edit::Table::new()),
+        );
     }
     let profile = profiles[profile_name].as_table_mut().unwrap();
 
@@ -401,6 +410,9 @@ fn update_profile_urn(profile_name: &str, platform: Platform, urn: &str) -> Resu
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&path, doc.to_string())?;
-    println!("Updated .corky.toml: profiles.{}.{}.urn = {}", profile_name, platform_key, urn);
+    println!(
+        "Updated .corky.toml: profiles.{}.{}.urn = {}",
+        profile_name, platform_key, urn
+    );
     Ok(())
 }

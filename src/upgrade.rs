@@ -63,9 +63,8 @@ fn try_github_release_upgrade(version: &str) -> bool {
     };
 
     let archive_name = format!("{CRATE_NAME}-{target}.tar.gz");
-    let url = format!(
-        "https://github.com/{GITHUB_REPO}/releases/download/v{version}/{archive_name}"
-    );
+    let url =
+        format!("https://github.com/{GITHUB_REPO}/releases/download/v{version}/{archive_name}");
 
     eprintln!("Downloading from GitHub Releases...");
     eprintln!("  {url}");
@@ -169,10 +168,11 @@ pub fn run() -> Result<()> {
         .status();
 
     if let Ok(status) = cargo_status
-        && status.success() {
-            eprintln!("Successfully upgraded to v{latest} via cargo.");
-            return Ok(());
-        }
+        && status.success()
+    {
+        eprintln!("Successfully upgraded to v{latest} via cargo.");
+        return Ok(());
+    }
 
     // Strategy 3: pip install
     eprintln!("cargo install failed, trying: pip install --upgrade {CRATE_NAME}");
@@ -181,10 +181,11 @@ pub fn run() -> Result<()> {
         .status();
 
     if let Ok(status) = pip_status
-        && status.success() {
-            eprintln!("Successfully upgraded to v{latest} via pip.");
-            return Ok(());
-        }
+        && status.success()
+    {
+        eprintln!("Successfully upgraded to v{latest} via pip.");
+        return Ok(());
+    }
 
     // Manual instructions
     eprintln!(
@@ -204,10 +205,7 @@ pub fn run() -> Result<()> {
 pub fn check_for_update() -> Option<String> {
     // Try to read from cache first
     if let Some(cache) = read_cache() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .ok()?
-            .as_secs();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
         if now.saturating_sub(cache.checked_at) < CACHE_MAX_AGE_SECS {
             return if version_is_newer(&cache.latest, CURRENT_VERSION) {
                 Some(cache.latest)

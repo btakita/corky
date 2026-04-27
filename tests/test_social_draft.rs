@@ -247,7 +247,10 @@ fn im4_roundtrip_with_images() {
         published_at: None,
         post_id: None,
         post_url: None,
-        images: vec!["assets/screenshot.png".to_string(), "assets/diagram.png".to_string()],
+        images: vec![
+            "assets/screenshot.png".to_string(),
+            "assets/diagram.png".to_string(),
+        ],
         video: None,
         captions: None,
         title: None,
@@ -284,7 +287,11 @@ fn im6_empty_images_omitted_in_yaml() {
     let draft = SocialDraft::new(meta, "Body.\n".to_string());
     let rendered = draft.render().unwrap();
     // Empty images should be skipped in YAML (skip_serializing_if)
-    assert!(!rendered.contains("images"), "Empty images should not appear in YAML: {}", rendered);
+    assert!(
+        !rendered.contains("images"),
+        "Empty images should not appear in YAML: {}",
+        rendered
+    );
 }
 
 // IM: Single image in frontmatter
@@ -330,7 +337,10 @@ fn yt1_roundtrip_with_video_fields() {
     assert_eq!(parsed.meta.platform, Platform::Youtube);
     assert_eq!(parsed.meta.video, Some("assets/demo.mp4".to_string()));
     assert_eq!(parsed.meta.captions, Some("assets/demo.srt".to_string()));
-    assert_eq!(parsed.meta.title, Some("Rust Tutorial: Getting Started".to_string()));
+    assert_eq!(
+        parsed.meta.title,
+        Some("Rust Tutorial: Getting Started".to_string())
+    );
     assert_eq!(parsed.meta.author, "btakita");
     assert_eq!(parsed.meta.status, DraftStatus::Ready);
     assert_eq!(parsed.meta.tags, vec!["rust", "tutorial"]);
@@ -428,7 +438,19 @@ fn yt3_none_video_fields_omitted() {
 
     let draft = SocialDraft::new(meta, "Body.\n".to_string());
     let rendered = draft.render().unwrap();
-    assert!(!rendered.contains("video"), "None video should not appear in YAML: {}", rendered);
-    assert!(!rendered.contains("captions"), "None captions should not appear in YAML: {}", rendered);
-    assert!(!rendered.contains("title"), "None title should not appear in YAML: {}", rendered);
+    assert!(
+        !rendered.contains("video"),
+        "None video should not appear in YAML: {}",
+        rendered
+    );
+    assert!(
+        !rendered.contains("captions"),
+        "None captions should not appear in YAML: {}",
+        rendered
+    );
+    assert!(
+        !rendered.contains("title"),
+        "None title should not appear in YAML: {}",
+        rendered
+    );
 }

@@ -1,6 +1,6 @@
 //! Model download and cache management.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 
 /// Known whisper.cpp ggml model variants.
@@ -19,8 +19,7 @@ const MODELS: &[(&str, &str)] = &[
     ("large-v3-turbo", "ggml-large-v3-turbo.bin"),
 ];
 
-const HF_BASE_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+const HF_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 /// Base URL for pyannote-rs ONNX models.
 #[cfg(feature = "diarize")]
@@ -36,7 +35,11 @@ pub fn resolve_model(name: &str, cache_dir: Option<&str>) -> Result<PathBuf> {
 
     if model_path.exists() {
         let size = std::fs::metadata(&model_path)?.len();
-        eprintln!("Model: {} ({:.1} GB)", model_path.display(), size as f64 / 1e9);
+        eprintln!(
+            "Model: {} ({:.1} GB)",
+            model_path.display(),
+            size as f64 / 1e9
+        );
         return Ok(model_path);
     }
 
@@ -70,9 +73,11 @@ fn cache_directory(custom: Option<&str>) -> Result<PathBuf> {
     } else if let Some(cache) = dirs_cache_dir() {
         cache.join("corky").join("models")
     } else {
-        let home = std::env::var("HOME")
-            .unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".cache").join("corky").join("models")
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home)
+            .join(".cache")
+            .join("corky")
+            .join("models")
     };
 
     std::fs::create_dir_all(&dir)?;
@@ -82,27 +87,24 @@ fn cache_directory(custom: Option<&str>) -> Result<PathBuf> {
 fn dirs_cache_dir() -> Option<PathBuf> {
     // Use XDG_CACHE_HOME or ~/.cache
     if let Ok(xdg) = std::env::var("XDG_CACHE_HOME")
-        && !xdg.is_empty() {
-            return Some(PathBuf::from(xdg));
-        }
+        && !xdg.is_empty()
+    {
+        return Some(PathBuf::from(xdg));
+    }
     let home = std::env::var("HOME").ok()?;
     Some(PathBuf::from(home).join(".cache"))
 }
 
 fn shellexpand(path: &str) -> String {
     if path.starts_with("~/")
-        && let Ok(home) = std::env::var("HOME") {
-            return format!("{}{}", home, &path[1..]);
-        }
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return format!("{}{}", home, &path[1..]);
+    }
     path.to_string()
 }
 
-fn download_model(
-    name: &str,
-    filename: &str,
-    cache: &Path,
-    model_path: &Path,
-) -> Result<PathBuf> {
+fn download_model(name: &str, filename: &str, cache: &Path, model_path: &Path) -> Result<PathBuf> {
     let url = format!("{}/{}", HF_BASE_URL, filename);
     download_url(&url, name, filename, cache, model_path)
 }
@@ -143,7 +145,9 @@ fn download_url(
 
         loop {
             let n = std::io::Read::read(&mut reader, &mut buf)?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             std::io::Write::write_all(&mut file, &buf[..n])?;
             downloaded += n as u64;
 
@@ -169,7 +173,11 @@ pub fn resolve_onnx_model(filename: &str, cache_dir: Option<&str>) -> Result<Pat
 
     if model_path.exists() {
         let size = std::fs::metadata(&model_path)?.len();
-        eprintln!("ONNX model: {} ({:.1} MB)", model_path.display(), size as f64 / 1e6);
+        eprintln!(
+            "ONNX model: {} ({:.1} MB)",
+            model_path.display(),
+            size as f64 / 1e6
+        );
         return Ok(model_path);
     }
 
@@ -192,7 +200,10 @@ mod tests {
 
     #[test]
     fn known_model_filenames() {
-        assert_eq!(model_filename("large-v3-turbo").unwrap(), "ggml-large-v3-turbo.bin");
+        assert_eq!(
+            model_filename("large-v3-turbo").unwrap(),
+            "ggml-large-v3-turbo.bin"
+        );
         assert_eq!(model_filename("tiny").unwrap(), "ggml-tiny.bin");
         assert_eq!(model_filename("base.en").unwrap(), "ggml-base.en.bin");
     }

@@ -1,15 +1,15 @@
 //! Publish orchestration: draft → resolve author → get token → upload images → API → update draft.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::Utc;
 use std::path::Path;
 
 use super::draft::{DraftStatus, SocialDraft};
 use super::linkedin;
-use super::youtube;
 use super::platform::Platform;
 use super::profiles::ProfilesFile;
 use super::token_store::TokenStore;
+use super::youtube;
 
 /// Publish a social draft file. When `dry_run` is true, validates everything
 /// (auth, images) but prints the payload instead of creating the post.
@@ -27,7 +27,11 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
         bail!(
             "Draft has already been published.\n\
              Published at: {}",
-            draft.meta.published_at.map(|t| t.to_string()).unwrap_or_default()
+            draft
+                .meta
+                .published_at
+                .map(|t| t.to_string())
+                .unwrap_or_default()
         );
     }
     if !dry_run && draft.meta.status != DraftStatus::Ready && draft.meta.scheduled_at.is_none() {
@@ -70,7 +74,10 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
     let image_urns = upload_images(path, &draft, &token.access_token, &urn, platform)?;
 
     if dry_run {
-        println!("[dry-run] Validation passed. Would publish to {}.", platform);
+        println!(
+            "[dry-run] Validation passed. Would publish to {}.",
+            platform
+        );
         println!("[dry-run] Author: {} ({})", author, urn);
         println!("[dry-run] Visibility: {}", draft.meta.visibility);
         if !image_urns.is_empty() {
@@ -89,24 +96,22 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
         println!("---");
         println!("{}", draft.body.trim());
         println!("---");
-        println!("[dry-run] No post created. Set status to 'ready' and run without --dry-run to publish.");
+        println!(
+            "[dry-run] No post created. Set status to 'ready' and run without --dry-run to publish."
+        );
         return Ok(());
     }
 
     // Call platform API
     let (post_id, post_url) = match platform {
-        Platform::LinkedIn => {
-            linkedin::create_post(
-                &token.access_token,
-                &urn,
-                &draft.body,
-                &draft.meta.visibility,
-                &image_urns,
-            )?
-        }
-        Platform::Youtube => {
-            publish_youtube(path, &draft, &token.access_token)?
-        }
+        Platform::LinkedIn => linkedin::create_post(
+            &token.access_token,
+            &urn,
+            &draft.body,
+            &draft.meta.visibility,
+            &image_urns,
+        )?,
+        Platform::Youtube => publish_youtube(path, &draft, &token.access_token)?,
         _ => bail!("Publishing not yet implemented for {}", platform),
     };
 

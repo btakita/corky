@@ -1,6 +1,6 @@
 //! Delete Google Calendar events by search query.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::HashSet;
 
 use super::auth;
@@ -82,10 +82,7 @@ pub fn run(query: &str, all_events: bool, dry_run: bool, account: Option<&str>) 
 
         let mut deleted = 0;
         for series_id in &series_ids {
-            let url = format!(
-                "{}/calendars/primary/events/{}",
-                CALENDAR_API, series_id,
-            );
+            let url = format!("{}/calendars/primary/events/{}", CALENDAR_API, series_id,);
             match api_delete(&token, &url) {
                 Ok(()) => {
                     deleted += 1;
@@ -113,10 +110,7 @@ pub fn run(query: &str, all_events: bool, dry_run: bool, account: Option<&str>) 
 
         let mut deleted = 0;
         for event in &events {
-            let url = format!(
-                "{}/calendars/primary/events/{}",
-                CALENDAR_API, event.id,
-            );
+            let url = format!("{}/calendars/primary/events/{}", CALENDAR_API, event.id,);
             match api_delete(&token, &url) {
                 Ok(()) => {
                     deleted += 1;

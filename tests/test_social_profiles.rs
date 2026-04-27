@@ -25,7 +25,10 @@ handle = "alice-smith"
     let result = profiles.validate();
     assert!(!result.is_ok());
     assert!(
-        result.errors.iter().any(|e| e.contains("handle") && e.contains("alice-smith")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("handle") && e.contains("alice-smith")),
         "Expected duplicate handle error, got: {:?}",
         result.errors
     );
@@ -52,7 +55,10 @@ urn = "urn:li:person:123"
     let result = profiles.validate();
     assert!(!result.is_ok());
     assert!(
-        result.errors.iter().any(|e| e.contains("URN") && e.contains("urn:li:person:123")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("URN") && e.contains("urn:li:person:123")),
         "Expected duplicate URN error, got: {:?}",
         result.errors
     );
@@ -98,7 +104,10 @@ fn p4_profile_no_platforms() {
     let result = profiles.validate();
     assert!(result.is_ok()); // warnings only, no errors
     assert!(
-        result.warnings.iter().any(|w| w.contains("emptyprofile") && w.contains("no platform")),
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("emptyprofile") && w.contains("no platform")),
         "Expected no-platform warning, got: {:?}",
         result.warnings
     );
@@ -121,7 +130,10 @@ handle = "alice-tw"
     let result = profiles.validate();
     assert!(result.is_ok());
     assert!(
-        result.info.iter().any(|i| i.contains("alice") && i.contains("verify same person")),
+        result
+            .info
+            .iter()
+            .any(|i| i.contains("alice") && i.contains("verify same person")),
         "Expected coherence info, got: {:?}",
         result.info
     );
@@ -184,7 +196,10 @@ urn = "urn:li:person:same"
     let result = profiles.validate();
     assert!(!result.is_ok());
     assert!(
-        result.errors.iter().any(|e| e.contains("urn:li:person:same")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("urn:li:person:same")),
         "Post-merge validation should surface URN conflict"
     );
 }

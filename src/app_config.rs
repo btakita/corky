@@ -2,7 +2,7 @@
 //!
 //! Reads/writes {user_config_dir}/corky/config.toml.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -44,7 +44,9 @@ pub fn save(config: &toml::Value) -> Result<()> {
     Ok(())
 }
 
-fn read_mailboxes(table: &toml::map::Map<String, toml::Value>) -> toml::map::Map<String, toml::Value> {
+fn read_mailboxes(
+    table: &toml::map::Map<String, toml::Value>,
+) -> toml::map::Map<String, toml::Value> {
     if let Some(toml::Value::Table(m)) = table.get("mailboxes") {
         return m.clone();
     }
@@ -85,7 +87,11 @@ pub fn resolve_mailbox(name: Option<&str>) -> Result<Option<PathBuf>> {
                 bail!(
                     "Unknown mailbox '{}'. Available: {}",
                     name,
-                    available.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                    available
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
             }
         }
@@ -93,10 +99,11 @@ pub fn resolve_mailbox(name: Option<&str>) -> Result<Option<PathBuf>> {
 
     // No name given — try defaults
     if let Some(default) = read_default(&table)
-        && let Some(mailbox_val) = mailboxes.get(default.as_str()) {
-            let path = mailbox_path(mailbox_val)?;
-            return Ok(Some(path));
-        }
+        && let Some(mailbox_val) = mailboxes.get(default.as_str())
+    {
+        let path = mailbox_path(mailbox_val)?;
+        return Ok(Some(path));
+    }
 
     if mailboxes.len() == 1 {
         let (_, mailbox_val) = mailboxes.iter().next().unwrap();

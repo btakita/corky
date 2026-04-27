@@ -1,6 +1,6 @@
 //! Create Google Calendar events.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use super::auth;
 

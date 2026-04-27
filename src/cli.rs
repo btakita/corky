@@ -2,7 +2,12 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "corky", version, about = "Sync email threads from IMAP to Markdown, draft replies, manage mailboxes", disable_help_subcommand = true)]
+#[command(
+    name = "corky",
+    version,
+    about = "Sync email threads from IMAP to Markdown, draft replies, manage mailboxes",
+    disable_help_subcommand = true
+)]
 pub struct Cli {
     /// Use a named mailbox from app config
     #[arg(long, global = true)]
@@ -198,6 +203,10 @@ pub enum Commands {
     #[command(subcommand)]
     Cal(CalCommands),
 
+    /// Google Search Console (Performance / URL Inspection)
+    #[command(subcommand)]
+    Gsc(GscCommands),
+
     /// Gmail filter management commands
     #[command(subcommand)]
     Filter(FilterCommands),
@@ -286,6 +295,10 @@ pub enum Commands {
     Doctor {
         /// Check a specific provider (gmail, gmail-api, imap, etc.)
         provider: Option<String>,
+
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Check for updates and upgrade to the latest version.
@@ -385,6 +398,10 @@ pub enum SyncCommands {
     Refetch {
         /// Gmail thread ID (e.g. from **Thread ID** in conversation file)
         thread_id: String,
+
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -461,6 +478,10 @@ pub enum DraftCommands {
         /// Send the email immediately instead of saving as a draft
         #[arg(long)]
         send: bool,
+
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Send a draft via the Gmail API (supports attachments)
     Send {
@@ -474,6 +495,10 @@ pub enum DraftCommands {
         /// Google account email (login hint for OAuth)
         #[arg(long)]
         account: Option<String>,
+
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Migrate legacy drafts to YAML frontmatter
     Migrate {
@@ -1155,6 +1180,67 @@ pub enum CalCommands {
         #[arg(long)]
         account: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum GscCommands {
+    /// Authenticate with Google Search Console (user-OAuth fallback)
+    Auth {
+        #[arg(long)]
+        account: Option<String>,
+    },
+
+    /// List verified sites accessible to the caller
+    Sites {
+        /// Output format: json | csv | table
+        #[arg(long, default_value = "table")]
+        format: GscOutputFormat,
+    },
+
+    /// Run a Performance (searchAnalytics) query
+    Query {
+        /// Site URL (e.g. "sc-domain:example.com" or "https://example.com/")
+        #[arg(long)]
+        site: String,
+
+        /// Start date (yyyy-mm-dd)
+        #[arg(long)]
+        start: String,
+
+        /// End date (yyyy-mm-dd)
+        #[arg(long)]
+        end: String,
+
+        /// Dimensions, comma-separated (query,page,country,device,date,searchAppearance)
+        #[arg(long, value_delimiter = ',', default_value = "query,page")]
+        dimensions: Vec<String>,
+
+        /// Row limit (max 25000)
+        #[arg(long, default_value = "1000")]
+        row_limit: u32,
+
+        /// Output format: json | csv | table
+        #[arg(long, default_value = "json")]
+        format: GscOutputFormat,
+    },
+
+    /// Run URL Inspection for a single URL
+    Inspect {
+        /// Site URL registered in Search Console
+        #[arg(long)]
+        site: String,
+
+        /// URL to inspect (must be within the site property)
+        #[arg(long)]
+        url: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum GscOutputFormat {
+    Json,
+    Csv,
+    Table,
 }
 
 #[derive(Subcommand)]

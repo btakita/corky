@@ -172,6 +172,18 @@ This opens your browser for OAuth authorization. Authorize with the correct Goog
 - Incremental sync uses Gmail's `historyId` for efficient polling after initial sync
 - Messages deleted between listing and fetch (404) are skipped gracefully — sync continues with remaining messages
 
+**Connector / Codex-friendly JSON surfaces:**
+
+```sh
+corky doctor gmail --json
+corky sync refetch THREAD_ID --json
+corky draft push drafts/reply.md --json
+corky draft push drafts/reply.md --send --json
+corky draft send drafts/reply.md --attachment /tmp/file.pdf --json
+```
+
+These commands keep the normal human-readable output by default. `--json` emits stable machine-readable summaries for auth state, single-thread refetches, draft creation, and sends.
+
 ## Development
 
 ```sh

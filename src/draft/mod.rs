@@ -5,7 +5,7 @@ pub mod migrate;
 pub mod new;
 pub mod send;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use lettre::message::header::ContentType;
 use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
@@ -24,6 +24,23 @@ use crate::accounts::{
 static META_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*\*(.+?)\*\*:\s*(.+)$").unwrap());
 
 const VALID_SEND_STATUSES: &[&str] = &["review", "approved", "scheduled"];
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DraftPushResult {
+    pub action: String,
+    pub transport: String,
+    pub account_name: String,
+    pub account_user: String,
+    pub account_provider: String,
+    pub to: String,
+    pub subject: String,
+    pub status_before: Option<String>,
+    pub status_after: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub thread_id: Option<String>,
+    pub attachment_paths: Vec<String>,
+    pub image_paths: Vec<String>,
+}
 
 fn default_draft_status() -> String {
     "draft".to_string()
@@ -63,16 +80,20 @@ pub fn is_yaml_format(content: &str) -> bool {
 }
 
 /// Parse YAML frontmatter from email draft content. Returns (meta_struct, meta_hashmap, subject, body).
-fn parse_yaml_draft(text: &str) -> Result<(EmailDraftMeta, HashMap<String, String>, String, String)> {
+fn parse_yaml_draft(
+    text: &str,
+) -> Result<(EmailDraftMeta, HashMap<String, String>, String, String)> {
     let after_first = &text[4..]; // skip "---\n"
-    let end = after_first.find("\n---").ok_or_else(|| {
-        anyhow::anyhow!("Missing closing YAML frontmatter delimiter `---`")
-    })?;
+    let end = after_first
+        .find("\n---")
+        .ok_or_else(|| anyhow::anyhow!("Missing closing YAML frontmatter delimiter `---`"))?;
 
     let yaml_str = &after_first[..end];
     let body_start = end + 4; // skip "\n---"
     let body_section = if body_start < after_first.len() {
-        after_first[body_start..].trim_start_matches('\n').to_string()
+        after_first[body_start..]
+            .trim_start_matches('\n')
+            .to_string()
     } else {
         String::new()
     };
@@ -80,7 +101,9 @@ fn parse_yaml_draft(text: &str) -> Result<(EmailDraftMeta, HashMap<String, Strin
     let meta: EmailDraftMeta = serde_yaml::from_str(yaml_str)?;
 
     // Prefer subject from YAML frontmatter, fall back to first # heading in body
-    let subject = meta.subject.clone()
+    let subject = meta
+        .subject
+        .clone()
         .filter(|s| !s.is_empty())
         .or_else(|| {
             body_section
@@ -150,10 +173,7 @@ pub fn parse_draft(path: &Path) -> Result<(HashMap<String, String>, String, Stri
 
     let subject = lines
         .iter()
-        .find_map(|line| {
-            line.strip_prefix("# ")
-                .map(|s| s.trim().to_string())
-        })
+        .find_map(|line| line.strip_prefix("# ").map(|s| s.trim().to_string()))
         .unwrap_or_default();
 
     let mut meta = HashMap::new();
@@ -190,9 +210,8 @@ pub fn parse_draft_yaml(content: &str) -> Option<EmailDraftMeta> {
 /// Convert markdown body text to HTML.
 fn markdown_to_html(body: &str) -> String {
     use pulldown_cmark::{Options, Parser, html};
-    let options = Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TABLES
-        | Options::ENABLE_SMART_PUNCTUATION;
+    let options =
+        Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_SMART_PUNCTUATION;
     let parser = Parser::new_ext(body, options);
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
@@ -214,27 +233,30 @@ fn compose_email(
     attachment_paths: &[String],
     image_paths: &[String],
 ) -> Result<Message> {
-    let from: Mailbox = from_addr.parse().map_err(|_| anyhow::anyhow!("Invalid from address: {}", from_addr))?;
+    let from: Mailbox = from_addr
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid from address: {}", from_addr))?;
     let to: Mailbox = meta["To"]
         .parse()
         .map_err(|_| anyhow::anyhow!("Invalid To address: {}", meta["To"]))?;
 
-    let mut builder = Message::builder()
-        .from(from)
-        .to(to)
-        .subject(subject);
+    let mut builder = Message::builder().from(from).to(to).subject(subject);
 
     if let Some(cc) = meta.get("CC")
-        && !cc.is_empty() {
-            let cc_box: Mailbox = cc.parse().map_err(|_| anyhow::anyhow!("Invalid CC address: {}", cc))?;
-            builder = builder.cc(cc_box);
-        }
+        && !cc.is_empty()
+    {
+        let cc_box: Mailbox = cc
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Invalid CC address: {}", cc))?;
+        builder = builder.cc(cc_box);
+    }
 
     if let Some(in_reply_to) = meta.get("In-Reply-To")
-        && !in_reply_to.is_empty() {
-            builder = builder.in_reply_to(in_reply_to.to_string());
-            builder = builder.references(in_reply_to.to_string());
-        }
+        && !in_reply_to.is_empty()
+    {
+        builder = builder.in_reply_to(in_reply_to.to_string());
+        builder = builder.references(in_reply_to.to_string());
+    }
 
     // Prepare inline images: generate CIDs and validate paths
     let inline_images: Vec<InlineImage> = image_paths
@@ -251,7 +273,9 @@ fn compose_email(
     if !inline_images.is_empty() {
         // Append inline image references to the HTML body
         for img in &inline_images {
-            let filename = img.path.file_name()
+            let filename = img
+                .path
+                .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "image".to_string());
             html_body.push_str(&format!(
@@ -288,7 +312,9 @@ fn compose_email(
                 })
                 .unwrap_or_else(|| ContentType::parse("image/png").unwrap());
 
-            let filename = img.path.file_name()
+            let filename = img
+                .path
+                .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "image".to_string());
 
@@ -377,8 +403,8 @@ fn send_via_gmail_api(
     user: &str,
     thread_id: Option<&str>,
 ) -> Result<()> {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     let token = crate::filter::gmail_auth::get_send_access_token(Some(account_name), Some(user))?;
 
@@ -414,8 +440,8 @@ fn push_to_drafts_via_gmail_api(
     user: &str,
     thread_id: Option<&str>,
 ) -> Result<()> {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     let token = crate::filter::gmail_auth::get_send_access_token(Some(account_name), Some(user))?;
 
@@ -438,7 +464,11 @@ fn push_to_drafts_via_gmail_api(
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("Gmail API draft push failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "Gmail API draft push failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => Err(e.into()),
     }
@@ -467,9 +497,9 @@ fn update_draft_status(path: &Path, new_status: &str) -> Result<()> {
 
     if is_yaml_format(&text) {
         let after_first = &text[4..]; // skip "---\n"
-        let end = after_first.find("\n---").ok_or_else(|| {
-            anyhow::anyhow!("Missing closing YAML frontmatter delimiter")
-        })?;
+        let end = after_first
+            .find("\n---")
+            .ok_or_else(|| anyhow::anyhow!("Missing closing YAML frontmatter delimiter"))?;
         let yaml_str = &after_first[..end];
         let rest = &after_first[end..]; // includes "\n---" and body
 
@@ -513,18 +543,20 @@ fn resolve_account(
     // Try **Account** field first
     if let Some(acct_name) = meta.get("Account")
         && !acct_name.is_empty()
-            && let Some(acct) = accounts.get(acct_name) {
-                let pwd = resolve_password_optional(acct);
-                return Ok((acct_name.clone(), acct.clone(), pwd));
-            }
+        && let Some(acct) = accounts.get(acct_name)
+    {
+        let pwd = resolve_password_optional(acct);
+        return Ok((acct_name.clone(), acct.clone(), pwd));
+    }
 
     // Try **From** field to match by email
     if let Some(from_addr) = meta.get("From")
         && !from_addr.is_empty()
-            && let Some((name, acct)) = get_account_for_email(&accounts, from_addr) {
-                let pwd = resolve_password_optional(&acct);
-                return Ok((name, acct, pwd));
-            }
+        && let Some((name, acct)) = get_account_for_email(&accounts, from_addr)
+    {
+        let pwd = resolve_password_optional(&acct);
+        return Ok((name, acct, pwd));
+    }
 
     // Fall back to default from local config
     if let Ok((name, acct)) = get_default_account(&accounts) {
@@ -555,10 +587,11 @@ fn bubble_credentials(
         let config_path = dir.join(".corky.toml");
         if config_path.exists()
             && let Ok(parent_accounts) = load_accounts(Some(&config_path))
-                && let Some((name, acct)) = get_account_for_email(&parent_accounts, from_addr) {
-                        let pwd = resolve_password_optional(&acct);
-                        return Some((name, acct, pwd));
-                    }
+            && let Some((name, acct)) = get_account_for_email(&parent_accounts, from_addr)
+        {
+            let pwd = resolve_password_optional(&acct);
+            return Some((name, acct, pwd));
+        }
         // Stop at filesystem root
         if dir.parent().is_none() || dir == dir.parent().unwrap() {
             break;
@@ -570,7 +603,9 @@ fn bubble_credentials(
 /// Resolve a media path: expand `~`, resolve relative paths against a base directory.
 fn resolve_media_path(path_str: &str, base_dir: &Path) -> String {
     if path_str.starts_with("~/") {
-        crate::resolve::expand_tilde(path_str).to_string_lossy().to_string()
+        crate::resolve::expand_tilde(path_str)
+            .to_string_lossy()
+            .to_string()
     } else {
         let p = Path::new(path_str);
         if p.is_absolute() {
@@ -583,6 +618,14 @@ fn resolve_media_path(path_str: &str, base_dir: &Path) -> String {
 
 /// corky push-draft FILE [--send]
 pub fn run(file: &Path, send: bool) -> Result<()> {
+    run_internal(file, send, false).map(|_| ())
+}
+
+pub fn run_with_report(file: &Path, send: bool) -> Result<DraftPushResult> {
+    run_internal(file, send, true)
+}
+
+fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult> {
     if !file.exists() {
         bail!("File not found: {}", file.display());
     }
@@ -593,8 +636,14 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
     } else {
         None
     };
-    let attachments = yaml_meta.as_ref().map(|m| m.attachments.clone()).unwrap_or_default();
-    let images = yaml_meta.as_ref().map(|m| m.images.clone()).unwrap_or_default();
+    let attachments = yaml_meta
+        .as_ref()
+        .map(|m| m.attachments.clone())
+        .unwrap_or_default();
+    let images = yaml_meta
+        .as_ref()
+        .map(|m| m.images.clone())
+        .unwrap_or_default();
     let draft_thread_id = yaml_meta.as_ref().and_then(|m| m.thread_id.clone());
 
     // Resolve image paths relative to the draft file directory
@@ -622,51 +671,89 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
     let (acct_name, acct, password) = resolve_account(&meta, file)?;
     let use_gmail_api = acct.provider == "gmail-api";
 
-    println!("Account: {} ({}){}", acct_name, acct.user, if use_gmail_api { " [Gmail API]" } else { "" });
-    println!("To:      {}", meta["To"]);
-    println!("Subject: {}", subject);
-    if let Some(author) = meta.get("Author") {
-        println!("Author:  {}", author);
-    }
-    if let Some(status) = meta.get("Status") {
-        println!("Status:  {}", status);
-    }
-    if let Some(reply_to) = meta.get("In-Reply-To") {
-        println!("Reply:   {}", reply_to);
-    }
-    if !attachments.is_empty() {
-        println!("Attach:  {} file(s)", attachments.len());
-        for a in &attachments {
-            println!("         {}", a);
+    if !quiet {
+        println!(
+            "Account: {} ({}){}",
+            acct_name,
+            acct.user,
+            if use_gmail_api { " [Gmail API]" } else { "" }
+        );
+        println!("To:      {}", meta["To"]);
+        println!("Subject: {}", subject);
+        if let Some(author) = meta.get("Author") {
+            println!("Author:  {}", author);
         }
-    }
-    if !resolved_images.is_empty() {
-        println!("Images:  {} file(s)", resolved_images.len());
-        for img in &resolved_images {
-            println!("         {}", img);
+        if let Some(status) = meta.get("Status") {
+            println!("Status:  {}", status);
         }
+        if let Some(reply_to) = meta.get("In-Reply-To") {
+            println!("Reply:   {}", reply_to);
+        }
+        if !attachments.is_empty() {
+            println!("Attach:  {} file(s)", attachments.len());
+            for a in &attachments {
+                println!("         {}", a);
+            }
+        }
+        if !resolved_images.is_empty() {
+            println!("Images:  {} file(s)", resolved_images.len());
+            for img in &resolved_images {
+                println!("         {}", img);
+            }
+        }
+        let body_preview = if body.len() > 80 {
+            format!("{}...", &body[..80])
+        } else {
+            body.clone()
+        };
+        println!("Body:    {}", body_preview);
+        println!();
     }
-    let body_preview = if body.len() > 80 {
-        format!("{}...", &body[..80])
+
+    let status_before = meta.get("Status").cloned();
+    let in_reply_to = meta.get("In-Reply-To").cloned();
+    let transport = if send {
+        if use_gmail_api { "gmail-api" } else { "smtp" }
+    } else if use_gmail_api {
+        "gmail-api"
     } else {
-        body.clone()
+        "imap"
     };
-    println!("Body:    {}", body_preview);
-    println!();
 
-    let email = compose_email(&meta, &subject, &body, &acct.user, &attachments, &resolved_images)?;
+    let email = compose_email(
+        &meta,
+        &subject,
+        &body,
+        &acct.user,
+        &attachments,
+        &resolved_images,
+    )?;
 
-    if send {
+    let status_after = if send {
         if use_gmail_api {
             send_via_gmail_api(&email, &acct_name, &acct.user, draft_thread_id.as_deref())?;
         } else {
-            send_email(&email, &acct.smtp_host, acct.smtp_port, &acct.user, &password)?;
+            send_email(
+                &email,
+                &acct.smtp_host,
+                acct.smtp_port,
+                &acct.user,
+                &password,
+            )?;
         }
         update_draft_status(file, "sent")?;
-        println!("Email sent. Status updated to 'sent'.");
+        if !quiet {
+            println!("Email sent. Status updated to 'sent'.");
+        }
+        Some("sent".to_string())
     } else {
         if use_gmail_api {
-            push_to_drafts_via_gmail_api(&email, &acct_name, &acct.user, draft_thread_id.as_deref())?;
+            push_to_drafts_via_gmail_api(
+                &email,
+                &acct_name,
+                &acct.user,
+                draft_thread_id.as_deref(),
+            )?;
         } else {
             push_to_drafts(
                 &email,
@@ -678,10 +765,31 @@ pub fn run(file: &Path, send: bool) -> Result<()> {
                 &acct.drafts_folder,
             )?;
         }
-        println!("Draft created. Open your email drafts to review and send.");
-    }
+        if !quiet {
+            println!("Draft created. Open your email drafts to review and send.");
+        }
+        status_before.clone()
+    };
 
-    Ok(())
+    Ok(DraftPushResult {
+        action: if send {
+            "sent".to_string()
+        } else {
+            "draft_created".to_string()
+        },
+        transport: transport.to_string(),
+        account_name: acct_name,
+        account_user: acct.user,
+        account_provider: acct.provider,
+        to: meta["To"].clone(),
+        subject,
+        status_before,
+        status_after,
+        in_reply_to,
+        thread_id: draft_thread_id,
+        attachment_paths: attachments,
+        image_paths: resolved_images,
+    })
 }
 
 #[cfg(test)]
@@ -816,13 +924,33 @@ mod tests {
     fn test_compose_email_contains_html() {
         let mut meta = HashMap::new();
         meta.insert("To".to_string(), "alice@example.com".to_string());
-        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[], &[]).unwrap();
+        let email = compose_email(
+            &meta,
+            "Test",
+            "Hello **world**",
+            "bob@example.com",
+            &[],
+            &[],
+        )
+        .unwrap();
         let bytes = email.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
-        assert!(formatted.contains("multipart/alternative"), "should be multipart/alternative");
-        assert!(formatted.contains("text/plain"), "should contain text/plain part");
-        assert!(formatted.contains("text/html"), "should contain text/html part");
-        assert!(formatted.contains("<strong>world</strong>"), "should contain rendered HTML");
+        assert!(
+            formatted.contains("multipart/alternative"),
+            "should be multipart/alternative"
+        );
+        assert!(
+            formatted.contains("text/plain"),
+            "should contain text/plain part"
+        );
+        assert!(
+            formatted.contains("text/html"),
+            "should contain text/html part"
+        );
+        assert!(
+            formatted.contains("<strong>world</strong>"),
+            "should contain rendered HTML"
+        );
     }
 
     #[test]
@@ -834,14 +962,37 @@ mod tests {
         write!(tmp, "file contents").unwrap();
         let path = tmp.path().to_string_lossy().to_string();
 
-        let email = compose_email(&meta, "Test", "Hello **world**", "bob@example.com", &[path], &[]).unwrap();
+        let email = compose_email(
+            &meta,
+            "Test",
+            "Hello **world**",
+            "bob@example.com",
+            &[path],
+            &[],
+        )
+        .unwrap();
         let bytes = email.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
-        assert!(formatted.contains("multipart/mixed"), "should be multipart/mixed with attachments");
-        assert!(formatted.contains("multipart/alternative"), "should contain nested alternative");
-        assert!(formatted.contains("text/plain"), "should contain text/plain part");
-        assert!(formatted.contains("text/html"), "should contain text/html part");
-        assert!(formatted.contains("<strong>world</strong>"), "should contain rendered HTML");
+        assert!(
+            formatted.contains("multipart/mixed"),
+            "should be multipart/mixed with attachments"
+        );
+        assert!(
+            formatted.contains("multipart/alternative"),
+            "should contain nested alternative"
+        );
+        assert!(
+            formatted.contains("text/plain"),
+            "should contain text/plain part"
+        );
+        assert!(
+            formatted.contains("text/html"),
+            "should contain text/html part"
+        );
+        assert!(
+            formatted.contains("<strong>world</strong>"),
+            "should contain rendered HTML"
+        );
     }
 
     #[test]
@@ -856,9 +1007,18 @@ mod tests {
         let email = compose_email(&meta, "Test", "Hello", "bob@example.com", &[], &[path]).unwrap();
         let bytes = email.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
-        assert!(formatted.contains("multipart/related"), "should be multipart/related with inline images");
-        assert!(formatted.contains("cid:image1@corky"), "should contain CID reference in HTML");
-        assert!(formatted.contains("Content-Disposition: inline"), "should have inline disposition");
+        assert!(
+            formatted.contains("multipart/related"),
+            "should be multipart/related with inline images"
+        );
+        assert!(
+            formatted.contains("cid:image1@corky"),
+            "should contain CID reference in HTML"
+        );
+        assert!(
+            formatted.contains("Content-Disposition: inline"),
+            "should have inline disposition"
+        );
     }
 
     #[test]
@@ -874,11 +1034,25 @@ mod tests {
         write!(att, "fake pdf").unwrap();
         let att_path = att.path().to_string_lossy().to_string();
 
-        let email = compose_email(&meta, "Test", "Hello", "bob@example.com", &[att_path], &[img_path]).unwrap();
+        let email = compose_email(
+            &meta,
+            "Test",
+            "Hello",
+            "bob@example.com",
+            &[att_path],
+            &[img_path],
+        )
+        .unwrap();
         let bytes = email.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
-        assert!(formatted.contains("multipart/mixed"), "should be multipart/mixed as outer");
-        assert!(formatted.contains("multipart/related"), "should contain multipart/related for images");
+        assert!(
+            formatted.contains("multipart/mixed"),
+            "should be multipart/mixed as outer"
+        );
+        assert!(
+            formatted.contains("multipart/related"),
+            "should contain multipart/related for images"
+        );
     }
 
     #[test]

@@ -46,10 +46,7 @@ fn build_subject_histogram(conv_dir: &std::path::Path) -> Result<HashMap<String,
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        let slug = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let slug = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         if slug.is_empty() {
             continue;
         }

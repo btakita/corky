@@ -1,16 +1,61 @@
 //! `corky doctor` — health checks for config, accounts, and tokens.
 
 use anyhow::Result;
+use serde::Serialize;
 
 use crate::config::corky_config::{self, CorkyConfig};
+use crate::filter::gmail_auth::{
+    DEFAULT_GCP_CLIENT_ID, GMAIL_SEND_SCOPE, GMAIL_SYNC_SCOPE,
+};
 use crate::resolve;
-use crate::social::token_store::{TokenStore, tokens_path};
+use crate::social::token_store::{StoredToken, TokenStore, tokens_path};
+
+const GMAIL_FILTER_REQUIRED_SCOPE: &str =
+    "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels";
 
 /// Collected diagnostic output and status.
 #[derive(Debug, Default)]
 pub struct DoctorReport {
     pub lines: Vec<String>,
     pub ok: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonDoctorReport {
+    ok: bool,
+    lines: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gmail: Option<GmailConnectorStatus>,
+}
+
+#[derive(Debug, Serialize)]
+struct GmailConnectorStatus {
+    credentials_present: bool,
+    credential_source: String,
+    tokens_path: String,
+    default_token: TokenStatus,
+    gmail_api_accounts: Vec<GmailAccountStatus>,
+}
+
+#[derive(Debug, Serialize)]
+struct GmailAccountStatus {
+    account_name: String,
+    user: String,
+    sync_token: TokenStatus,
+    send_token: TokenStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct TokenStatus {
+    key: String,
+    present: bool,
+    valid: bool,
+    expires_at: Option<String>,
+    has_refresh_token: bool,
+    scopes: Vec<String>,
+    required_scopes: Vec<String>,
+    scope_coverage: bool,
+    reauth_required: bool,
 }
 
 impl DoctorReport {
@@ -32,10 +77,29 @@ impl DoctorReport {
 }
 
 /// Run health checks, optionally filtering to a specific provider.
-pub fn run(provider: Option<&str>) -> Result<()> {
+pub fn run(provider: Option<&str>, json: bool) -> Result<()> {
     let report = check(provider);
-    for line in &report.lines {
-        println!("{}", line);
+    if json {
+        let payload = JsonDoctorReport {
+            ok: report.ok,
+            lines: report.lines.clone(),
+            gmail: if provider.is_none()
+                || provider == Some("gmail")
+                || provider == Some("gmail-api")
+            {
+                let cfg = corky_config::try_load_config(None);
+                let store = TokenStore::load().unwrap_or_default();
+                cfg.as_ref()
+                    .map(|cfg| build_gmail_connector_status(cfg, &store))
+            } else {
+                None
+            },
+        };
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    } else {
+        for line in &report.lines {
+            println!("{}", line);
+        }
     }
     if !report.ok {
         std::process::exit(1);
@@ -164,9 +228,7 @@ fn check_linkedin(cfg: &CorkyConfig, store: &TokenStore, report: &mut DoctorRepo
     let profiles_with_linkedin: Vec<(&String, &crate::social::profiles::PlatformEntry)> = cfg
         .profiles
         .iter()
-        .filter_map(|(name, profile)| {
-            profile.linkedin.as_ref().map(|entry| (name, entry))
-        })
+        .filter_map(|(name, profile)| profile.linkedin.as_ref().map(|entry| (name, entry)))
         .collect();
 
     if !has_top_level && profiles_with_linkedin.is_empty() {
@@ -229,9 +291,7 @@ fn check_youtube(cfg: &CorkyConfig, store: &TokenStore, report: &mut DoctorRepor
     let profiles_with_youtube: Vec<(&String, &crate::social::profiles::PlatformEntry)> = cfg
         .profiles
         .iter()
-        .filter_map(|(name, profile)| {
-            profile.youtube.as_ref().map(|entry| (name, entry))
-        })
+        .filter_map(|(name, profile)| profile.youtube.as_ref().map(|entry| (name, entry)))
         .collect();
 
     if !has_top_level && profiles_with_youtube.is_empty() {
@@ -313,9 +373,24 @@ fn check_gmail_api_account(
         report.push("  \u{2713} OAuth credentials resolved (built-in defaults)".to_string());
     }
 
-    // Token check — gmail-api sync tokens use "gmail-sync:<account>" key
-    let key = format!("gmail-sync:{}", name);
-    check_token_status(store, &key, "sync token", "corky sync-auth", report);
+    let sync_key = format!("gmail:{}", account.user);
+    check_token_status_with_scope(
+        store,
+        &sync_key,
+        "sync token",
+        "corky sync account",
+        GMAIL_SYNC_SCOPE,
+        report,
+    );
+    let send_key = format!("gmail:{}:send", name);
+    check_token_status_with_scope(
+        store,
+        &send_key,
+        "send token",
+        "corky draft send",
+        GMAIL_SEND_SCOPE,
+        report,
+    );
 
     // User info
     if !account.user.is_empty() {
@@ -323,10 +398,7 @@ fn check_gmail_api_account(
     }
 }
 
-fn check_imap_account(
-    account: &crate::accounts::Account,
-    report: &mut DoctorReport,
-) {
+fn check_imap_account(account: &crate::accounts::Account, report: &mut DoctorReport) {
     // Password configuration check
     if !account.password.is_empty() {
         report.push("  \u{2713} Password configured (inline)".to_string());
@@ -355,10 +427,27 @@ fn check_token_status(
     fix_cmd: &str,
     report: &mut DoctorReport,
 ) {
+    check_token_status_with_scope(store, key, label, fix_cmd, "", report);
+}
+
+fn check_token_status_with_scope(
+    store: &TokenStore,
+    key: &str,
+    label: &str,
+    fix_cmd: &str,
+    required_scope: &str,
+    report: &mut DoctorReport,
+) {
     let tp = tokens_path();
     match store.tokens.get(key) {
         Some(token) => {
             report.push(format!("  \u{2713} Token exists: {}", tp.display()));
+            if !required_scope.is_empty() && !token_scopes_cover(&token.scopes, required_scope) {
+                report.fail(format!(
+                    "  \u{2717} Token scopes insufficient for {} ({})",
+                    label, required_scope
+                ));
+            }
             if token.is_valid() {
                 report.push(format!(
                     "  \u{2713} Token valid (expires {})",
@@ -384,4 +473,113 @@ fn check_token_status(
             ));
         }
     }
+}
+
+fn build_gmail_connector_status(cfg: &CorkyConfig, store: &TokenStore) -> GmailConnectorStatus {
+    let (credentials_present, credential_source) = resolve_gmail_credential_source(cfg);
+    let mut gmail_api_accounts: Vec<GmailAccountStatus> = cfg
+        .accounts
+        .iter()
+        .filter(|(_, account)| account.provider == "gmail-api")
+        .map(|(name, account)| GmailAccountStatus {
+            account_name: name.clone(),
+            user: account.user.clone(),
+            sync_token: token_status(store, &format!("gmail:{}", account.user), GMAIL_SYNC_SCOPE),
+            send_token: token_status(store, &format!("gmail:{}:send", name), GMAIL_SEND_SCOPE),
+        })
+        .collect();
+    gmail_api_accounts.sort_by(|a, b| a.account_name.cmp(&b.account_name));
+
+    GmailConnectorStatus {
+        credentials_present,
+        credential_source,
+        tokens_path: tokens_path().display().to_string(),
+        default_token: token_status(store, "gmail:default", GMAIL_FILTER_REQUIRED_SCOPE),
+        gmail_api_accounts,
+    }
+}
+
+fn resolve_gmail_credential_source(cfg: &CorkyConfig) -> (bool, String) {
+    let has_config_creds = cfg.gmail.as_ref().is_some_and(|g| {
+        !g.client_id.is_empty()
+            || !g.client_id_cmd.is_empty()
+            || !g.client_secret.is_empty()
+            || !g.client_secret_cmd.is_empty()
+    });
+    if has_config_creds {
+        return (true, "config".to_string());
+    }
+
+    let has_env_creds = std::env::var("CORKY_GMAIL_CLIENT_ID")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+        || std::env::var("CORKY_GMAIL_CLIENT_SECRET")
+            .map(|v| !v.is_empty())
+            .unwrap_or(false);
+    if has_env_creds {
+        return (true, "env".to_string());
+    }
+
+    if !DEFAULT_GCP_CLIENT_ID.is_empty() {
+        return (true, "built-in-defaults".to_string());
+    }
+
+    (false, "missing".to_string())
+}
+
+fn token_status(store: &TokenStore, key: &str, required_scope: &str) -> TokenStatus {
+    let required_scopes = required_scope
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if let Some(token) = store.tokens.get(key) {
+        build_token_status(key, token, required_scopes, required_scope)
+    } else {
+        TokenStatus {
+            key: key.to_string(),
+            present: false,
+            valid: false,
+            expires_at: None,
+            has_refresh_token: false,
+            scopes: vec![],
+            required_scopes,
+            scope_coverage: false,
+            reauth_required: true,
+        }
+    }
+}
+
+fn build_token_status(
+    key: &str,
+    token: &StoredToken,
+    required_scopes: Vec<String>,
+    required_scope: &str,
+) -> TokenStatus {
+    let scope_coverage = token_scopes_cover(&token.scopes, required_scope);
+    let valid = token.is_valid();
+    let has_refresh_token = token.refresh_token.is_some();
+    TokenStatus {
+        key: key.to_string(),
+        present: true,
+        valid,
+        expires_at: Some(token.expires_at.to_rfc3339()),
+        has_refresh_token,
+        scopes: token.scopes.clone(),
+        required_scopes,
+        scope_coverage,
+        reauth_required: !scope_coverage || (!valid && !has_refresh_token),
+    }
+}
+
+fn token_scopes_cover(token_scopes: &[String], required_scope: &str) -> bool {
+    if required_scope.is_empty() {
+        return true;
+    }
+    required_scope.split_whitespace().all(|req| {
+        token_scopes.iter().any(|scope| scope == req)
+            || (req.ends_with(".readonly")
+                && token_scopes
+                    .iter()
+                    .any(|scope| scope == req.trim_end_matches(".readonly")))
+    })
 }

@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::accounts::{load_accounts, load_watch_config, resolve_password};
 use crate::config::corky_config;
@@ -56,10 +56,7 @@ fn count_new_messages(
     for (acct_name, labels) in after {
         let before_acct = before.get(acct_name);
         for (label, uid) in labels {
-            let before_uid = before_acct
-                .and_then(|a| a.get(label))
-                .copied()
-                .unwrap_or(0);
+            let before_uid = before_acct.and_then(|a| a.get(label)).copied().unwrap_or(0);
             if *uid > before_uid {
                 count += 1;
             }
@@ -72,9 +69,10 @@ fn load_state() -> SyncState {
     let sf = resolve::sync_state_file();
     if sf.exists()
         && let Ok(data) = std::fs::read(&sf)
-            && let Ok(state) = crate::sync::types::load_state(&data) {
-                return state;
-            }
+        && let Ok(state) = crate::sync::types::load_state(&data)
+    {
+        return state;
+    }
     SyncState::default()
 }
 
@@ -101,9 +99,10 @@ fn sync_mailboxes() {
             .arg("--porcelain")
             .output();
         if let Ok(out) = output
-            && !String::from_utf8_lossy(&out.stdout).trim().is_empty() {
-                let _ = crate::mailbox::sync::sync_one(name);
-            }
+            && !String::from_utf8_lossy(&out.stdout).trim().is_empty()
+        {
+            let _ = crate::mailbox::sync::sync_one(name);
+        }
     }
 }
 
@@ -272,7 +271,11 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
     println!(
         "corky watch: polling every {}s{} (Ctrl-C to stop)",
         interval,
-        if auto_upgrade { ", auto-upgrade on" } else { "" }
+        if auto_upgrade {
+            ", auto-upgrade on"
+        } else {
+            ""
+        }
     );
 
     let mut cycles_since_upgrade_check: u64 = 0;
@@ -356,7 +359,10 @@ mod tests {
             for (label, uidvalidity, last_uid) in labels {
                 acct.labels.insert(
                     label.to_string(),
-                    LabelState { uidvalidity, last_uid },
+                    LabelState {
+                        uidvalidity,
+                        last_uid,
+                    },
                 );
             }
             state.accounts.insert(acct_name.to_string(), acct);
@@ -386,20 +392,20 @@ mod tests {
 
     #[test]
     fn count_new_messages_no_change() {
-        let snap = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 1, 100)]),
-        ]));
+        let snap = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
         assert_eq!(count_new_messages(&snap, &snap), 0);
     }
 
     #[test]
     fn count_new_messages_one_label_increased() {
-        let before = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 1, 100), ("Sent", 1, 50)]),
-        ]));
-        let after = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 1, 105), ("Sent", 1, 50)]),
-        ]));
+        let before = snapshot_uids(&make_state(vec![(
+            "gmail",
+            vec![("INBOX", 1, 100), ("Sent", 1, 50)],
+        )]));
+        let after = snapshot_uids(&make_state(vec![(
+            "gmail",
+            vec![("INBOX", 1, 105), ("Sent", 1, 50)],
+        )]));
         assert_eq!(count_new_messages(&before, &after), 1);
     }
 
@@ -418,9 +424,7 @@ mod tests {
 
     #[test]
     fn count_new_messages_new_account_in_after() {
-        let before = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 1, 100)]),
-        ]));
+        let before = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
         let after = snapshot_uids(&make_state(vec![
             ("gmail", vec![("INBOX", 1, 100)]),
             ("proton", vec![("INBOX", 2, 50)]),
@@ -431,12 +435,11 @@ mod tests {
 
     #[test]
     fn count_new_messages_new_label_in_after() {
-        let before = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 1, 100)]),
-        ]));
-        let after = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 1, 100), ("Sent", 1, 30)]),
-        ]));
+        let before = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
+        let after = snapshot_uids(&make_state(vec![(
+            "gmail",
+            vec![("INBOX", 1, 100), ("Sent", 1, 30)],
+        )]));
         // New label with uid > 0 counts as new
         assert_eq!(count_new_messages(&before, &after), 1);
     }
@@ -444,12 +447,8 @@ mod tests {
     #[test]
     fn count_new_messages_uid_decreased() {
         // UIDVALIDITY changed — uid went down. Should NOT count as new.
-        let before = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 1, 100)]),
-        ]));
-        let after = snapshot_uids(&make_state(vec![
-            ("gmail", vec![("INBOX", 2, 5)]),
-        ]));
+        let before = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
+        let after = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 2, 5)])]));
         assert_eq!(count_new_messages(&before, &after), 0);
     }
 }

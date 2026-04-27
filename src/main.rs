@@ -1,7 +1,13 @@
 use anyhow::Result;
 use clap::Parser;
 
-use corky::cli::{CalCommands, ChatCommands, Cli, Commands, ContactCommands, DocCommands, DocsCommands, DraftCommands, FilterCommands, LabelCommands, LinkedinCommands, MailboxCommands, PlaylistCommands, RagieCommands, ScheduleCommands, SheetsCommands, SiftCommands, SkillCommands, SlackCommands, SyncCommands, TasksCommands, TopicCommands, YoutubeCommands};
+use corky::cli::{
+    CalCommands, ChatCommands, Cli, Commands, ContactCommands, DocCommands, DocsCommands,
+    DraftCommands, FilterCommands, GscCommands, GscOutputFormat, LabelCommands, LinkedinCommands,
+    MailboxCommands, PlaylistCommands, RagieCommands, ScheduleCommands, SheetsCommands,
+    SiftCommands, SkillCommands, SlackCommands, SyncCommands, TasksCommands, TopicCommands,
+    YoutubeCommands,
+};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -17,7 +23,6 @@ fn main() -> Result<()> {
             std::process::exit(1);
         }
     }
-
 
     // Warn about available upgrades (skip if running the upgrade command itself)
     if !matches!(cli.command, Commands::Upgrade) {
@@ -54,16 +59,32 @@ fn main() -> Result<()> {
             Some(SyncCommands::Account { name }) => corky::sync::run(false, Some(&name)),
             Some(SyncCommands::Routes) => corky::sync::routes::run(),
             Some(SyncCommands::Mailbox { name }) => corky::mailbox::sync::run(name.as_deref()),
-            Some(SyncCommands::TelegramImport { path, label, account }) => {
+            Some(SyncCommands::TelegramImport {
+                path,
+                label,
+                account,
+            }) => {
                 let out_dir = corky::resolve::conversations_dir();
                 corky::sync::telegram_import::run(&path, &label, &out_dir, &account)
             }
-            Some(SyncCommands::SmsImport { path, label, account }) => {
+            Some(SyncCommands::SmsImport {
+                path,
+                label,
+                account,
+            }) => {
                 let out_dir = corky::resolve::conversations_dir();
                 corky::sync::sms_import::run(&path, &label, &out_dir, &account)
             }
             Some(SyncCommands::Imports) => corky::sync::imports::run_from_config(),
-            Some(SyncCommands::Refetch { thread_id }) => corky::sync::refetch(&thread_id),
+            Some(SyncCommands::Refetch { thread_id, json }) => {
+                if json {
+                    let report = corky::sync::refetch_report(&thread_id)?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                    Ok(())
+                } else {
+                    corky::sync::refetch(&thread_id)
+                }
+            }
         },
         Commands::SyncAuth => corky::sync::auth::run(),
         Commands::ListFolders { account } => corky::sync::folders::run(account.as_deref()),
@@ -74,19 +95,16 @@ fn main() -> Result<()> {
                 if let Some(slug) = from {
                     corky::contact::from_conversation::run(&slug, name.as_deref())
                 } else {
-                    let name = name.ok_or_else(|| {
-                        anyhow::anyhow!("NAME required when not using --from")
-                    })?;
+                    let name =
+                        name.ok_or_else(|| anyhow::anyhow!("NAME required when not using --from"))?;
                     corky::contact::add::run(&name, &emails)
                 }
             }
             ContactCommands::Info { name } => corky::contact::info::run(&name),
-            ContactCommands::Push { platform, names } => {
-                match platform.as_deref() {
-                    None | Some("google") => corky::contact::push::run_google(&names),
-                    Some(p) => anyhow::bail!("Unknown platform: {}. Supported: google", p),
-                }
-            }
+            ContactCommands::Push { platform, names } => match platform.as_deref() {
+                None | Some("google") => corky::contact::push::run_google(&names),
+                Some(p) => anyhow::bail!("Unknown platform: {}. Supported: google", p),
+            },
             ContactCommands::Delete { resource_names } => {
                 corky::contact::delete::run(&resource_names)
             }
@@ -151,8 +169,7 @@ fn main() -> Result<()> {
             }
             MailboxCommands::Unanswered { scope, from_name } => {
                 let from = resolve_from_name(from_name)?;
-                let scope =
-                    corky::mailbox::find_unanswered::Scope::from_arg(scope.as_deref());
+                let scope = corky::mailbox::find_unanswered::Scope::from_arg(scope.as_deref());
                 corky::mailbox::find_unanswered::run(scope, &from)
             }
             MailboxCommands::Draft(cmd) => run_draft_command(cmd),
@@ -173,15 +190,15 @@ fn main() -> Result<()> {
                 &visibility,
                 &tags,
             ),
-            LinkedinCommands::Publish { file, dry_run } => corky::social::run_publish(&file, dry_run),
+            LinkedinCommands::Publish { file, dry_run } => {
+                corky::social::run_publish(&file, dry_run)
+            }
             LinkedinCommands::Edit { file, body } => {
                 corky::social::run_edit(&file, body.as_deref())
             }
             LinkedinCommands::Check => corky::social::run_check(),
             LinkedinCommands::List { status } => corky::social::run_list(status.as_deref()),
-            LinkedinCommands::Comment { file, body } => {
-                corky::social::run_comment(&file, &body)
-            }
+            LinkedinCommands::Comment { file, body } => corky::social::run_comment(&file, &body),
             LinkedinCommands::RenameAuthor { old, new } => {
                 corky::social::run_rename_author(&old, &new)
             }
@@ -202,23 +219,30 @@ fn main() -> Result<()> {
                 &visibility,
                 &tags,
             ),
-            YoutubeCommands::Publish { file, dry_run } => corky::social::run_publish(&file, dry_run),
+            YoutubeCommands::Publish { file, dry_run } => {
+                corky::social::run_publish(&file, dry_run)
+            }
             YoutubeCommands::Delete { video_id } => corky::social::run_youtube_delete(&video_id),
             YoutubeCommands::Edit { file } => corky::social::run_youtube_edit(&file),
             YoutubeCommands::Comment { file, body } => {
                 corky::social::run_youtube_comment(&file, &body)
             }
             YoutubeCommands::Playlist(cmd) => match cmd {
-                PlaylistCommands::Create { title, description, visibility } => {
-                    corky::social::run_playlist_create(&title, &description, &visibility)
-                }
-                PlaylistCommands::Add { playlist_id, video_id, position } => {
-                    corky::social::run_playlist_add(&playlist_id, &video_id, position)
-                }
+                PlaylistCommands::Create {
+                    title,
+                    description,
+                    visibility,
+                } => corky::social::run_playlist_create(&title, &description, &visibility),
+                PlaylistCommands::Add {
+                    playlist_id,
+                    video_id,
+                    position,
+                } => corky::social::run_playlist_add(&playlist_id, &video_id, position),
                 PlaylistCommands::List => corky::social::run_playlist_list(),
-                PlaylistCommands::Remove { playlist_id, video_id } => {
-                    corky::social::run_playlist_remove(&playlist_id, &video_id)
-                }
+                PlaylistCommands::Remove {
+                    playlist_id,
+                    video_id,
+                } => corky::social::run_playlist_remove(&playlist_id, &video_id),
             },
             YoutubeCommands::Check => corky::social::run_check(),
             YoutubeCommands::List { status } => corky::social::run_list(status.as_deref()),
@@ -229,42 +253,69 @@ fn main() -> Result<()> {
         },
         Commands::Topics(cmd) => match cmd {
             TopicCommands::List { verbose } => corky::topics::run_list(verbose),
-            TopicCommands::Add { name, keywords, description } => {
-                corky::topics::run_add(&name, &keywords, description.as_deref())
-            }
+            TopicCommands::Add {
+                name,
+                keywords,
+                description,
+            } => corky::topics::run_add(&name, &keywords, description.as_deref()),
             TopicCommands::Info { name } => corky::topics::run_info(&name),
             TopicCommands::Suggest { limit, mailbox } => {
                 corky::topics::run_suggest(limit, mailbox.as_deref())
             }
         },
         Commands::Slack(cmd) => match cmd {
-            SlackCommands::Import { path, label, account } => {
+            SlackCommands::Import {
+                path,
+                label,
+                account,
+            } => {
                 let out_dir = corky::resolve::conversations_dir();
                 corky::sync::slack_import::run(&path, &label, &out_dir, &account)
             }
         },
         Commands::Label(cmd) => match cmd {
-            LabelCommands::Clear { label, account, search, dry_run } => {
-                corky::label::clear::run(&label, account.as_deref(), search.as_deref(), dry_run)
-            }
+            LabelCommands::Clear {
+                label,
+                account,
+                search,
+                dry_run,
+            } => corky::label::clear::run(&label, account.as_deref(), search.as_deref(), dry_run),
         },
         Commands::Cal(cmd) => match cmd {
-            CalCommands::Auth { account } => {
-                corky::cal::auth::run_auth(account.as_deref())
-            }
-            CalCommands::List { limit, query, account } => {
-                corky::cal::list::run(limit, query.as_deref(), account.as_deref())
-            }
-            CalCommands::Delete { query, all, dry_run, account } => {
-                corky::cal::delete::run(&query, all, dry_run, account.as_deref())
-            }
-            CalCommands::Create { summary, start, end, description, location, account } => {
-                corky::cal::create::run(&summary, &start, &end, description.as_deref(), location.as_deref(), account.as_deref())
-            }
-            CalCommands::Check { start, end, account } => {
-                corky::cal::check::run(&start, &end, account.as_deref())
-            }
+            CalCommands::Auth { account } => corky::cal::auth::run_auth(account.as_deref()),
+            CalCommands::List {
+                limit,
+                query,
+                account,
+            } => corky::cal::list::run(limit, query.as_deref(), account.as_deref()),
+            CalCommands::Delete {
+                query,
+                all,
+                dry_run,
+                account,
+            } => corky::cal::delete::run(&query, all, dry_run, account.as_deref()),
+            CalCommands::Create {
+                summary,
+                start,
+                end,
+                description,
+                location,
+                account,
+            } => corky::cal::create::run(
+                &summary,
+                &start,
+                &end,
+                description.as_deref(),
+                location.as_deref(),
+                account.as_deref(),
+            ),
+            CalCommands::Check {
+                start,
+                end,
+                account,
+            } => corky::cal::check::run(&start, &end, account.as_deref()),
         },
+        Commands::Gsc(cmd) => run_gsc(cmd),
         Commands::Filter(cmd) => match cmd {
             FilterCommands::Build { input, output } => {
                 corky::filter::build::run(input.as_deref(), output.as_deref())
@@ -272,9 +323,7 @@ fn main() -> Result<()> {
             FilterCommands::Auth { account } => {
                 corky::filter::gmail_auth::run_auth(account.as_deref())
             }
-            FilterCommands::Pull { account } => {
-                corky::filter::pull::run(account.as_deref())
-            }
+            FilterCommands::Pull { account } => corky::filter::pull::run(account.as_deref()),
             FilterCommands::Push { account, dry_run } => {
                 corky::filter::push::run(account.as_deref(), dry_run)
             }
@@ -284,49 +333,106 @@ fn main() -> Result<()> {
             }
         },
         Commands::Doc(cmd) => match cmd {
-            DocCommands::Build { file, format, template, output } => {
-                corky::doc::build::run(&file, &format, template.as_deref(), output.as_deref())
-            }
-            DocCommands::Upload { file, share, account } => {
+            DocCommands::Build {
+                file,
+                format,
+                template,
+                output,
+            } => corky::doc::build::run(&file, &format, template.as_deref(), output.as_deref()),
+            DocCommands::Upload {
+                file,
+                share,
+                account,
+            } => {
                 let link = corky::doc::upload::run(&file, share, account.as_deref())?;
                 println!("{}", link);
                 Ok(())
             }
-            DocCommands::Read { doc, output, account } => {
-                corky::doc::gdocs::read(&doc, output.as_deref(), account.as_deref())
-            }
+            DocCommands::Read {
+                doc,
+                output,
+                account,
+            } => corky::doc::gdocs::read(&doc, output.as_deref(), account.as_deref()),
             DocCommands::Write { doc, file, account } => {
                 corky::doc::gdocs::write(&doc, &file, account.as_deref())
             }
-            DocCommands::Sheet { sheet, range, format, output, account } => {
-                corky::doc::sheets::read(&sheet, range.as_deref(), &format, output.as_deref(), account.as_deref())
-            }
-            DocCommands::SheetWrite { sheet, range, file, account } => {
-                corky::doc::sheets::write(&sheet, &range, &file, account.as_deref())
-            }
+            DocCommands::Sheet {
+                sheet,
+                range,
+                format,
+                output,
+                account,
+            } => corky::doc::sheets::read(
+                &sheet,
+                range.as_deref(),
+                &format,
+                output.as_deref(),
+                account.as_deref(),
+            ),
+            DocCommands::SheetWrite {
+                sheet,
+                range,
+                file,
+                account,
+            } => corky::doc::sheets::write(&sheet, &range, &file, account.as_deref()),
         },
         Commands::Docs(cmd) => match cmd {
-            DocsCommands::Read { doc, output, account } => {
-                corky::doc::gdocs::read(&doc, output.as_deref(), account.as_deref())
-            }
+            DocsCommands::Read {
+                doc,
+                output,
+                account,
+            } => corky::doc::gdocs::read(&doc, output.as_deref(), account.as_deref()),
             DocsCommands::Write { doc, file, account } => {
                 corky::doc::gdocs::write(&doc, &file, account.as_deref())
             }
         },
         Commands::Sheets(cmd) => match cmd {
-            SheetsCommands::Read { sheet, range, format, output, account } => {
-                corky::doc::sheets::read(&sheet, range.as_deref(), &format, output.as_deref(), account.as_deref())
-            }
-            SheetsCommands::Write { sheet, range, file, account } => {
-                corky::doc::sheets::write(&sheet, &range, &file, account.as_deref())
-            }
+            SheetsCommands::Read {
+                sheet,
+                range,
+                format,
+                output,
+                account,
+            } => corky::doc::sheets::read(
+                &sheet,
+                range.as_deref(),
+                &format,
+                output.as_deref(),
+                account.as_deref(),
+            ),
+            SheetsCommands::Write {
+                sheet,
+                range,
+                file,
+                account,
+            } => corky::doc::sheets::write(&sheet, &range, &file, account.as_deref()),
         },
-        Commands::Transcribe { file, model, language, output, speakers, diarize, no_adaptive_chunk, no_resolve_unknown, no_confidence_retranscribe } => {
-            corky::transcribe::run(&file, model.as_deref(), language.as_deref(), output.as_deref(), &speakers, diarize, no_adaptive_chunk, no_resolve_unknown, no_confidence_retranscribe)
-        }
-        Commands::Search { query, backend, all } => {
-            corky::search::run(&query, backend.as_deref(), all)
-        }
+        Commands::Transcribe {
+            file,
+            model,
+            language,
+            output,
+            speakers,
+            diarize,
+            no_adaptive_chunk,
+            no_resolve_unknown,
+            no_confidence_retranscribe,
+        } => corky::transcribe::run(
+            &file,
+            model.as_deref(),
+            language.as_deref(),
+            output.as_deref(),
+            &speakers,
+            diarize,
+            no_adaptive_chunk,
+            no_resolve_unknown,
+            no_confidence_retranscribe,
+        ),
+        Commands::Search {
+            query,
+            backend,
+            all,
+        } => corky::search::run(&query, backend.as_deref(), all),
         Commands::Sift(cmd) => match cmd {
             SiftCommands::Index { watch } => corky::search::sift::SiftBackend::run_index(watch),
             SiftCommands::Status => corky::search::sift::SiftBackend::run_status(),
@@ -341,22 +447,34 @@ fn main() -> Result<()> {
             RagieCommands::Status => corky::search::ragie::RagieBackend::run_status(),
         },
         Commands::Chat(cmd) => match cmd {
-            ChatCommands::Send { space, message, account } => {
-                corky::social::chat::send(&space, &message, account.as_deref())
-            }
+            ChatCommands::Send {
+                space,
+                message,
+                account,
+            } => corky::social::chat::send(&space, &message, account.as_deref()),
         },
         Commands::Tasks(cmd) => match cmd {
             TasksCommands::List { tasklist, account } => {
                 corky::tasks::list::run(tasklist.as_deref(), account.as_deref())
             }
-            TasksCommands::Add { title, due, tasklist, account } => {
-                corky::tasks::add::run(&title, due.as_deref(), tasklist.as_deref(), account.as_deref())
-            }
-            TasksCommands::Done { task_id, tasklist, account } => {
-                corky::tasks::done::run(&task_id, tasklist.as_deref(), account.as_deref())
-            }
+            TasksCommands::Add {
+                title,
+                due,
+                tasklist,
+                account,
+            } => corky::tasks::add::run(
+                &title,
+                due.as_deref(),
+                tasklist.as_deref(),
+                account.as_deref(),
+            ),
+            TasksCommands::Done {
+                task_id,
+                tasklist,
+                account,
+            } => corky::tasks::done::run(&task_id, tasklist.as_deref(), account.as_deref()),
         },
-        Commands::Doctor { provider } => corky::doctor::run(provider.as_deref()),
+        Commands::Doctor { provider, json } => corky::doctor::run(provider.as_deref(), json),
         Commands::Upgrade => corky::upgrade::run(),
     }
 }
@@ -392,15 +510,158 @@ fn run_draft_command(cmd: DraftCommands) -> anyhow::Result<()> {
             clipboard,
             inline,
         } => corky::draft::attach::run(&file, &files, clipboard, inline),
-        DraftCommands::Validate { args } => {
-            corky::mailbox::validate_draft::run_scoped(&args)
+        DraftCommands::Validate { args } => corky::mailbox::validate_draft::run_scoped(&args),
+        DraftCommands::Push { file, send, json } => {
+            if json {
+                let report = corky::draft::run_with_report(&file, send)?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            } else {
+                corky::draft::run(&file, send)
+            }
         }
-        DraftCommands::Push { file, send } => corky::draft::run(&file, send),
-        DraftCommands::Send { file, attachments, account } => {
-            corky::draft::send::run(&file, &attachments, account.as_deref())
+        DraftCommands::Send {
+            file,
+            attachments,
+            account,
+            json,
+        } => {
+            if json {
+                let report =
+                    corky::draft::send::run_with_report(&file, &attachments, account.as_deref())?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            } else {
+                corky::draft::send::run(&file, &attachments, account.as_deref())
+            }
         }
         DraftCommands::Migrate { dry_run } => corky::draft::migrate::run(dry_run),
     }
+}
+
+fn run_gsc(cmd: GscCommands) -> Result<()> {
+    match cmd {
+        GscCommands::Auth { account } => corky::gsc::auth::run_auth(account.as_deref()),
+        GscCommands::Sites { format } => {
+            let token = corky::gsc::auth::get_access_token(None)?;
+            let sites = corky::gsc::sites::list_sites(&token)?;
+            print_gsc_sites(&sites, format)
+        }
+        GscCommands::Query {
+            site,
+            start,
+            end,
+            dimensions,
+            row_limit,
+            format,
+        } => {
+            let token = corky::gsc::auth::get_access_token(None)?;
+            let dims: Vec<&str> = dimensions.iter().map(String::as_str).collect();
+            let params = corky::gsc::query::QueryParams {
+                site_url: &site,
+                start_date: &start,
+                end_date: &end,
+                dimensions: &dims,
+                row_limit,
+                start_row: 0,
+                filters: vec![],
+            };
+            let resp = corky::gsc::query::run_query(&token, &params)?;
+            print_gsc_query(&resp, format)
+        }
+        GscCommands::Inspect { site, url } => {
+            let token = corky::gsc::auth::get_access_token(None)?;
+            let resp = corky::gsc::inspect::inspect_url(&token, &site, &url)?;
+            println!("{}", serde_json::to_string_pretty(&resp)?);
+            Ok(())
+        }
+    }
+}
+
+fn print_gsc_sites(sites: &[corky::gsc::sites::SiteEntry], format: GscOutputFormat) -> Result<()> {
+    match format {
+        GscOutputFormat::Json => {
+            let v: Vec<serde_json::Value> = sites
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "siteUrl": s.site_url,
+                        "permissionLevel": s.permission_level,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        GscOutputFormat::Csv => {
+            println!("site_url,permission_level");
+            for s in sites {
+                println!("{},{}", s.site_url, s.permission_level);
+            }
+        }
+        GscOutputFormat::Table => {
+            if sites.is_empty() {
+                println!(
+                    "(no sites — ensure the SA email is added in Search Console → Settings → Users & permissions)"
+                );
+            }
+            let url_w = sites
+                .iter()
+                .map(|s| s.site_url.len())
+                .max()
+                .unwrap_or(8)
+                .max(8);
+            println!("{:<width$}  permission", "site_url", width = url_w);
+            for s in sites {
+                println!(
+                    "{:<width$}  {}",
+                    s.site_url,
+                    s.permission_level,
+                    width = url_w
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_gsc_query(resp: &corky::gsc::query::QueryResponse, format: GscOutputFormat) -> Result<()> {
+    match format {
+        GscOutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(resp)?);
+        }
+        GscOutputFormat::Csv => {
+            let rows = resp.rows.as_deref().unwrap_or(&[]);
+            println!("keys,clicks,impressions,ctr,position");
+            for r in rows {
+                println!(
+                    "{},{},{},{},{}",
+                    r.keys.join("|"),
+                    r.clicks,
+                    r.impressions,
+                    r.ctr,
+                    r.position
+                );
+            }
+        }
+        GscOutputFormat::Table => {
+            let rows = resp.rows.as_deref().unwrap_or(&[]);
+            println!(
+                "{:>9} {:>12} {:>8} {:>8}  keys",
+                "clicks", "impressions", "ctr", "pos"
+            );
+            for r in rows {
+                println!(
+                    "{:>9.0} {:>12.0} {:>8.4} {:>8.2}  {}",
+                    r.clicks,
+                    r.impressions,
+                    r.ctr,
+                    r.position,
+                    r.keys.join(" | ")
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Resolve the --from name: CLI flag > owner.name in .corky.toml > error.
@@ -410,9 +671,10 @@ fn resolve_from_name(from_name: Option<String>) -> anyhow::Result<String> {
     }
     if let Some(cfg) = corky::config::corky_config::try_load_config(None)
         && let Some(owner) = cfg.owner
-            && !owner.name.is_empty() {
-                return Ok(owner.name);
-            }
+        && !owner.name.is_empty()
+    {
+        return Ok(owner.name);
+    }
     anyhow::bail!(
         "No --from name provided and no [owner] name in .corky.toml.\n\
          Use --from NAME or set name in [owner] section of .corky.toml."

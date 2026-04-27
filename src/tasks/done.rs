@@ -1,6 +1,6 @@
 //! `corky tasks done` — mark a Google Task as completed.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::filter::gmail_auth;
 
@@ -9,11 +9,8 @@ const TASKS_API: &str = "https://tasks.googleapis.com/tasks/v1";
 /// Mark a task as completed via PATCH.
 pub fn run(task_id: &str, tasklist: Option<&str>, account: Option<&str>) -> Result<()> {
     let list_id = tasklist.unwrap_or("@default");
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::TASKS_SCOPE,
-        account,
-    )?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::TASKS_SCOPE, account)?;
 
     let url = format!("{}/lists/{}/tasks/{}", TASKS_API, list_id, task_id);
     let body = serde_json::json!({ "status": "completed" });

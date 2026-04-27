@@ -38,7 +38,18 @@ pub fn run(
     let slug = util::slugify(subject);
     let path = unique_path(&drafts_dir, &date, &slug);
 
-    let content = render(subject, to, cc, account, from, in_reply_to, thread_id, &author, attachments, images);
+    let content = render(
+        subject,
+        to,
+        cc,
+        account,
+        from,
+        in_reply_to,
+        thread_id,
+        &author,
+        attachments,
+        images,
+    );
     std::fs::write(&path, content)?;
     println!("{}", path.display());
     Ok(())
@@ -124,7 +135,18 @@ mod tests {
 
     #[test]
     fn test_render_minimal() {
-        let out = render("Hello", "a@b.com", None, None, None, None, None, "", &[], &[]);
+        let out = render(
+            "Hello",
+            "a@b.com",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "",
+            &[],
+            &[],
+        );
         assert!(out.starts_with("---\n"));
         assert!(out.contains("to: a@b.com\n"));
         assert!(out.contains("status: draft\n"));
@@ -192,7 +214,18 @@ mod tests {
             "/tmp/screenshot.png".to_string(),
             "/tmp/doc.pdf".to_string(),
         ];
-        let out = render("Test", "a@b.com", None, None, None, None, None, "", &attachments, &[]);
+        let out = render(
+            "Test",
+            "a@b.com",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "",
+            &attachments,
+            &[],
+        );
         assert!(out.contains("attachments:\n"));
         assert!(out.contains("  - /tmp/screenshot.png\n"));
         assert!(out.contains("  - /tmp/doc.pdf\n"));
@@ -209,11 +242,19 @@ mod tests {
 
     #[test]
     fn test_render_with_images() {
-        let images = vec![
-            "screenshot.png".to_string(),
-            "photo.jpg".to_string(),
-        ];
-        let out = render("Test", "a@b.com", None, None, None, None, None, "", &[], &images);
+        let images = vec!["screenshot.png".to_string(), "photo.jpg".to_string()];
+        let out = render(
+            "Test",
+            "a@b.com",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "",
+            &[],
+            &images,
+        );
         assert!(out.contains("images:\n"));
         assert!(out.contains("  - screenshot.png\n"));
         assert!(out.contains("  - photo.jpg\n"));
@@ -234,7 +275,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let p = unique_path(&dir, "2026-02-22", "hello");
-        assert_eq!(p.file_name().unwrap().to_str().unwrap(), "2026-02-22-hello.md");
+        assert_eq!(
+            p.file_name().unwrap().to_str().unwrap(),
+            "2026-02-22-hello.md"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -245,7 +289,10 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("2026-02-22-hello.md"), "x").unwrap();
         let p = unique_path(&dir, "2026-02-22", "hello");
-        assert_eq!(p.file_name().unwrap().to_str().unwrap(), "2026-02-22-hello-2.md");
+        assert_eq!(
+            p.file_name().unwrap().to_str().unwrap(),
+            "2026-02-22-hello-2.md"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

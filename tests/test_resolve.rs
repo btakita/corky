@@ -160,4 +160,3 @@ fn test_config_paths() {
 
     unsafe { std::env::remove_var("CORKY_DATA") };
 }
-

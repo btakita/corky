@@ -157,8 +157,7 @@ pub fn run(
     );
 
     // 3. Generate .corky.toml inside mail/
-    let content =
-        generate_corky_toml(user, provider, password_cmd, &labels, github_user, name);
+    let content = generate_corky_toml(user, provider, password_cmd, &labels, github_user, name);
     std::fs::write(&config_path, &content)?;
     println!("Created {}", config_path.display());
 

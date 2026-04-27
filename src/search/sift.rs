@@ -34,9 +34,7 @@ impl SiftBackend {
 
     /// Show sift status (check binary + corpus dir).
     pub fn run_status() -> Result<()> {
-        let sift_version = Command::new("sift")
-            .arg("--version")
-            .output();
+        let sift_version = Command::new("sift").arg("--version").output();
 
         match sift_version {
             Ok(output) if output.status.success() => {
@@ -45,7 +43,9 @@ impl SiftBackend {
             }
             _ => {
                 println!("Sift: not installed");
-                println!("  Install: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/rupurt/sift/releases/latest/download/sift-installer.sh | sh");
+                println!(
+                    "  Install: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/rupurt/sift/releases/latest/download/sift-installer.sh | sh"
+                );
                 return Ok(());
             }
         }
@@ -80,19 +80,19 @@ impl SearchBackend for SiftBackend {
     fn search(&self, query: &str, _filters: &Filters) -> Result<Vec<SearchResult>> {
         let corpus = self.corpus_dir();
         if !corpus.exists() {
-            anyhow::bail!(
-                "Corpus directory not found at {}.",
-                corpus.display()
-            );
+            anyhow::bail!("Corpus directory not found at {}.", corpus.display());
         }
 
         let output = Command::new("sift")
             .args([
                 "search",
-                "--retrievers", "bm25",
-                "--reranking", "none",
+                "--retrievers",
+                "bm25",
+                "--reranking",
+                "none",
                 "--json",
-                "--limit", "20",
+                "--limit",
+                "20",
                 &corpus.to_string_lossy(),
                 query,
             ])
@@ -105,8 +105,8 @@ impl SearchBackend for SiftBackend {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let json: serde_json::Value = serde_json::from_str(&stdout)
-            .context("Failed to parse sift JSON output")?;
+        let json: serde_json::Value =
+            serde_json::from_str(&stdout).context("Failed to parse sift JSON output")?;
 
         let results_arr = json
             .get("results")
@@ -120,10 +120,7 @@ impl SearchBackend for SiftBackend {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
-            let score = item
-                .get("score")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
+            let score = item.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let snippet = item
                 .get("snippet")
                 .and_then(|v| v.as_str())
@@ -168,7 +165,10 @@ impl SearchBackend for SiftBackend {
             available,
             document_count: doc_count,
             message: if available {
-                format!("Corpus: {} ({doc_count} files, indexless)", corpus.display())
+                format!(
+                    "Corpus: {} ({doc_count} files, indexless)",
+                    corpus.display()
+                )
             } else {
                 "Sift not installed or corpus not found".to_string()
             },

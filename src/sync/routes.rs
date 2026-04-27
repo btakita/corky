@@ -20,10 +20,7 @@ pub fn run() -> Result<()> {
 
     let conv_dir = resolve::conversations_dir();
     if !conv_dir.exists() {
-        anyhow::bail!(
-            "Conversations directory not found: {}",
-            conv_dir.display()
-        );
+        anyhow::bail!("Conversations directory not found: {}", conv_dir.display());
     }
 
     let mut copied = 0u32;
@@ -56,11 +53,7 @@ pub fn run() -> Result<()> {
                     std::fs::create_dir_all(dest_dir)?;
                     let dest = dest_dir.join(filename);
                     std::fs::copy(&path, &dest)?;
-                    println!(
-                        "  {} -> {}",
-                        filename.to_string_lossy(),
-                        dest_dir.display()
-                    );
+                    println!("  {} -> {}", filename.to_string_lossy(), dest_dir.display());
                     copied += 1;
                 }
             }

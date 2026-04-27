@@ -32,7 +32,7 @@ fn test_roundtrip_single_message() {
             date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             subject: "Meeting Tomorrow".to_string(),
             body: "Let's meet at 3pm.".to_string(),
-        message_id: None,
+            message_id: None,
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
@@ -47,15 +47,9 @@ fn test_roundtrip_single_message() {
     assert_eq!(parsed.accounts, vec!["personal"]);
     assert_eq!(parsed.messages.len(), 1);
     assert_eq!(parsed.messages[0].from, "Alice <alice@example.com>");
-    assert_eq!(
-        parsed.messages[0].date,
-        "Mon, 10 Feb 2025 10:00:00 +0000"
-    );
+    assert_eq!(parsed.messages[0].date, "Mon, 10 Feb 2025 10:00:00 +0000");
     assert_eq!(parsed.messages[0].body, "Let's meet at 3pm.");
-    assert_eq!(
-        parsed.last_date,
-        "Mon, 10 Feb 2025 10:00:00 +0000"
-    );
+    assert_eq!(parsed.last_date, "Mon, 10 Feb 2025 10:00:00 +0000");
 }
 
 #[test]
@@ -137,7 +131,7 @@ fn test_roundtrip_multiple_messages() {
                 date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
                 subject: "Project Update".to_string(),
                 body: "Here's the update.".to_string(),
-        message_id: None,
+                message_id: None,
             },
             Message {
                 id: "msg-2".to_string(),
@@ -148,7 +142,7 @@ fn test_roundtrip_multiple_messages() {
                 date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
                 subject: "Re: Project Update".to_string(),
                 body: "Thanks for the update!".to_string(),
-        message_id: None,
+                message_id: None,
             },
             Message {
                 id: "msg-3".to_string(),
@@ -159,7 +153,7 @@ fn test_roundtrip_multiple_messages() {
                 date: "Mon, 10 Feb 2025 11:00:00 +0000".to_string(),
                 subject: "Re: Project Update".to_string(),
                 body: "No problem. Let me know if you need more.".to_string(),
-        message_id: None,
+                message_id: None,
             },
         ],
         last_date: "Mon, 10 Feb 2025 11:00:00 +0000".to_string(),
@@ -173,7 +167,10 @@ fn test_roundtrip_multiple_messages() {
     assert_eq!(parsed.messages[0].from, "Bob <bob@work.com>");
     assert_eq!(parsed.messages[1].from, "Alice <alice@work.com>");
     assert_eq!(parsed.messages[2].from, "Bob <bob@work.com>");
-    assert_eq!(parsed.messages[2].body, "No problem. Let me know if you need more.");
+    assert_eq!(
+        parsed.messages[2].body,
+        "No problem. Let me know if you need more."
+    );
 }
 
 #[test]
@@ -224,14 +221,7 @@ fn test_merge_message_creates_new_file() {
         message_id: None,
     };
 
-    let result = merge_message_to_file(
-        &out_dir,
-        "inbox",
-        "personal",
-        &msg,
-        "hello world",
-    )
-    .unwrap();
+    let result = merge_message_to_file(&out_dir, "inbox", "personal", &msg, "hello world").unwrap();
 
     assert!(result.is_some());
     let file_path = result.unwrap();
@@ -471,10 +461,7 @@ fn test_label_not_duplicated() {
     let parsed = parse_thread_markdown(&content).unwrap();
 
     // Should have exactly one "inbox" label, not two
-    assert_eq!(
-        parsed.labels.iter().filter(|l| *l == "inbox").count(),
-        1
-    );
+    assert_eq!(parsed.labels.iter().filter(|l| *l == "inbox").count(), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -748,7 +735,7 @@ fn test_thread_to_markdown_format() {
             date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             subject: "Format Test".to_string(),
             body: "Body text here.".to_string(),
-        message_id: None,
+            message_id: None,
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
@@ -818,7 +805,7 @@ fn test_manifest_generation() {
             date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             subject: "Manifest Subject".to_string(),
             body: "Test body".to_string(),
-        message_id: None,
+            message_id: None,
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],

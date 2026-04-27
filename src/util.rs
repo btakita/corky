@@ -3,8 +3,7 @@ use regex::Regex;
 use std::process::Command;
 
 static SLUG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9]+").unwrap());
-static THREAD_KEY_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)^(re|fwd?):\s*").unwrap());
+static THREAD_KEY_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(re|fwd?):\s*").unwrap());
 
 /// Generate a URL-safe slug from text.
 ///
@@ -54,7 +53,12 @@ pub fn run_cmd_checked(args: &[&str]) -> anyhow::Result<String> {
     println!("  $ {}", cmd_str);
     let (stdout, stderr, code) = run_cmd(args)?;
     if code != 0 {
-        anyhow::bail!("Command failed (exit {}): {}\n{}", code, cmd_str, stderr.trim());
+        anyhow::bail!(
+            "Command failed (exit {}): {}\n{}",
+            code,
+            cmd_str,
+            stderr.trim()
+        );
     }
     Ok(stdout)
 }
@@ -68,10 +72,7 @@ pub fn resolve_secret(inline: &str, cmd: &str, context: &str) -> anyhow::Result<
         return Ok(inline.to_string());
     }
     if !cmd.is_empty() {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(cmd)
-            .output()?;
+        let output = Command::new("sh").arg("-c").arg(cmd).output()?;
         if !output.status.success() {
             anyhow::bail!(
                 "{} command failed: {}",
@@ -130,42 +131,27 @@ mod tests {
 
     #[test]
     fn test_thread_key_strips_re() {
-        assert_eq!(
-            thread_key_from_subject("Re: Hello World"),
-            "hello world"
-        );
+        assert_eq!(thread_key_from_subject("Re: Hello World"), "hello world");
     }
 
     #[test]
     fn test_thread_key_strips_fwd() {
-        assert_eq!(
-            thread_key_from_subject("Fwd: Hello World"),
-            "hello world"
-        );
+        assert_eq!(thread_key_from_subject("Fwd: Hello World"), "hello world");
     }
 
     #[test]
     fn test_thread_key_strips_fw() {
-        assert_eq!(
-            thread_key_from_subject("Fw: Hello World"),
-            "hello world"
-        );
+        assert_eq!(thread_key_from_subject("Fw: Hello World"), "hello world");
     }
 
     #[test]
     fn test_thread_key_case_insensitive() {
-        assert_eq!(
-            thread_key_from_subject("RE: Hello World"),
-            "hello world"
-        );
+        assert_eq!(thread_key_from_subject("RE: Hello World"), "hello world");
     }
 
     #[test]
     fn test_thread_key_no_prefix() {
-        assert_eq!(
-            thread_key_from_subject("Hello World"),
-            "hello world"
-        );
+        assert_eq!(thread_key_from_subject("Hello World"), "hello world");
     }
 
     #[test]
@@ -196,7 +182,12 @@ mod tests {
     fn test_resolve_secret_both_empty() {
         let result = resolve_secret("", "", "no secret configured");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no secret configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no secret configured")
+        );
     }
 
     #[test]

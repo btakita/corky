@@ -224,10 +224,12 @@ fn upload_image_init_failure() {
     );
     mock.assert();
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("image init failed"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("image init failed")
+    );
 }
 
 // --- map_visibility ---
@@ -250,5 +252,10 @@ fn visibility_valid_values() {
 fn visibility_invalid() {
     let result = linkedin::map_visibility("private");
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Invalid LinkedIn visibility"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid LinkedIn visibility")
+    );
 }

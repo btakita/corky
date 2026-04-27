@@ -1,12 +1,10 @@
 //! Audio file decoding — any format → f32 PCM, 16kHz, mono.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 
 /// Formats that symphonia can decode natively.
-const SYMPHONIA_EXTS: &[&str] = &[
-    "wav", "mp3", "flac", "ogg", "m4a", "mp4", "aac", "aiff",
-];
+const SYMPHONIA_EXTS: &[&str] = &["wav", "mp3", "flac", "ogg", "m4a", "mp4", "aac", "aiff"];
 
 /// Video/media formats that symphonia can't handle but ffmpeg can.
 const VIDEO_EXTS: &[&str] = &["mov", "mkv", "webm", "avi", "ts", "mts"];
@@ -21,9 +19,10 @@ pub fn decode_audio(path: &Path) -> Result<Vec<f32>> {
 
     // For WAV files, try hound first (simpler, more reliable for PCM WAV)
     if ext == "wav"
-        && let Ok(samples) = decode_wav_hound(path) {
-            return Ok(samples);
-        }
+        && let Ok(samples) = decode_wav_hound(path)
+    {
+        return Ok(samples);
+    }
 
     // Video formats go straight to ffmpeg (no point trying symphonia)
     if VIDEO_EXTS.contains(&ext.as_str()) {
@@ -48,17 +47,28 @@ pub fn decode_audio(path: &Path) -> Result<Vec<f32>> {
 /// Decode via ffmpeg subprocess — converts any format to 16kHz mono f32le WAV on stdout.
 fn decode_ffmpeg(path: &Path) -> Result<Vec<f32>> {
     let ffmpeg = which_ffmpeg()?;
-    eprintln!("  Using ffmpeg for format: {}", path.extension().and_then(|e| e.to_str()).unwrap_or("unknown"));
+    eprintln!(
+        "  Using ffmpeg for format: {}",
+        path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("unknown")
+    );
 
     let output = std::process::Command::new(ffmpeg)
         .args([
-            "-i", &path.to_string_lossy(),
-            "-f", "f32le",        // raw f32 little-endian
-            "-acodec", "pcm_f32le",
-            "-ar", "16000",       // 16kHz
-            "-ac", "1",           // mono
-            "-v", "error",
-            "pipe:1",             // output to stdout
+            "-i",
+            &path.to_string_lossy(),
+            "-f",
+            "f32le", // raw f32 little-endian
+            "-acodec",
+            "pcm_f32le",
+            "-ar",
+            "16000", // 16kHz
+            "-ac",
+            "1", // mono
+            "-v",
+            "error",
+            "pipe:1", // output to stdout
         ])
         .output()?;
 
@@ -88,9 +98,10 @@ fn decode_ffmpeg(path: &Path) -> Result<Vec<f32>> {
 fn which_ffmpeg() -> Result<String> {
     for name in &["ffmpeg"] {
         if let Ok(output) = std::process::Command::new(name).arg("-version").output()
-            && output.status.success() {
-                return Ok(name.to_string());
-            }
+            && output.status.success()
+        {
+            return Ok(name.to_string());
+        }
     }
     bail!(
         "ffmpeg not found. Install ffmpeg for AMR and other format support.\n\
@@ -115,11 +126,9 @@ fn decode_wav_hound(path: &Path) -> Result<Vec<f32>> {
                 .map(|s| s.map(|v| v as f32 / max_val))
                 .collect::<std::result::Result<Vec<_>, _>>()?
         }
-        hound::SampleFormat::Float => {
-            reader
-                .into_samples::<f32>()
-                .collect::<std::result::Result<Vec<_>, _>>()?
-        }
+        hound::SampleFormat::Float => reader
+            .into_samples::<f32>()
+            .collect::<std::result::Result<Vec<_>, _>>()?,
     };
 
     // Convert to mono
@@ -163,11 +172,7 @@ fn decode_symphonia(path: &Path) -> Result<Vec<f32>> {
         .default_track()
         .ok_or_else(|| anyhow::anyhow!("No audio track found"))?;
     let track_id = track.id;
-    let channels = track
-        .codec_params
-        .channels
-        .map(|c| c.count())
-        .unwrap_or(1);
+    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(1);
     let sample_rate = track
         .codec_params
         .sample_rate
@@ -235,7 +240,9 @@ fn to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
 
 /// Resample audio from one sample rate to another using rubato.
 fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
-    use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction, Resampler};
+    use rubato::{
+        Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+    };
 
     if from_rate == to_rate {
         return Ok(samples.to_vec());
@@ -272,7 +279,11 @@ fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
 /// Split audio samples into chunks of a given duration.
 ///
 /// Returns `(offset_secs, chunk_samples)` pairs. The last chunk may be shorter.
-pub fn chunk_audio(samples: &[f32], chunk_duration_secs: f64, sample_rate: u32) -> Vec<(f64, Vec<f32>)> {
+pub fn chunk_audio(
+    samples: &[f32],
+    chunk_duration_secs: f64,
+    sample_rate: u32,
+) -> Vec<(f64, Vec<f32>)> {
     let chunk_size = (chunk_duration_secs * sample_rate as f64) as usize;
     if chunk_size == 0 || samples.is_empty() {
         return vec![(0.0, samples.to_vec())];

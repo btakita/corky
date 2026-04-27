@@ -4,13 +4,13 @@
 //! Speaker diarization requires the `diarize` feature flag.
 
 #[cfg(feature = "transcribe")]
-mod engine;
-#[cfg(feature = "transcribe")]
 mod audio;
-#[cfg(feature = "transcribe")]
-mod model;
 #[cfg(feature = "diarize")]
 mod diarize;
+#[cfg(feature = "transcribe")]
+mod engine;
+#[cfg(feature = "transcribe")]
+mod model;
 #[cfg(feature = "diarize")]
 mod resolve;
 

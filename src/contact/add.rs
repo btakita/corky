@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::config::contact::{load_contacts, save_contact, Contact};
+use crate::config::contact::{Contact, load_contacts, save_contact};
 use crate::resolve;
 
 /// Default AGENTS.md template for a new contact.

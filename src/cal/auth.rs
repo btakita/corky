@@ -3,7 +3,7 @@
 //! Reuses the same Google OAuth2 client credentials as Gmail ([gmail] in .corky.toml)
 //! but requests the Calendar scope. Tokens stored under "calendar:*" keys.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
 
 use crate::config::corky_config;
@@ -24,30 +24,32 @@ struct ClientCredentials {
 /// Calendar reuses the same Google project credentials as Gmail.
 fn resolve_credentials() -> Result<ClientCredentials> {
     if let Some(cfg) = corky_config::try_load_config(None)
-        && let Some(gmail) = &cfg.gmail {
-            let has_config = !gmail.client_id.is_empty()
-                || !gmail.client_id_cmd.is_empty()
-                || !gmail.client_secret.is_empty()
-                || !gmail.client_secret_cmd.is_empty();
-            if has_config {
-                let client_id = crate::util::resolve_secret(
-                    &gmail.client_id,
-                    &gmail.client_id_cmd,
-                    "Gmail client_id (check [gmail] in .corky.toml)",
-                )?;
-                let client_secret = crate::util::resolve_secret(
-                    &gmail.client_secret,
-                    &gmail.client_secret_cmd,
-                    "Gmail client_secret (check [gmail] in .corky.toml)",
-                )?;
-                return Ok(ClientCredentials {
-                    client_id,
-                    client_secret,
-                });
-            }
+        && let Some(gmail) = &cfg.gmail
+    {
+        let has_config = !gmail.client_id.is_empty()
+            || !gmail.client_id_cmd.is_empty()
+            || !gmail.client_secret.is_empty()
+            || !gmail.client_secret_cmd.is_empty();
+        if has_config {
+            let client_id = crate::util::resolve_secret(
+                &gmail.client_id,
+                &gmail.client_id_cmd,
+                "Gmail client_id (check [gmail] in .corky.toml)",
+            )?;
+            let client_secret = crate::util::resolve_secret(
+                &gmail.client_secret,
+                &gmail.client_secret_cmd,
+                "Gmail client_secret (check [gmail] in .corky.toml)",
+            )?;
+            return Ok(ClientCredentials {
+                client_id,
+                client_secret,
+            });
         }
-    let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID")
-        .context("Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.")?;
+    }
+    let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID").context(
+        "Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.",
+    )?;
     let client_secret = std::env::var("CORKY_GMAIL_CLIENT_SECRET")
         .context("Gmail client_secret not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_SECRET env var.")?;
     Ok(ClientCredentials {
@@ -103,20 +105,21 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
 
     // Try refresh
     if let Some(token) = store.tokens.get(&key).cloned()
-        && let Some(ref refresh) = token.refresh_token {
-            println!("Calendar token expired, refreshing...");
-            match refresh_access_token(refresh) {
-                Ok(new_token) => {
-                    let access = new_token.access_token.clone();
-                    store.upsert(key, new_token);
-                    store.save()?;
-                    return Ok(access);
-                }
-                Err(e) => {
-                    eprintln!("Token refresh failed: {}. Re-authenticating...", e);
-                }
+        && let Some(ref refresh) = token.refresh_token
+    {
+        println!("Calendar token expired, refreshing...");
+        match refresh_access_token(refresh) {
+            Ok(new_token) => {
+                let access = new_token.access_token.clone();
+                store.upsert(key, new_token);
+                store.save()?;
+                return Ok(access);
+            }
+            Err(e) => {
+                eprintln!("Token refresh failed: {}. Re-authenticating...", e);
             }
         }
+    }
 
     let token = run_auth_flow()?;
     let access = token.access_token.clone();
@@ -180,8 +183,9 @@ fn run_auth_flow() -> Result<StoredToken> {
     let query = url_str.split('?').nth(1).unwrap_or("");
     let (code, cb_state) = crate::social::auth::parse_callback(query)?;
 
-    let response =
-        tiny_http::Response::from_string("Google Calendar authorization successful! You can close this tab.");
+    let response = tiny_http::Response::from_string(
+        "Google Calendar authorization successful! You can close this tab.",
+    );
     let _ = request.respond(response);
 
     if cb_state != state {

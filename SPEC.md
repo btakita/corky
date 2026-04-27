@@ -442,9 +442,9 @@ With argument: connects to IMAP and lists all folders with flags.
 
 ### 5.5 draft push
 
-```
-corky draft push FILE [--send]
-corky mailbox draft push FILE [--send]
+``` 
+corky draft push FILE [--send] [--json]
+corky mailbox draft push FILE [--send] [--json]
 ```
 
 Alias: `corky push-draft` (hidden, backwards-compatible).
@@ -463,11 +463,13 @@ Account resolution for sending:
 2. `**From**` field → match by email address
 3. Fall back to default account
 
+`--json` emits a stable summary with the action (`draft_created` or `sent`), transport (`imap`, `smtp`, or `gmail-api`), resolved account, recipient, subject, status transition, reply metadata, and attachment/image paths.
+
 ### 5.5.1 draft send
 
-```
-corky draft send FILE [--attachment PATH]... [--account EMAIL]
-corky mailbox draft send FILE [--attachment PATH]...
+``` 
+corky draft send FILE [--attachment PATH]... [--account EMAIL] [--json]
+corky mailbox draft send FILE [--attachment PATH]... [--json]
 ```
 
 Sends a draft directly via the Gmail REST API (not SMTP). The draft must use YAML frontmatter
@@ -486,6 +488,8 @@ format (run `corky draft migrate` to convert legacy format).
 - Reply threading: `In-Reply-To` + `References` headers set from `in_reply_to:` YAML field; `threadId` set from `thread_id:` YAML field
 
 **OAuth scope:** `GMAIL_SEND_SCOPE` (`gmail.compose`)
+
+`--json` emits the send result, including resolved account key/hint, recipient, subject, attachment paths, Gmail `message_id`, and final `thread_id`.
 
 ### 5.6 add-label
 
@@ -1079,7 +1083,7 @@ sync_days = 30
 
 **Shutdown handling:** Checks `AtomicBool` shutdown signal per-message and every 5 pages of listing. Returns early with partial results if interrupted.
 
-**Single-thread refetch (`sync refetch THREAD_ID`):**
+**Single-thread refetch (`sync refetch THREAD_ID [--json]`):**
 Re-fetches all messages in a single Gmail thread, bypassing `historyId` state. Useful when a message was synced but body extraction failed (e.g., `attachmentId` or base64 padding issues fixed in a later release).
 
 1. Scans `conversations/` for a file matching the `**Thread ID**` metadata
@@ -1092,11 +1096,13 @@ Re-fetches all messages in a single Gmail thread, bypassing `historyId` state. U
 
 No sync state is modified — `last_history_id` is untouched.
 
+`--json` emits the chosen account, labels, removed files, fetched message count, routed refresh count, and accounts attempted during fallback lookup.
+
 **Merge and orphan cleanup:** Same as IMAP (§6.4, §6.5) — messages merge into thread files, full sync deletes untouched files.
 
 ### 6.9 Doctor
 
-`corky doctor [PROVIDER]` — health check that validates environment, configuration, and account connectivity.
+`corky doctor [PROVIDER] [--json]` — health check that validates environment, configuration, and account connectivity.
 
 **Always checks:**
 - `.corky.toml` exists and parses successfully
@@ -1106,13 +1112,15 @@ No sync state is modified — `last_history_id` is untouched.
 
 | Provider | Checks |
 |----------|--------|
-| `gmail-api` | OAuth credentials resolution, sync token existence/validity/expiration, refresh token capability, user email match |
+| `gmail-api` | OAuth credentials resolution, sync token existence/validity/expiration, send token existence/validity/expiration, scope coverage, user email match |
 | `gmail`, `imap`, `protonmail-bridge` | Password config (inline or command), IMAP host and port |
 | Gmail filters | Filter auth token status (`gmail:default` key), validity/expiration |
 | `linkedin` | OAuth credentials (config/env), per-profile: handle, URN, token validity, auto-refresh |
 | `youtube` | OAuth credentials (config/env), per-profile: handle, channel ID, token validity, auto-refresh |
 
-**Output:** Line-by-line text. `✓` for pass, `✗` for failure. 2-space indentation for details. Sections separated by blank lines.
+**Output:** Line-by-line text by default. `✓` for pass, `✗` for failure. 2-space indentation for details. Sections separated by blank lines.
+
+`corky doctor gmail --json` includes a connector-oriented Gmail status object with credential source, token-store path, default filter token state, and per-`gmail-api` account sync/send token status keyed exactly as the runtime resolves them.
 
 **Exit code:** 0 if all checks pass, 1 if any fail.
 
@@ -1988,4 +1996,3 @@ Corky is fully self-hosted — it runs entirely on the user's machine with no ex
 - Does NOT request: Gmail delete, contacts write, or admin permissions
 - Users can revoke access anytime via Google security settings
 - Full privacy policy: `docs/reference/privacy-policy.md`
-

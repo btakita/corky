@@ -1,6 +1,6 @@
-use anyhow::{Context, Result};
 use crate::accounts::{load_accounts, resolve_password};
 use crate::sync::imap_sync::connect_imap_pub;
+use anyhow::{Context, Result};
 
 /// Remove a Gmail/IMAP label from all messages (or those matching a search query).
 ///
@@ -21,7 +21,10 @@ pub fn run(label: &str, account: Option<&str>, search: Option<&str>, dry_run: bo
 
     for (acct_name, acct) in &target_accounts {
         let password = resolve_password(acct)?;
-        println!("Connecting to {}:{} as {}", acct.imap_host, acct.imap_port, acct.user);
+        println!(
+            "Connecting to {}:{} as {}",
+            acct.imap_host, acct.imap_port, acct.user
+        );
 
         let mut session = connect_imap_pub(
             &acct.imap_host,
@@ -35,7 +38,10 @@ pub fn run(label: &str, account: Option<&str>, search: Option<&str>, dry_run: bo
         match session.select(label) {
             Ok(_) => {}
             Err(_) => {
-                println!("  Label \"{}\" not found on account '{}' \u{2014} skipping", label, acct_name);
+                println!(
+                    "  Label \"{}\" not found on account '{}' \u{2014} skipping",
+                    label, acct_name
+                );
                 continue;
             }
         }
@@ -49,7 +55,10 @@ pub fn run(label: &str, account: Option<&str>, search: Option<&str>, dry_run: bo
             .collect();
 
         if uids.is_empty() {
-            println!("  No messages found in \"{}\" (account: {})", label, acct_name);
+            println!(
+                "  No messages found in \"{}\" (account: {})",
+                label, acct_name
+            );
             let _ = session.logout();
             continue;
         }

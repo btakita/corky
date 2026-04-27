@@ -9,8 +9,8 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::markdown::{parse_thread_markdown, thread_to_markdown};
 use super::types::{AccountSyncState, LabelState, Message, SyncState, Thread};
@@ -40,9 +40,7 @@ fn extract_body(parsed: &mailparse::ParsedMail) -> String {
                 .headers
                 .iter()
                 .any(|h| h.get_key_ref().eq_ignore_ascii_case("Content-Disposition"));
-            if !has_disposition
-                && let Ok(body) = part.get_body()
-            {
+            if !has_disposition && let Ok(body) = part.get_body() {
                 return html_to_markdown(&body);
             }
         }
@@ -55,9 +53,7 @@ fn extract_body(parsed: &mailparse::ParsedMail) -> String {
                 .headers
                 .iter()
                 .any(|h| h.get_key_ref().eq_ignore_ascii_case("Content-Disposition"));
-            if !has_disposition
-                && let Ok(body) = part.get_body()
-            {
+            if !has_disposition && let Ok(body) = part.get_body() {
                 return body;
             }
         }
@@ -129,9 +125,10 @@ fn find_thread_file(out_dir: &Path, thread_id: &str) -> Option<PathBuf> {
         }
         if let Ok(text) = std::fs::read_to_string(&path)
             && let Some(cap) = THREAD_ID_RE.captures(&text)
-                && cap[1].trim() == thread_id {
-                    return Some(path);
-                }
+            && cap[1].trim() == thread_id
+        {
+            return Some(path);
+        }
     }
     None
 }
@@ -258,7 +255,8 @@ fn build_label_routes_from_routing(
     routing: &std::collections::HashMap<String, Vec<String>>,
     data_dir: &Path,
 ) -> std::collections::HashMap<String, Vec<PathBuf>> {
-    let mut routes: std::collections::HashMap<String, Vec<PathBuf>> = std::collections::HashMap::new();
+    let mut routes: std::collections::HashMap<String, Vec<PathBuf>> =
+        std::collections::HashMap::new();
     for (label_key, mailbox_paths) in routing {
         if label_key.contains(':') {
             let parts: Vec<&str> = label_key.splitn(2, ':').collect();
@@ -271,7 +269,10 @@ fn build_label_routes_from_routing(
                 .iter()
                 .map(|p| data_dir.join(p).join("conversations"))
                 .collect();
-            routes.entry(label_name.to_string()).or_default().extend(dirs);
+            routes
+                .entry(label_name.to_string())
+                .or_default()
+                .extend(dirs);
         } else {
             let dirs: Vec<PathBuf> = mailbox_paths
                 .iter()
@@ -343,10 +344,7 @@ pub fn sync_account(
     let base_dir = base_dir
         .map(PathBuf::from)
         .unwrap_or_else(resolve::conversations_dir);
-    let acct_state = state
-        .accounts
-        .entry(account_name.to_string())
-        .or_default();
+    let acct_state = state.accounts.entry(account_name.to_string()).or_default();
 
     let routes = build_label_routes(account_name);
 
@@ -380,11 +378,12 @@ pub fn sync_account(
 
         // Check for shutdown signal between labels
         if let Some(s) = shutdown
-            && s.load(Ordering::Relaxed) {
-                println!("\n    Sync interrupted by shutdown signal");
-                let _ = session.logout();
-                return Ok(());
-            }
+            && s.load(Ordering::Relaxed)
+        {
+            println!("\n    Sync interrupted by shutdown signal");
+            let _ = session.logout();
+            return Ok(());
+        }
 
         sync_label(
             &mut session,
@@ -477,10 +476,11 @@ fn sync_label(
     for uid in &uids {
         // Check for shutdown signal between message fetches
         if let Some(s) = shutdown
-            && s.load(Ordering::Relaxed) {
-                println!("\n    Sync interrupted by shutdown signal");
-                return Ok(());
-            }
+            && s.load(Ordering::Relaxed)
+        {
+            println!("\n    Sync interrupted by shutdown signal");
+            return Ok(());
+        }
 
         let fetches = session.uid_fetch(uid.to_string(), "RFC822")?;
         let fetch = match fetches.iter().next() {
@@ -555,9 +555,10 @@ fn sync_label(
             let file_path =
                 merge_message_to_file(out_dir, label_name, account_name, &message, &thread_key)?;
             if let Some(touched_set) = touched
-                && let Some(ref fp) = file_path {
-                    touched_set.insert(fp.clone());
-                }
+                && let Some(ref fp) = file_path
+            {
+                touched_set.insert(fp.clone());
+            }
         }
 
         if *uid > max_uid {
@@ -581,8 +582,8 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     // --- Bug 1: Routing scope tests ---
 
@@ -632,10 +633,7 @@ mod tests {
     // --- extract_body tests ---
 
     fn make_parsed_mail(content_type: &str, body: &str) -> mailparse::ParsedMail<'static> {
-        let raw = format!(
-            "Content-Type: {}\r\n\r\n{}",
-            content_type, body
-        );
+        let raw = format!("Content-Type: {}\r\n\r\n{}", content_type, body);
         // Leak to get 'static lifetime for test convenience
         let leaked: &'static str = Box::leak(raw.into_boxed_str());
         mailparse::parse_mail(leaked.as_bytes()).unwrap()

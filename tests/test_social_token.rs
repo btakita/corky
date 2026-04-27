@@ -132,7 +132,11 @@ fn t8_file_permissions() {
 
     let metadata = std::fs::metadata(&path).unwrap();
     let mode = metadata.permissions().mode() & 0o777;
-    assert_eq!(mode, 0o600, "Token file should have 0600 permissions, got {:o}", mode);
+    assert_eq!(
+        mode, 0o600,
+        "Token file should have 0600 permissions, got {:o}",
+        mode
+    );
 }
 
 // T9: Malformed tokens.json
@@ -145,10 +149,7 @@ fn t9_malformed_json() {
     let result = TokenStore::load_from(&path);
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(
-        !err.is_empty(),
-        "Error should have parse details"
-    );
+    assert!(!err.is_empty(), "Error should have parse details");
 }
 
 // Additional: remove token

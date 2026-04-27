@@ -20,7 +20,10 @@ fn run_doctor_isolated(tmp: &TempDir, provider: Option<&str>) -> corky::doctor::
     unsafe {
         std::env::set_var("HOME", tmp.path().to_string_lossy().as_ref());
         // Point CORKY_DATA at the tmp dir so resolve::data_dir() finds it.
-        std::env::set_var("CORKY_DATA", tmp.path().join("mail").to_string_lossy().as_ref());
+        std::env::set_var(
+            "CORKY_DATA",
+            tmp.path().join("mail").to_string_lossy().as_ref(),
+        );
     }
     let report = corky::doctor::check(provider);
     // Restore env.
@@ -67,9 +70,18 @@ fn test_doctor_empty_config() {
     write_config(&tmp, "");
     let report = run_doctor_isolated(&tmp, None);
     let output = report.lines.join("\n");
-    assert!(output.contains('\u{2713}'), "should have at least one success check");
-    assert!(output.contains("Config loaded"), "should report config loaded");
-    assert!(output.contains("Mail directory"), "should report mail directory");
+    assert!(
+        output.contains('\u{2713}'),
+        "should have at least one success check"
+    );
+    assert!(
+        output.contains("Config loaded"),
+        "should report config loaded"
+    );
+    assert!(
+        output.contains("Mail directory"),
+        "should report mail directory"
+    );
 }
 
 #[test]
@@ -103,7 +115,10 @@ default = false
     // Should show the gmail account.
     assert!(output.contains("personal"), "should show gmail account");
     // Should NOT show the imap account.
-    assert!(!output.contains("Account: work"), "should not show imap account when filtering to gmail");
+    assert!(
+        !output.contains("Account: work"),
+        "should not show imap account when filtering to gmail"
+    );
 }
 
 #[test]
@@ -296,14 +311,20 @@ urn = "UCxyz"
     let report = run_doctor_isolated(&tmp, Some("linkedin"));
     let output = report.lines.join("\n");
     assert!(output.contains("LinkedIn:"));
-    assert!(!output.contains("Account: personal"), "should not show email accounts");
+    assert!(
+        !output.contains("Account: personal"),
+        "should not show email accounts"
+    );
     assert!(!output.contains("YouTube:"), "should not show YouTube");
 
     // Filter to youtube — should not show gmail or linkedin.
     let report = run_doctor_isolated(&tmp, Some("youtube"));
     let output = report.lines.join("\n");
     assert!(output.contains("YouTube:"));
-    assert!(!output.contains("Account: personal"), "should not show email accounts");
+    assert!(
+        !output.contains("Account: personal"),
+        "should not show email accounts"
+    );
     assert!(!output.contains("LinkedIn:"), "should not show LinkedIn");
 }
 

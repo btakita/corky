@@ -4,11 +4,11 @@
 //! Reuses Gmail OAuth credentials with `contacts` scope.
 //! Tracks Google `resourceName` per contact in `.sync-state.json` for update-vs-create.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
 
-use crate::cal::auth::{urlencode_pub as urlencode};
+use crate::cal::auth::urlencode_pub as urlencode;
 use crate::config::contact::load_contacts;
 use crate::config::corky_config;
 use crate::resolve;
@@ -69,8 +69,9 @@ fn resolve_credentials() -> Result<ClientCredentials> {
             });
         }
     }
-    let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID")
-        .context("Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.")?;
+    let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID").context(
+        "Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.",
+    )?;
     let client_secret = std::env::var("CORKY_GMAIL_CLIENT_SECRET")
         .context("Gmail client_secret not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_SECRET env var.")?;
     Ok(ClientCredentials {
@@ -180,8 +181,9 @@ fn run_auth_flow() -> Result<StoredToken> {
     let query = url_str.split('?').nth(1).unwrap_or("");
     let (code, cb_state) = crate::social::auth::parse_callback(query)?;
 
-    let response =
-        tiny_http::Response::from_string("Google Contacts authorization successful! You can close this tab.");
+    let response = tiny_http::Response::from_string(
+        "Google Contacts authorization successful! You can close this tab.",
+    );
     let _ = request.respond(response);
 
     if cb_state != state {
@@ -331,7 +333,8 @@ fn extract_contact_payload(name: &str, emails: &[String]) -> ContactPayload {
                 } else {
                     title = Some(rest.to_string());
                 }
-            } else if let Some(rest) = trimmed.strip_prefix("**Organization:**")
+            } else if let Some(rest) = trimmed
+                .strip_prefix("**Organization:**")
                 .or_else(|| trimmed.strip_prefix("**Company:**"))
                 .or_else(|| trimmed.strip_prefix("**Org:**"))
             {
@@ -340,7 +343,8 @@ fn extract_contact_payload(name: &str, emails: &[String]) -> ContactPayload {
                 title = Some(rest.trim().to_string());
             } else if let Some(rest) = trimmed.strip_prefix("**Phone:**") {
                 phone = Some(rest.trim().to_string());
-            } else if let Some(rest) = trimmed.strip_prefix("**LinkedIn:**")
+            } else if let Some(rest) = trimmed
+                .strip_prefix("**LinkedIn:**")
                 .or_else(|| trimmed.strip_prefix("- LinkedIn:"))
             {
                 linkedin_url = Some(rest.trim().to_string());
@@ -459,11 +463,7 @@ fn create_contact(token: &str, person: &serde_json::Value) -> Result<String> {
     Ok(resource_name)
 }
 
-fn update_contact(
-    token: &str,
-    resource_name: &str,
-    person: &serde_json::Value,
-) -> Result<()> {
+fn update_contact(token: &str, resource_name: &str, person: &serde_json::Value) -> Result<()> {
     // First get the current etag
     let get_url = format!(
         "https://people.googleapis.com/v1/{}?personFields=names",
@@ -476,7 +476,10 @@ fn update_contact(
         Ok(r) => r,
         Err(ureq::Error::Status(404, _)) => {
             // Resource gone — create instead
-            bail!("Contact {} not found on Google — will create instead", resource_name);
+            bail!(
+                "Contact {} not found on Google — will create instead",
+                resource_name
+            );
         }
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
@@ -522,13 +525,22 @@ fn discover_contacts() -> Result<BTreeMap<String, crate::config::contact::Contac
 
     // Also discover from contacts/ directory (contacts may exist without .corky.toml entries)
     let contacts_dir = resolve::contacts_dir();
-    if contacts_dir.is_dir() && let Ok(entries) = std::fs::read_dir(&contacts_dir) {
+    if contacts_dir.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&contacts_dir)
+    {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() && let Some(name) = path.file_name().and_then(|n| n.to_str()) && !contacts.contains_key(name) {
+            if path.is_dir()
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && !contacts.contains_key(name)
+            {
                 let mut emails = Vec::new();
                 let agents_path = path.join("AGENTS.md");
-                let agents_path = if agents_path.exists() { agents_path } else { path.join("CLAUDE.md") };
+                let agents_path = if agents_path.exists() {
+                    agents_path
+                } else {
+                    path.join("CLAUDE.md")
+                };
                 if let Ok(content) = std::fs::read_to_string(&agents_path) {
                     for line in content.lines() {
                         let trimmed = line.trim();
@@ -540,10 +552,13 @@ fn discover_contacts() -> Result<BTreeMap<String, crate::config::contact::Contac
                         }
                     }
                 }
-                contacts.insert(name.to_string(), crate::config::contact::Contact {
-                    emails,
-                    ..Default::default()
-                });
+                contacts.insert(
+                    name.to_string(),
+                    crate::config::contact::Contact {
+                        emails,
+                        ..Default::default()
+                    },
+                );
             }
         }
     }

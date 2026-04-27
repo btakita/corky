@@ -61,8 +61,7 @@ pub struct SlackMessage {
 // ---------------------------------------------------------------------------
 
 /// `<@U1234>` → `@DisplayName`
-static USER_MENTION_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<@(U[A-Z0-9]+)>").unwrap());
+static USER_MENTION_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<@(U[A-Z0-9]+)>").unwrap());
 
 /// `<#C1234|name>` → `#name`
 static CHANNEL_MENTION_RE: Lazy<Regex> =
@@ -73,8 +72,7 @@ static LINK_WITH_TEXT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"<(https?://[^|>]+)\|([^>]+)>").unwrap());
 
 /// `<url>` → `url`
-static BARE_LINK_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<(https?://[^>]+)>").unwrap());
+static BARE_LINK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<(https?://[^>]+)>").unwrap());
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -233,7 +231,9 @@ fn discover_channel_dirs(
             if let Some(slash_pos) = name.find('/') {
                 let dir = &name[..slash_pos];
                 // Skip known non-channel files at root
-                if dir != "users" && dir != "channels" && !dir.ends_with(".json")
+                if dir != "users"
+                    && dir != "channels"
+                    && !dir.ends_with(".json")
                     && seen.insert(dir.to_string())
                 {
                     dirs.push(dir.to_string());
@@ -291,11 +291,7 @@ fn group_into_threads(messages: &[SlackMessage]) -> Vec<(String, Vec<&SlackMessa
     let mut order: Vec<String> = Vec::new();
 
     for msg in messages {
-        let key = msg
-            .thread_ts
-            .as_deref()
-            .unwrap_or(&msg.ts)
-            .to_string();
+        let key = msg.thread_ts.as_deref().unwrap_or(&msg.ts).to_string();
         if !map.contains_key(&key) {
             order.push(key.clone());
         }
@@ -389,10 +385,7 @@ mod tests {
     fn test_resolve_mrkdwn_user_mention() {
         let mut users = HashMap::new();
         users.insert("U123ABC".to_string(), "Alice".to_string());
-        assert_eq!(
-            resolve_mrkdwn("Hello <@U123ABC>!", &users),
-            "Hello @Alice!"
-        );
+        assert_eq!(resolve_mrkdwn("Hello <@U123ABC>!", &users), "Hello @Alice!");
     }
 
     #[test]

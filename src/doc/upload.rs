@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 
 use crate::filter::gmail_auth;
@@ -19,8 +19,11 @@ pub fn run(file: &Path, share: bool, account: Option<&str>) -> Result<String> {
     let mime_type = mime_for_path(file);
 
     // Get OAuth token with Drive scope
-    let token =
-        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DRIVE_FILE_SCOPE, account)?;
+    let token = gmail_auth::get_access_token_for_user(
+        Some("default"),
+        gmail_auth::DRIVE_FILE_SCOPE,
+        account,
+    )?;
 
     // Read file content
     let content = std::fs::read(file)?;

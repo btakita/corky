@@ -1,6 +1,6 @@
 //! Gmail OAuth2 authorization code flow for the Gmail Settings API.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{Duration, Utc};
 
 use crate::config::corky_config;
@@ -62,6 +62,23 @@ pub const TASKS_SCOPE: &str = "https://www.googleapis.com/auth/tasks";
 /// Default scope (filter management) for backwards compatibility.
 const GMAIL_SCOPE: &str = GMAIL_FILTER_SCOPE;
 
+/// Check whether a token's stored scopes cover the requested scope.
+///
+/// A read-write scope (e.g. `spreadsheets`) subsumes its `.readonly` variant.
+fn scope_covered(token_scopes: &[String], requested: &str) -> bool {
+    for req in requested.split_whitespace() {
+        let covered = token_scopes.iter().any(|s| s == req)
+            || (req.ends_with(".readonly")
+                && token_scopes
+                    .iter()
+                    .any(|s| s == req.trim_end_matches(".readonly")));
+        if !covered {
+            return false;
+        }
+    }
+    true
+}
+
 /// Client credentials resolved from .corky.toml or env vars.
 struct ClientCredentials {
     client_id: String,
@@ -76,19 +93,19 @@ struct ClientCredentials {
 /// 3. Environment variable (`CORKY_GMAIL_CLIENT_ID` / `CORKY_GMAIL_CLIENT_SECRET`)
 /// 4. Built-in default (corky's public GCP desktop-app credentials)
 fn resolve_credentials() -> Result<ClientCredentials> {
-    let (cfg_id, cfg_id_cmd, cfg_secret, cfg_secret_cmd) =
-        if let Some(cfg) = corky_config::try_load_config(None)
-            && let Some(gmail) = &cfg.gmail
-        {
-            (
-                gmail.client_id.clone(),
-                gmail.client_id_cmd.clone(),
-                gmail.client_secret.clone(),
-                gmail.client_secret_cmd.clone(),
-            )
-        } else {
-            Default::default()
-        };
+    let (cfg_id, cfg_id_cmd, cfg_secret, cfg_secret_cmd) = if let Some(cfg) =
+        corky_config::try_load_config(None)
+        && let Some(gmail) = &cfg.gmail
+    {
+        (
+            gmail.client_id.clone(),
+            gmail.client_id_cmd.clone(),
+            gmail.client_secret.clone(),
+            gmail.client_secret_cmd.clone(),
+        )
+    } else {
+        Default::default()
+    };
 
     let client_id = resolve_credential_field(
         &cfg_id,
@@ -191,7 +208,11 @@ pub fn get_access_token_with_scope(account: Option<&str>, scope: &str) -> Result
 /// When `login_hint` is provided, the token is stored under a key derived from
 /// the email (e.g., `gmail:brian.takita@gmail.com`) so different Google accounts
 /// get separate cached tokens.
-pub fn get_access_token_for_user(account: Option<&str>, scope: &str, login_hint: Option<&str>) -> Result<String> {
+pub fn get_access_token_for_user(
+    account: Option<&str>,
+    scope: &str,
+    login_hint: Option<&str>,
+) -> Result<String> {
     let key = if let Some(hint) = login_hint {
         format!("gmail:{}", hint)
     } else {
@@ -199,27 +220,33 @@ pub fn get_access_token_for_user(account: Option<&str>, scope: &str, login_hint:
     };
     let mut store = TokenStore::load()?;
 
-    // Check for existing valid token
+    // Check for existing valid token with sufficient scope
     if let Some(token) = store.get_valid(&key) {
-        return Ok(token.access_token.clone());
+        if scope_covered(&token.scopes, scope) {
+            return Ok(token.access_token.clone());
+        }
+        eprintln!("Cached token has insufficient scope for {scope}. Re-authenticating...");
     }
 
-    // Try refresh if we have a refresh token
+    // Try refresh if we have a refresh token AND stored scopes are sufficient
+    // (refresh preserves original scopes, so refreshing won't help if scopes are wrong)
     if let Some(token) = store.tokens.get(&key).cloned()
-        && let Some(ref refresh) = token.refresh_token {
-            println!("Access token expired, refreshing...");
-            match refresh_access_token(refresh) {
-                Ok(new_token) => {
-                    let access = new_token.access_token.clone();
-                    store.upsert(key, new_token);
-                    store.save()?;
-                    return Ok(access);
-                }
-                Err(e) => {
-                    eprintln!("Token refresh failed: {}. Re-authenticating...", e);
-                }
+        && let Some(ref refresh) = token.refresh_token
+        && scope_covered(&token.scopes, scope)
+    {
+        println!("Access token expired, refreshing...");
+        match refresh_access_token(refresh) {
+            Ok(new_token) => {
+                let access = new_token.access_token.clone();
+                store.upsert(key, new_token);
+                store.save()?;
+                return Ok(access);
+            }
+            Err(e) => {
+                eprintln!("Token refresh failed: {}. Re-authenticating...", e);
             }
         }
+    }
 
     // Full auth flow with specified scope
     let token = run_auth_flow_with_scope(scope, login_hint)?;
@@ -244,20 +271,21 @@ pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) ->
 
     // Try refresh if we have a refresh token
     if let Some(token) = store.tokens.get(&key).cloned()
-        && let Some(ref refresh) = token.refresh_token {
-            println!("Send token expired, refreshing...");
-            match refresh_access_token(refresh) {
-                Ok(new_token) => {
-                    let access = new_token.access_token.clone();
-                    store.upsert(key, new_token);
-                    store.save()?;
-                    return Ok(access);
-                }
-                Err(e) => {
-                    eprintln!("Token refresh failed: {}. Re-authenticating...", e);
-                }
+        && let Some(ref refresh) = token.refresh_token
+    {
+        println!("Send token expired, refreshing...");
+        match refresh_access_token(refresh) {
+            Ok(new_token) => {
+                let access = new_token.access_token.clone();
+                store.upsert(key, new_token);
+                store.save()?;
+                return Ok(access);
+            }
+            Err(e) => {
+                eprintln!("Token refresh failed: {}. Re-authenticating...", e);
             }
         }
+    }
 
     // Full auth flow with send scope
     let token = run_auth_flow_with_scope(GMAIL_SEND_SCOPE, login_hint)?;
@@ -282,12 +310,13 @@ pub fn get_access_token_noninteractive(account: Option<&str>) -> Result<String> 
 
     if let Some(token) = store.tokens.get(&key).cloned()
         && let Some(ref refresh) = token.refresh_token
-            && let Ok(new_token) = refresh_access_token(refresh) {
-                let access = new_token.access_token.clone();
-                store.upsert(key, new_token);
-                store.save()?;
-                return Ok(access);
-            }
+        && let Ok(new_token) = refresh_access_token(refresh)
+    {
+        let access = new_token.access_token.clone();
+        store.upsert(key, new_token);
+        store.save()?;
+        return Ok(access);
+    }
 
     bail!("Gmail token expired or missing. Run `corky filter auth` to re-authenticate.")
 }
@@ -502,6 +531,41 @@ mod tests {
         });
         let token = parse_token_response(&body, GMAIL_SCOPE).unwrap();
         assert!(token.refresh_token.is_none());
+    }
+
+    #[test]
+    fn test_scope_covered_exact() {
+        let scopes = vec![SHEETS_SCOPE.to_string()];
+        assert!(scope_covered(&scopes, SHEETS_SCOPE));
+        assert!(!scope_covered(&scopes, GMAIL_SYNC_SCOPE));
+    }
+
+    #[test]
+    fn test_scope_covered_rw_subsumes_readonly() {
+        let scopes = vec![SHEETS_SCOPE.to_string()];
+        assert!(scope_covered(&scopes, SHEETS_READONLY_SCOPE));
+    }
+
+    #[test]
+    fn test_scope_covered_readonly_does_not_subsume_rw() {
+        let scopes = vec![SHEETS_READONLY_SCOPE.to_string()];
+        assert!(!scope_covered(&scopes, SHEETS_SCOPE));
+    }
+
+    #[test]
+    fn test_scope_covered_multi_scope_string() {
+        let scopes = vec![
+            "https://www.googleapis.com/auth/gmail.settings.basic".to_string(),
+            "https://www.googleapis.com/auth/gmail.labels".to_string(),
+        ];
+        assert!(scope_covered(
+            &scopes,
+            "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels"
+        ));
+        assert!(!scope_covered(
+            &scopes,
+            "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.compose"
+        ));
     }
 
     #[test]

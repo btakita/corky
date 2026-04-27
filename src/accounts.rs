@@ -1,6 +1,6 @@
 //! Account configuration — parse accounts.toml with provider presets.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -239,7 +239,10 @@ pub fn get_default_account(accounts: &HashMap<String, Account>) -> Result<(Strin
         }
     }
     // Fall back to first account
-    let (name, acct) = accounts.iter().next().ok_or_else(|| anyhow::anyhow!("No accounts configured"))?;
+    let (name, acct) = accounts
+        .iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("No accounts configured"))?;
     Ok((name.clone(), acct.clone()))
 }
 
@@ -287,14 +290,16 @@ pub fn add_label_to_account(account_name: &str, label: &str, path: Option<&Path>
     let content = std::fs::read_to_string(&path)?;
     let mut doc = content.parse::<toml_edit::DocumentMut>()?;
 
-    let labels_array = doc.get_mut("accounts")
+    let labels_array = doc
+        .get_mut("accounts")
         .and_then(|t| t.get_mut(account_name))
         .and_then(|t| t.get_mut("labels"));
 
     if let Some(labels) = labels_array
-        && let Some(arr) = labels.as_array_mut() {
-            arr.push(label);
-        }
+        && let Some(arr) = labels.as_array_mut()
+    {
+        arr.push(label);
+    }
 
     std::fs::write(&path, doc.to_string())?;
     Ok(true)

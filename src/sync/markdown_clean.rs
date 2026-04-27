@@ -24,12 +24,10 @@ static IMG_URL_DOMAIN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"!\[[^\]]*\]\(https?://([^/)\s]+)").unwrap());
 
 /// Regex matching inline HTML style attributes.
-static STYLE_ATTR_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\s*style\s*=\s*"[^"]*""#).unwrap());
+static STYLE_ATTR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\s*style\s*=\s*"[^"]*""#).unwrap());
 
 /// Regex matching lines that are only whitespace or empty after cleanup.
-static EXCESS_BLANK_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
+static EXCESS_BLANK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
 
 /// Clean markdown output from `htmd` conversion.
 ///
@@ -88,7 +86,8 @@ mod tests {
 
     #[test]
     fn strips_tracking_pixels() {
-        let md = "Content here\n\n![](http://tracker.example.com/wf/open?id=abc123)\n\nMore content";
+        let md =
+            "Content here\n\n![](http://tracker.example.com/wf/open?id=abc123)\n\nMore content";
         let (cleaned, domains) = clean_markdown(md);
         assert!(!cleaned.contains("wf/open"), "should strip tracking pixel");
         assert_eq!(domains, vec!["tracker.example.com"]);
@@ -98,7 +97,10 @@ mod tests {
     fn strips_1x1_images() {
         let md = "Text\n\n![](http://spy.example.com/img?width='1' height='1')\n\nEnd";
         let (cleaned, domains) = clean_markdown(md);
-        assert!(!cleaned.contains("spy.example.com"), "should strip 1x1 image");
+        assert!(
+            !cleaned.contains("spy.example.com"),
+            "should strip 1x1 image"
+        );
         assert_eq!(domains, vec!["spy.example.com"]);
     }
 

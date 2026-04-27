@@ -8,7 +8,7 @@
 It is a separate, private repo. corky accesses it via a `mail/` path in the
 working directory, which can be either:
 
-- A **symlink** to an external clone (e.g. `mail -> ~/data/mail`)
+- A **symlink** to an external clone (e.g. `mail -> ../mail-data`)
 - A **subdirectory** or nested clone inside the corky checkout
 
 **Developer workflow:** `mail/` exists at the working directory root (symlink or subdirectory).
@@ -17,7 +17,7 @@ The `mail` entry in `.gitignore` keeps the data repo out of corky's git history.
 **General user workflow:** `corky init --user EMAIL` creates `mail/` in the current
 directory with config inside it, and registers the project dir as a named mailbox.
 Commands find the data dir via the resolution order in `src/resolve.rs`: local `mail/`,
-`CORKY_DATA` env, app config mailbox, `~/Documents` fallback. Use `--mailbox NAME` to select a
+`CORKY_DATA` env, app config mailbox, `$HOME/Documents` fallback. Use `--mailbox NAME` to select a
 specific mailbox.
 
 ## Writing Voice
@@ -79,6 +79,11 @@ corky cal auth      # Google Calendar (separate token)
 - Google Chat → `corky chat send <space> <message>`
 - Google Tasks → `corky tasks list/add/done`
 - Google Calendar → `corky cal list/create/delete/check`
+
+**Connector / debug surfaces:**
+- `corky doctor gmail --json` reports credential source, token presence, scope coverage, and re-auth state.
+- `corky sync refetch THREAD_ID --json` re-fetches one Gmail thread without mutating sync history.
+- `corky draft push --json` and `corky draft send --json` emit machine-readable summaries for adapters.
 
 ## Sync Behavior
 

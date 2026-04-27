@@ -33,9 +33,16 @@ fn run_init_isolated(
     // SAFETY: Tests run serially under ENV_MUTEX so no concurrent env access.
     unsafe { std::env::set_var("HOME", tmp.path().to_string_lossy().as_ref()) };
     let result = corky::init::run(
-        user, path, provider, password_cmd, labels, github_user, name,
+        user,
+        path,
+        provider,
+        password_cmd,
+        labels,
+        github_user,
+        name,
         false, // sync
-        mailbox, force,
+        mailbox,
+        force,
     );
     // Restore HOME
     if let Some(h) = old_home {
@@ -50,9 +57,16 @@ fn test_init_creates_directory_structure() {
     let path = tmp.path().join("myproject");
 
     run_init_isolated(
-        &tmp, &path, "test@example.com", "gmail", "",
-        "correspondence", "testgh", "Test User",
-        "test-init-mb", true,
+        &tmp,
+        &path,
+        "test@example.com",
+        "gmail",
+        "",
+        "correspondence",
+        "testgh",
+        "Test User",
+        "test-init-mb",
+        true,
     )
     .unwrap();
 
@@ -77,9 +91,16 @@ fn test_init_corky_toml_content() {
     let path = tmp.path().join("initdata");
 
     run_init_isolated(
-        &tmp, &path, "alice@gmail.com", "gmail",
-        "pass show email/personal", "inbox, sent",
-        "alicegh", "Alice", "test-init-mb-acct", true,
+        &tmp,
+        &path,
+        "alice@gmail.com",
+        "gmail",
+        "pass show email/personal",
+        "inbox, sent",
+        "alicegh",
+        "Alice",
+        "test-init-mb-acct",
+        true,
     )
     .unwrap();
 
@@ -102,8 +123,16 @@ fn test_init_with_custom_provider() {
     let path = tmp.path().join("pmdata");
 
     run_init_isolated(
-        &tmp, &path, "user@proton.me", "protonmail-bridge",
-        "", "correspondence", "", "", "test-init-mb-pm", true,
+        &tmp,
+        &path,
+        "user@proton.me",
+        "protonmail-bridge",
+        "",
+        "correspondence",
+        "",
+        "",
+        "test-init-mb-pm",
+        true,
     )
     .unwrap();
 
@@ -120,9 +149,16 @@ fn test_init_labels_parsing() {
     let path = tmp.path().join("lbldata");
 
     run_init_isolated(
-        &tmp, &path, "user@example.com", "imap",
-        "", "inbox, sent, important", "", "",
-        "test-init-mb-labels", true,
+        &tmp,
+        &path,
+        "user@example.com",
+        "imap",
+        "",
+        "inbox, sent, important",
+        "",
+        "",
+        "test-init-mb-labels",
+        true,
     )
     .unwrap();
 
@@ -144,9 +180,16 @@ fn test_init_force_overwrites() {
     std::fs::write(data_dir.join(".corky.toml"), "# old config").unwrap();
 
     run_init_isolated(
-        &tmp, &path, "new@example.com", "gmail",
-        "", "correspondence", "", "",
-        "test-init-mb-force", true,
+        &tmp,
+        &path,
+        "new@example.com",
+        "gmail",
+        "",
+        "correspondence",
+        "",
+        "",
+        "test-init-mb-force",
+        true,
     )
     .unwrap();
 
@@ -161,9 +204,16 @@ fn test_init_tilde_expansion() {
     let path = tmp.path().join("tildetest");
 
     run_init_isolated(
-        &tmp, &path, "user@example.com", "gmail",
-        "", "correspondence", "", "",
-        "test-init-mb-tilde", true,
+        &tmp,
+        &path,
+        "user@example.com",
+        "gmail",
+        "",
+        "correspondence",
+        "",
+        "",
+        "test-init-mb-tilde",
+        true,
     )
     .unwrap();
 
@@ -176,9 +226,16 @@ fn test_init_empty_labels() {
     let path = tmp.path().join("emptylbl");
 
     run_init_isolated(
-        &tmp, &path, "user@example.com", "gmail",
-        "", "", "", "",
-        "test-init-mb-emptylbl", true,
+        &tmp,
+        &path,
+        "user@example.com",
+        "gmail",
+        "",
+        "",
+        "",
+        "",
+        "test-init-mb-emptylbl",
+        true,
     )
     .unwrap();
 
@@ -197,9 +254,16 @@ fn test_init_gitignore_in_git_repo() {
     std::fs::create_dir_all(path.join(".git")).unwrap();
 
     run_init_isolated(
-        &tmp, &path, "user@example.com", "gmail",
-        "", "correspondence", "", "",
-        "test-init-mb-gitignore", true,
+        &tmp,
+        &path,
+        "user@example.com",
+        "gmail",
+        "",
+        "correspondence",
+        "",
+        "",
+        "test-init-mb-gitignore",
+        true,
     )
     .unwrap();
 
@@ -213,9 +277,16 @@ fn test_init_no_gitignore_without_git() {
     let path = tmp.path().join("nogit");
 
     run_init_isolated(
-        &tmp, &path, "user@example.com", "gmail",
-        "", "correspondence", "", "",
-        "test-init-mb-nogit", true,
+        &tmp,
+        &path,
+        "user@example.com",
+        "gmail",
+        "",
+        "correspondence",
+        "",
+        "",
+        "test-init-mb-nogit",
+        true,
     )
     .unwrap();
 
@@ -228,9 +299,16 @@ fn test_init_installs_skill() {
     let path = tmp.path().join("skillproject");
 
     run_init_isolated(
-        &tmp, &path, "user@example.com", "gmail",
-        "", "correspondence", "", "",
-        "test-init-mb-skill", true,
+        &tmp,
+        &path,
+        "user@example.com",
+        "gmail",
+        "",
+        "correspondence",
+        "",
+        "",
+        "test-init-mb-skill",
+        true,
     )
     .unwrap();
 

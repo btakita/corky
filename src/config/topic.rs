@@ -21,9 +21,7 @@ pub struct TopicConfig {
 
 /// Load topics from [topics.*] in .corky.toml and return {name: TopicConfig} mapping.
 pub fn load_topics(path: Option<&Path>) -> Result<BTreeMap<String, TopicConfig>> {
-    let path = path
-        .map(PathBuf::from)
-        .unwrap_or_else(resolve::corky_toml);
+    let path = path.map(PathBuf::from).unwrap_or_else(resolve::corky_toml);
     if !path.exists() {
         return Ok(BTreeMap::new());
     }
@@ -62,14 +60,8 @@ pub fn topics_for_mailbox(
 }
 
 /// Write a single topic to [topics.{name}] in .corky.toml (format-preserving).
-pub fn save_topic(
-    name: &str,
-    topic: &TopicConfig,
-    path: Option<&Path>,
-) -> Result<()> {
-    let path = path
-        .map(PathBuf::from)
-        .unwrap_or_else(resolve::corky_toml);
+pub fn save_topic(name: &str, topic: &TopicConfig, path: Option<&Path>) -> Result<()> {
+    let path = path.map(PathBuf::from).unwrap_or_else(resolve::corky_toml);
     let content = if path.exists() {
         std::fs::read_to_string(&path)?
     } else {

@@ -56,32 +56,25 @@ pub fn generate_manifest(conversations_dir: &Path) -> Result<()> {
                 for cap in EMAIL_RE.captures_iter(field) {
                     let addr = cap[1].to_lowercase();
                     if let Some(cname) = email_to_contact.get(&addr)
-                        && !thread_contacts.contains(cname) {
-                            thread_contacts.push(cname.clone());
-                        }
+                        && !thread_contacts.contains(cname)
+                    {
+                        thread_contacts.push(cname.clone());
+                    }
                 }
             }
         }
 
-        let slug = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let slug = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let mut entry_map = toml::map::Map::new();
-        entry_map.insert(
-            "subject".to_string(),
-            toml::Value::String(thread.subject),
-        );
-        entry_map.insert(
-            "thread_id".to_string(),
-            toml::Value::String(thread.id),
-        );
+        entry_map.insert("subject".to_string(), toml::Value::String(thread.subject));
+        entry_map.insert("thread_id".to_string(), toml::Value::String(thread.id));
         entry_map.insert(
             "labels".to_string(),
-            toml::Value::Array(
-                thread
-                    .labels
-                    .into_iter()
-                    .map(toml::Value::String)
-                    .collect(),
-            ),
+            toml::Value::Array(thread.labels.into_iter().map(toml::Value::String).collect()),
         );
         entry_map.insert(
             "accounts".to_string(),
@@ -116,10 +109,7 @@ pub fn generate_manifest(conversations_dir: &Path) -> Result<()> {
         .join("manifest.toml");
     let mut manifest = toml::map::Map::new();
     let threads_table: toml::map::Map<String, toml::Value> = threads.into_iter().collect();
-    manifest.insert(
-        "threads".to_string(),
-        toml::Value::Table(threads_table),
-    );
+    manifest.insert("threads".to_string(), toml::Value::Table(threads_table));
     let content = toml::to_string_pretty(&toml::Value::Table(manifest))?;
     std::fs::write(&manifest_path, content)?;
     println!("  Generated {}", manifest_path.display());

@@ -1,6 +1,6 @@
 //! Fetch and display Gmail filters via the Gmail Settings API.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use super::gmail_auth;
 
@@ -47,11 +47,9 @@ struct FilterAction {
 pub fn run(account: Option<&str>) -> Result<()> {
     let access_token = gmail_auth::get_access_token(account)?;
 
-    let resp = match ureq::get(
-        "https://gmail.googleapis.com/gmail/v1/users/me/settings/filters",
-    )
-    .set("Authorization", &format!("Bearer {}", access_token))
-    .call()
+    let resp = match ureq::get("https://gmail.googleapis.com/gmail/v1/users/me/settings/filters")
+        .set("Authorization", &format!("Bearer {}", access_token))
+        .call()
     {
         Ok(r) => r,
         Err(ureq::Error::Status(401, _)) => {
@@ -219,9 +217,6 @@ mod tests {
         );
         assert_eq!(f.criteria.exclude_chats, Some(true));
         assert_eq!(f.criteria.size, Some(1048576));
-        assert_eq!(
-            f.criteria.size_comparison.as_deref(),
-            Some("larger")
-        );
+        assert_eq!(f.criteria.size_comparison.as_deref(), Some("larger"));
     }
 }

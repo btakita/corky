@@ -5,21 +5,52 @@
 //! - Supports file attachments via MIME multipart/mixed
 //! - Handles reply threading (In-Reply-To + threadId)
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use base64::Engine as _;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use crate::draft::{parse_draft, parse_draft_yaml};
 use crate::filter::gmail_auth;
 
-const GMAIL_SEND_URL: &str =
-    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const GMAIL_SEND_URL: &str = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DraftSendResult {
+    pub action: String,
+    pub transport: String,
+    pub account_key: String,
+    pub account_hint: Option<String>,
+    pub to: String,
+    pub subject: String,
+    pub in_reply_to: Option<String>,
+    pub thread_id: Option<String>,
+    pub message_id: Option<String>,
+    pub attachment_paths: Vec<String>,
+}
 
 /// Send a draft file via the Gmail API.
 ///
 /// `extra_attachments` are paths given on the CLI; the draft's own `attachments`
 /// field is also included.
 pub fn run(file: &Path, extra_attachments: &[PathBuf], account: Option<&str>) -> Result<()> {
+    run_internal(file, extra_attachments, account, false).map(|_| ())
+}
+
+pub fn run_with_report(
+    file: &Path,
+    extra_attachments: &[PathBuf],
+    account: Option<&str>,
+) -> Result<DraftSendResult> {
+    run_internal(file, extra_attachments, account, true)
+}
+
+fn run_internal(
+    file: &Path,
+    extra_attachments: &[PathBuf],
+    account: Option<&str>,
+    quiet: bool,
+) -> Result<DraftSendResult> {
     let content = std::fs::read_to_string(file)?;
     let (_map, subject, body) = parse_draft(file)?;
 
@@ -30,14 +61,19 @@ pub fn run(file: &Path, extra_attachments: &[PathBuf], account: Option<&str>) ->
     })?;
 
     // Collect attachments: draft field + CLI extras
-    let mut attachment_paths: Vec<PathBuf> =
-        meta.attachments.iter().map(PathBuf::from).collect();
+    let mut attachment_paths: Vec<PathBuf> = meta.attachments.iter().map(PathBuf::from).collect();
     attachment_paths.extend_from_slice(extra_attachments);
+    let attachment_strings: Vec<String> = attachment_paths
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
 
-    let from = meta.from.as_deref().or(meta.account.as_deref()).unwrap_or("");
-    let effective_account = account
+    let from = meta
+        .from
+        .as_deref()
         .or(meta.account.as_deref())
-        .or(meta.from.as_deref());
+        .unwrap_or("");
+    let effective_account = account.or(meta.account.as_deref()).or(meta.from.as_deref());
 
     let token = gmail_auth::get_access_token_for_user(
         Some("default"),
@@ -60,11 +96,13 @@ pub fn run(file: &Path, extra_attachments: &[PathBuf], account: Option<&str>) ->
         payload["threadId"] = serde_json::Value::String(tid.clone());
     }
 
-    eprintln!("Sending to {} — subject: {}", meta.to, subject);
-    if !attachment_paths.is_empty() {
-        eprintln!("Attachments ({}):", attachment_paths.len());
-        for p in &attachment_paths {
-            eprintln!("  {}", p.display());
+    if !quiet {
+        eprintln!("Sending to {} — subject: {}", meta.to, subject);
+        if !attachment_paths.is_empty() {
+            eprintln!("Attachments ({}):", attachment_paths.len());
+            for p in &attachment_paths {
+                eprintln!("  {}", p.display());
+            }
         }
     }
 
@@ -77,8 +115,24 @@ pub fn run(file: &Path, extra_attachments: &[PathBuf], account: Option<&str>) ->
         Ok(r) => {
             let body: serde_json::Value = r.into_json()?;
             let msg_id = body["id"].as_str().unwrap_or("(unknown)");
-            println!("Sent. Message ID: {}", msg_id);
-            Ok(())
+            if !quiet {
+                println!("Sent. Message ID: {}", msg_id);
+            }
+            Ok(DraftSendResult {
+                action: "sent".to_string(),
+                transport: "gmail-api".to_string(),
+                account_key: effective_account.unwrap_or("default").to_string(),
+                account_hint: effective_account.map(str::to_string),
+                to: meta.to.clone(),
+                subject,
+                in_reply_to: meta.in_reply_to.clone(),
+                thread_id: body["threadId"]
+                    .as_str()
+                    .map(str::to_string)
+                    .or_else(|| meta.thread_id.clone()),
+                message_id: body["id"].as_str().map(str::to_string),
+                attachment_paths: attachment_strings,
+            })
         }
         Err(ureq::Error::Status(401, _)) => {
             bail!("Gmail API: unauthorized (401). Re-run `corky filter auth`.")

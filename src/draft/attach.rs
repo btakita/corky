@@ -1,22 +1,23 @@
 //! Attach files or clipboard content to an existing draft.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 
-use super::{is_yaml_format, parse_draft_yaml, EmailDraftMeta};
+use super::{EmailDraftMeta, is_yaml_format, parse_draft_yaml};
 
 /// Detect the available clipboard tool for reading image data.
 fn detect_clipboard_tool() -> Option<(&'static str, &'static [&'static str])> {
     // Wayland
-    if std::env::var("WAYLAND_DISPLAY").is_ok()
-        && which("wl-paste") {
-            return Some(("wl-paste", &["--type", "image/png"]));
-        }
+    if std::env::var("WAYLAND_DISPLAY").is_ok() && which("wl-paste") {
+        return Some(("wl-paste", &["--type", "image/png"]));
+    }
     // X11
-    if std::env::var("DISPLAY").is_ok()
-        && which("xclip") {
-            return Some(("xclip", &["-selection", "clipboard", "-t", "image/png", "-o"]));
-        }
+    if std::env::var("DISPLAY").is_ok() && which("xclip") {
+        return Some((
+            "xclip",
+            &["-selection", "clipboard", "-t", "image/png", "-o"],
+        ));
+    }
     // macOS
     if which("pbpaste") {
         // pngpaste is the standard tool for image clipboard on macOS
@@ -54,9 +55,7 @@ fn grab_clipboard_image(output_path: &Path) -> Result<bool> {
             .arg(output_path.to_string_lossy().as_ref())
             .output()?
     } else {
-        std::process::Command::new(tool)
-            .args(args)
-            .output()?
+        std::process::Command::new(tool).args(args).output()?
     };
 
     if !result.status.success() {
@@ -90,9 +89,7 @@ fn grab_clipboard_text() -> Result<Option<String>> {
         if !which(tool) {
             continue;
         }
-        let output = std::process::Command::new(tool)
-            .args(*args)
-            .output()?;
+        let output = std::process::Command::new(tool).args(*args).output()?;
         if output.status.success() && !output.stdout.is_empty() {
             return Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()));
         }
@@ -108,9 +105,9 @@ fn add_to_draft(draft_path: &Path, paths: &[String], inline: bool) -> Result<()>
     }
 
     let after_first = &text[4..]; // skip "---\n"
-    let end = after_first.find("\n---").ok_or_else(|| {
-        anyhow::anyhow!("Missing closing YAML frontmatter delimiter")
-    })?;
+    let end = after_first
+        .find("\n---")
+        .ok_or_else(|| anyhow::anyhow!("Missing closing YAML frontmatter delimiter"))?;
     let yaml_str = &after_first[..end];
     let rest = &after_first[end..]; // includes "\n---" and body
 
@@ -144,7 +141,10 @@ pub fn run(draft_path: &Path, files: &[String], clipboard: bool, inline: bool) -
 
     let text = std::fs::read_to_string(draft_path)?;
     if !is_yaml_format(&text) {
-        bail!("Draft must use YAML frontmatter format: {}", draft_path.display());
+        bail!(
+            "Draft must use YAML frontmatter format: {}",
+            draft_path.display()
+        );
     }
 
     let mut to_add: Vec<String> = Vec::new();
@@ -174,7 +174,9 @@ pub fn run(draft_path: &Path, files: &[String], clipboard: bool, inline: bool) -
             // Fall back to text clipboard
             if let Some(text) = grab_clipboard_text()? {
                 if inline {
-                    bail!("Clipboard contains text, not an image. Remove --inline to append text to the draft body.");
+                    bail!(
+                        "Clipboard contains text, not an image. Remove --inline to append text to the draft body."
+                    );
                 }
                 // Append text to the draft body
                 let mut content = std::fs::read_to_string(draft_path)?;
@@ -184,7 +186,10 @@ pub fn run(draft_path: &Path, files: &[String], clipboard: bool, inline: bool) -
                 content.push_str(&text);
                 content.push('\n');
                 std::fs::write(draft_path, content)?;
-                println!("Appended clipboard text ({} chars) to draft body.", text.len());
+                println!(
+                    "Appended clipboard text ({} chars) to draft body.",
+                    text.len()
+                );
                 return Ok(());
             } else {
                 bail!("Clipboard is empty (no image or text found).");
@@ -200,7 +205,11 @@ pub fn run(draft_path: &Path, files: &[String], clipboard: bool, inline: bool) -
     let draft_dir = draft_path.parent().unwrap_or(Path::new("."));
     for f in &to_add {
         let p = Path::new(f);
-        let resolved = if p.is_absolute() { p.to_path_buf() } else { draft_dir.join(p) };
+        let resolved = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            draft_dir.join(p)
+        };
         if !resolved.exists() {
             bail!("File not found: {} (resolved: {})", f, resolved.display());
         }

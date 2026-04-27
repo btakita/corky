@@ -5,8 +5,8 @@
 mod common;
 
 use corky::social::youtube::{
-    add_to_playlist_at, create_playlist_at, get_channel_id_at, list_playlists_at,
-    map_visibility, remove_from_playlist_at, update_video_at, upload_video_at, VideoMetadata,
+    VideoMetadata, add_to_playlist_at, create_playlist_at, get_channel_id_at, list_playlists_at,
+    map_visibility, remove_from_playlist_at, update_video_at, upload_video_at,
 };
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -43,9 +43,13 @@ fn yt_u2_get_channel_id() {
         let req = server.recv().unwrap();
         assert!(req.url().contains("/youtube/v3/channels"));
         let body = r#"{"items":[{"id":"UC_test_channel_123"}]}"#;
-        req.respond(Response::from_string(body).with_header(
-            "Content-Type: application/json".parse::<tiny_http::Header>().unwrap(),
-        ))
+        req.respond(
+            Response::from_string(body).with_header(
+                "Content-Type: application/json"
+                    .parse::<tiny_http::Header>()
+                    .unwrap(),
+            ),
+        )
         .unwrap();
     });
 
@@ -64,16 +68,25 @@ fn yt_u3_get_channel_id_no_channel() {
     let handle = std::thread::spawn(move || {
         let req = server.recv().unwrap();
         let body = r#"{"items":[]}"#;
-        req.respond(Response::from_string(body).with_header(
-            "Content-Type: application/json".parse::<tiny_http::Header>().unwrap(),
-        ))
+        req.respond(
+            Response::from_string(body).with_header(
+                "Content-Type: application/json"
+                    .parse::<tiny_http::Header>()
+                    .unwrap(),
+            ),
+        )
         .unwrap();
     });
 
     let result = get_channel_id_at(&api_base, "fake_token");
     handle.join().unwrap();
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("No YouTube channel"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("No YouTube channel")
+    );
 }
 
 // YT-U4: upload_video handles resumable upload with final JSON response
@@ -193,11 +206,8 @@ fn yt_u6_update_video() {
         assert!(req.url().contains("/youtube/v3/videos"));
         assert!(req.url().contains("part=snippet,status"));
         assert_eq!(req.method().as_str(), "PUT");
-        req.respond(
-            Response::from_string(r#"{"id":"VIDEO_ID_123"}"#)
-                .with_status_code(200),
-        )
-        .unwrap();
+        req.respond(Response::from_string(r#"{"id":"VIDEO_ID_123"}"#).with_status_code(200))
+            .unwrap();
     });
 
     let metadata = test_metadata();
@@ -216,8 +226,7 @@ fn yt_u7_update_video_forbidden() {
     let handle = std::thread::spawn(move || {
         let req = server.recv().unwrap();
         req.respond(
-            Response::from_string(r#"{"error":{"message":"Forbidden"}}"#)
-                .with_status_code(403),
+            Response::from_string(r#"{"error":{"message":"Forbidden"}}"#).with_status_code(403),
         )
         .unwrap();
     });
@@ -258,13 +267,23 @@ fn yt_p1_create_playlist() {
         let body = r#"{"id":"PL_test_123","snippet":{"title":"My Playlist"}}"#;
         req.respond(
             Response::from_string(body)
-                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_header(
+                    "Content-Type: application/json"
+                        .parse::<tiny_http::Header>()
+                        .unwrap(),
+                )
                 .with_status_code(200),
         )
         .unwrap();
     });
 
-    let result = create_playlist_at(&api_base, "fake_token", "My Playlist", "A description", "public");
+    let result = create_playlist_at(
+        &api_base,
+        "fake_token",
+        "My Playlist",
+        "A description",
+        "public",
+    );
     handle.join().unwrap();
     assert_eq!(result.unwrap(), "PL_test_123");
 }
@@ -283,7 +302,11 @@ fn yt_p2_add_to_playlist() {
         let body = r#"{"id":"PLI_item_456"}"#;
         req.respond(
             Response::from_string(body)
-                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_header(
+                    "Content-Type: application/json"
+                        .parse::<tiny_http::Header>()
+                        .unwrap(),
+                )
                 .with_status_code(200),
         )
         .unwrap();
@@ -311,7 +334,11 @@ fn yt_p3_list_playlists() {
         ]}"#;
         req.respond(
             Response::from_string(body)
-                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_header(
+                    "Content-Type: application/json"
+                        .parse::<tiny_http::Header>()
+                        .unwrap(),
+                )
                 .with_status_code(200),
         )
         .unwrap();
@@ -321,8 +348,24 @@ fn yt_p3_list_playlists() {
     handle.join().unwrap();
     let playlists = result.unwrap();
     assert_eq!(playlists.len(), 2);
-    assert_eq!(playlists[0], ("PL1".to_string(), "Playlist One".to_string(), "public".to_string(), 5));
-    assert_eq!(playlists[1], ("PL2".to_string(), "Playlist Two".to_string(), "private".to_string(), 0));
+    assert_eq!(
+        playlists[0],
+        (
+            "PL1".to_string(),
+            "Playlist One".to_string(),
+            "public".to_string(),
+            5
+        )
+    );
+    assert_eq!(
+        playlists[1],
+        (
+            "PL2".to_string(),
+            "Playlist Two".to_string(),
+            "private".to_string(),
+            0
+        )
+    );
 }
 
 // YT-P4: remove_from_playlist finds and deletes item
@@ -341,7 +384,11 @@ fn yt_p4_remove_from_playlist() {
         let body = r#"{"items":[{"id":"PLI_item_789"}]}"#;
         req.respond(
             Response::from_string(body)
-                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_header(
+                    "Content-Type: application/json"
+                        .parse::<tiny_http::Header>()
+                        .unwrap(),
+                )
                 .with_status_code(200),
         )
         .unwrap();
@@ -351,7 +398,8 @@ fn yt_p4_remove_from_playlist() {
         assert!(req.url().contains("/youtube/v3/playlistItems"));
         assert!(req.url().contains("id=PLI_item_789"));
         assert_eq!(req.method().as_str(), "DELETE");
-        req.respond(Response::from_string("").with_status_code(204)).unwrap();
+        req.respond(Response::from_string("").with_status_code(204))
+            .unwrap();
     });
 
     let result = remove_from_playlist_at(&api_base, "fake_token", "PL1", "VID1");
@@ -371,7 +419,11 @@ fn yt_p5_remove_from_playlist_not_found() {
         let body = r#"{"items":[]}"#;
         req.respond(
             Response::from_string(body)
-                .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+                .with_header(
+                    "Content-Type: application/json"
+                        .parse::<tiny_http::Header>()
+                        .unwrap(),
+                )
                 .with_status_code(200),
         )
         .unwrap();
@@ -380,5 +432,10 @@ fn yt_p5_remove_from_playlist_not_found() {
     let result = remove_from_playlist_at(&api_base, "fake_token", "PL1", "VID_MISSING");
     handle.join().unwrap();
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("not found in playlist"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("not found in playlist")
+    );
 }

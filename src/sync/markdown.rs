@@ -7,8 +7,7 @@ use super::types::{Message, Thread};
 use crate::util::thread_key_from_subject;
 
 static META_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*\*(.+?)\*\*:[ ]*(.+)$").unwrap());
-static MSG_HEADER_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^## (.+?) \u{2014} (.+)$").unwrap());
+static MSG_HEADER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^## (.+?) \u{2014} (.+)$").unwrap());
 
 /// Serialize a Thread to Markdown.
 pub fn thread_to_markdown(thread: &Thread) -> String {
@@ -54,10 +53,9 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
     let lines: Vec<&str> = text.split('\n').collect();
 
     // Extract subject from first H1
-    let subject = lines.iter().find_map(|line| {
-        line.strip_prefix("# ")
-            .map(|s| s.trim().to_string())
-    })?;
+    let subject = lines
+        .iter()
+        .find_map(|line| line.strip_prefix("# ").map(|s| s.trim().to_string()))?;
 
     if subject.is_empty() {
         return None;
@@ -66,17 +64,20 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
     // Extract metadata
     let mut meta = std::collections::HashMap::new();
     for cap in META_RE.captures_iter(text) {
-        meta.insert(
-            cap[1].to_string(),
-            cap[2].trim().to_string(),
-        );
+        meta.insert(cap[1].to_string(), cap[2].trim().to_string());
     }
 
     let thread_id = meta.get("Thread ID").cloned().unwrap_or_default();
     let last_date = meta.get("Last updated").cloned().unwrap_or_default();
 
-    let labels = meta.get("Labels")
-        .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+    let labels = meta
+        .get("Labels")
+        .map(|s| {
+            s.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
     // Parse accounts
@@ -92,7 +93,12 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
 
     let tracking = meta
         .get("Tracking")
-        .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
     // Split into message sections on "## Sender — Date"
@@ -246,7 +252,10 @@ mod tests {
 
         let parsed = parse_thread_markdown(&md).unwrap();
         assert_eq!(parsed.messages.len(), 1);
-        assert_eq!(parsed.messages[0].to, "Bob <bob@example.com>, Charlie <charlie@example.com>");
+        assert_eq!(
+            parsed.messages[0].to,
+            "Bob <bob@example.com>, Charlie <charlie@example.com>"
+        );
         assert_eq!(parsed.messages[0].cc, "Dave <dave@example.com>");
         assert_eq!(parsed.messages[0].body, "Hello there!");
     }

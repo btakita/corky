@@ -2,7 +2,7 @@
 //!
 //! Maps human profile names to platform handles and URNs.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -94,11 +94,12 @@ impl ProfilesFile {
     pub fn load() -> Result<Self> {
         // Prefer [profiles] section in .corky.toml
         if let Some(config) = corky_config::try_load_config(None)
-            && !config.profiles.is_empty() {
-                return Ok(ProfilesFile {
-                    profiles: config.profiles,
-                });
-            }
+            && !config.profiles.is_empty()
+        {
+            return Ok(ProfilesFile {
+                profiles: config.profiles,
+            });
+        }
         // Fallback to standalone profiles.toml
         let path = resolve::profiles_toml();
         Self::load_from(&path)
@@ -199,12 +200,13 @@ impl ProfilesFile {
                                 continue; // Same platform duplicate already caught
                             }
                             if let Some(other_urn) = &other_entry.urn
-                                && *other_urn == urn_key {
-                                    result.errors.push(format!(
-                                        "URN '{}' used by profile '{}' ({}) and '{}' ({})",
-                                        urn, name, platform, other_name, other_platform
-                                    ));
-                                }
+                                && *other_urn == urn_key
+                            {
+                                result.errors.push(format!(
+                                    "URN '{}' used by profile '{}' ({}) and '{}' ({})",
+                                    urn, name, platform, other_name, other_platform
+                                ));
+                            }
                         }
                     }
                 }
@@ -241,17 +243,17 @@ impl ProfilesFile {
                 if available.is_empty() {
                     "(none)".to_string()
                 } else {
-                    available.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                    available
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 }
             )
         })?;
 
         let entry = profile.get_platform(platform).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Profile '{}' has no {} entry",
-                profile_name,
-                platform
-            )
+            anyhow::anyhow!("Profile '{}' has no {} entry", profile_name, platform)
         })?;
 
         entry.urn.clone().ok_or_else(|| {
@@ -267,9 +269,10 @@ impl ProfilesFile {
     pub fn resolve_handle(&self, handle: &str, platform: Platform) -> Option<String> {
         for (name, profile) in &self.profiles {
             if let Some(entry) = profile.get_platform(platform)
-                && entry.handle == handle {
-                    return Some(name.clone());
-                }
+                && entry.handle == handle
+            {
+                return Some(name.clone());
+            }
         }
         None
     }

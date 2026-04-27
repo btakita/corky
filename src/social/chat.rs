@@ -1,6 +1,6 @@
 //! `corky social chat send` — send a message to a Google Chat space.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::filter::gmail_auth;
 
@@ -11,11 +11,8 @@ const CHAT_API: &str = "https://chat.googleapis.com/v1/spaces";
 /// `space` may be the full resource name (`spaces/XXXXXXXXX`) or just the ID (`XXXXXXXXX`).
 pub fn send(space: &str, message: &str, account: Option<&str>) -> Result<()> {
     let space_id = normalize_space(space);
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::CHAT_SCOPE,
-        account,
-    )?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::CHAT_SCOPE, account)?;
 
     let url = format!("{}/{}/messages", CHAT_API, space_id);
     let body = serde_json::json!({ "text": message });

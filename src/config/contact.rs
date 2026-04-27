@@ -21,9 +21,7 @@ pub struct Contact {
 
 /// Load contacts from [contacts.*] in .corky.toml and return {name: Contact} mapping.
 pub fn load_contacts(path: Option<&Path>) -> Result<BTreeMap<String, Contact>> {
-    let path = path
-        .map(PathBuf::from)
-        .unwrap_or_else(resolve::corky_toml);
+    let path = path.map(PathBuf::from).unwrap_or_else(resolve::corky_toml);
     if !path.exists() {
         return Ok(BTreeMap::new());
     }
@@ -57,14 +55,8 @@ pub fn load_contacts(path: Option<&Path>) -> Result<BTreeMap<String, Contact>> {
 /// watch only reads config, never writes. If corky ever becomes multi-process
 /// with concurrent writers, add file locking here and in the other
 /// .corky.toml writers (accounts::add_label_to_account, mailbox add/remove/rename).
-pub fn save_contact(
-    name: &str,
-    contact: &Contact,
-    path: Option<&Path>,
-) -> Result<()> {
-    let path = path
-        .map(PathBuf::from)
-        .unwrap_or_else(resolve::corky_toml);
+pub fn save_contact(name: &str, contact: &Contact, path: Option<&Path>) -> Result<()> {
+    let path = path.map(PathBuf::from).unwrap_or_else(resolve::corky_toml);
     let content = if path.exists() {
         std::fs::read_to_string(&path)?
     } else {

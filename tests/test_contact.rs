@@ -136,10 +136,7 @@ fn test_save_contact_multiple_emails() {
     std::fs::write(&path, "").unwrap();
 
     let bob = Contact {
-        emails: vec![
-            "bob@work.com".to_string(),
-            "bob@personal.com".to_string(),
-        ],
+        emails: vec!["bob@work.com".to_string(), "bob@personal.com".to_string()],
         ..Default::default()
     };
 

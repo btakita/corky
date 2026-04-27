@@ -15,6 +15,7 @@ pub mod telegram_import;
 pub mod types;
 
 use anyhow::Result;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -24,6 +25,18 @@ use crate::resolve;
 use self::imap_sync::sync_account;
 use self::manifest::generate_manifest;
 use self::types::SyncState;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RefetchReport {
+    pub thread_id: String,
+    pub account_name: Option<String>,
+    pub labels: Vec<String>,
+    pub existing_file: Option<String>,
+    pub removed_files: Vec<String>,
+    pub messages_fetched: usize,
+    pub routed_refresh_count: usize,
+    pub attempted_accounts: Vec<String>,
+}
 
 /// Load sync state from disk.
 pub fn load_state() -> Result<SyncState> {
@@ -126,7 +139,17 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
 /// Finds the existing conversation file, fetches fresh message data via the
 /// Gmail Threads API, deletes the old file, and re-merges all messages.
 pub fn refetch(thread_id: &str) -> Result<()> {
+    refetch_internal(thread_id, false).map(|_| ())
+}
+
+pub fn refetch_report(thread_id: &str) -> Result<RefetchReport> {
+    refetch_internal(thread_id, true)
+}
+
+fn refetch_internal(thread_id: &str, quiet: bool) -> Result<RefetchReport> {
     let conv_dir = resolve::conversations_dir();
+    let mut attempted_accounts = Vec::new();
+    let mut removed_files = Vec::new();
 
     // Find existing thread file
     let thread_file = find_thread_file_by_id(&conv_dir, thread_id);
@@ -151,15 +174,33 @@ pub fn refetch(thread_id: &str) -> Result<()> {
         let accounts = load_accounts(None)?;
         for (name, acct) in &accounts {
             if acct.provider == "gmail-api" {
-                println!("Trying account: {}", name);
-                match try_refetch_from_account(name, &acct.user, thread_id, &conv_dir, &[]) {
-                    Ok(true) => {
+                attempted_accounts.push(name.clone());
+                if !quiet {
+                    println!("Trying account: {}", name);
+                }
+                match try_refetch_from_account(name, &acct.user, thread_id, &conv_dir, &[], quiet) {
+                    Ok(Some(messages_fetched)) => {
                         manifest::generate_manifest(&conv_dir)?;
-                        println!("\nRefetch complete.");
-                        return Ok(());
+                        if !quiet {
+                            println!("\nRefetch complete.");
+                        }
+                        return Ok(RefetchReport {
+                            thread_id: thread_id.to_string(),
+                            account_name: Some(name.clone()),
+                            labels: vec![],
+                            existing_file: None,
+                            removed_files,
+                            messages_fetched,
+                            routed_refresh_count: 0,
+                            attempted_accounts,
+                        });
                     }
-                    Ok(false) => continue,
-                    Err(e) => eprintln!("  Error: {}", e),
+                    Ok(None) => continue,
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!("  Error: {}", e);
+                        }
+                    }
                 }
             }
         }
@@ -168,9 +209,9 @@ pub fn refetch(thread_id: &str) -> Result<()> {
 
     // Verify the account exists and is gmail-api
     let accounts = load_accounts(None)?;
-    let acct = accounts.get(&account_name).ok_or_else(|| {
-        anyhow::anyhow!("Account '{}' not found in .corky.toml", account_name)
-    })?;
+    let acct = accounts
+        .get(&account_name)
+        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found in .corky.toml", account_name))?;
     if acct.provider != "gmail-api" {
         anyhow::bail!(
             "Account '{}' uses provider '{}', refetch only supports gmail-api",
@@ -182,31 +223,62 @@ pub fn refetch(thread_id: &str) -> Result<()> {
     // Delete existing file so merge creates fresh content
     if let Some(ref path) = thread_file {
         std::fs::remove_file(path)?;
-        println!(
-            "Removed: {}",
-            path.file_name().unwrap_or_default().to_string_lossy()
-        );
+        removed_files.push(path.display().to_string());
+        if !quiet {
+            println!(
+                "Removed: {}",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            );
+        }
     }
 
-    try_refetch_from_account(&account_name, &acct.user, thread_id, &conv_dir, &labels)?;
+    let messages_fetched = try_refetch_from_account(
+        &account_name,
+        &acct.user,
+        thread_id,
+        &conv_dir,
+        &labels,
+        quiet,
+    )?
+    .ok_or_else(|| {
+        anyhow::anyhow!(
+            "Thread {} not found for account {}",
+            thread_id,
+            account_name
+        )
+    })?;
 
     // Also write to routed directories
     let label_routes = imap_sync::build_label_routes(&account_name);
+    let mut routed_refresh_count = 0usize;
     for l in &labels {
         if let Some(extra_dirs) = label_routes.get(l) {
             for extra_dir in extra_dirs {
                 // Delete existing in routed dir too
                 if let Some(routed_file) = find_thread_file_by_id(extra_dir, thread_id) {
                     std::fs::remove_file(&routed_file)?;
+                    removed_files.push(routed_file.display().to_string());
                 }
                 refetch_merge_to_dir(&account_name, l, thread_id, extra_dir)?;
+                routed_refresh_count += 1;
             }
         }
     }
 
     manifest::generate_manifest(&conv_dir)?;
-    println!("\nRefetch complete.");
-    Ok(())
+    if !quiet {
+        println!("\nRefetch complete.");
+    }
+    Ok(RefetchReport {
+        thread_id: thread_id.to_string(),
+        account_name: Some(account_name),
+        labels,
+        existing_file: thread_file.map(|p| p.display().to_string()),
+        removed_files,
+        messages_fetched,
+        routed_refresh_count,
+        attempted_accounts,
+    })
 }
 
 fn try_refetch_from_account(
@@ -215,34 +287,44 @@ fn try_refetch_from_account(
     thread_id: &str,
     out_dir: &std::path::Path,
     labels: &[String],
-) -> Result<bool> {
+    quiet: bool,
+) -> Result<Option<usize>> {
     use crate::filter::gmail_auth::{self, GMAIL_SYNC_SCOPE};
 
-    let token = gmail_auth::get_access_token_for_user(Some(account_name), GMAIL_SYNC_SCOPE, Some(user))?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some(account_name), GMAIL_SYNC_SCOPE, Some(user))?;
     let messages = match gmail_api_sync::fetch_thread_messages(&token, thread_id) {
         Ok(msgs) => msgs,
         Err(e) => {
             let msg = format!("{}", e);
             if msg.contains("404") {
-                return Ok(false);
+                return Ok(None);
             }
             return Err(e);
         }
     };
 
     if messages.is_empty() {
-        println!("  Thread {} has no messages", thread_id);
-        return Ok(false);
+        if !quiet {
+            println!("  Thread {} has no messages", thread_id);
+        }
+        return Ok(None);
     }
 
-    println!("  Fetched {} messages for thread {}", messages.len(), thread_id);
+    if !quiet {
+        println!(
+            "  Fetched {} messages for thread {}",
+            messages.len(),
+            thread_id
+        );
+    }
 
     let label = labels.first().map(|s| s.as_str()).unwrap_or("INBOX");
     for message in &messages {
         imap_sync::merge_message_to_file(out_dir, label, account_name, message, thread_id)?;
     }
 
-    Ok(true)
+    Ok(Some(messages.len()))
 }
 
 fn refetch_merge_to_dir(
@@ -254,10 +336,14 @@ fn refetch_merge_to_dir(
     use crate::filter::gmail_auth::{self, GMAIL_SYNC_SCOPE};
 
     let accounts = load_accounts(None)?;
-    let acct = accounts.get(account_name).ok_or_else(|| {
-        anyhow::anyhow!("Account '{}' not found", account_name)
-    })?;
-    let token = gmail_auth::get_access_token_for_user(Some(account_name), GMAIL_SYNC_SCOPE, Some(&acct.user))?;
+    let acct = accounts
+        .get(account_name)
+        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found", account_name))?;
+    let token = gmail_auth::get_access_token_for_user(
+        Some(account_name),
+        GMAIL_SYNC_SCOPE,
+        Some(&acct.user),
+    )?;
     let messages = gmail_api_sync::fetch_thread_messages(&token, thread_id)?;
 
     for message in &messages {
