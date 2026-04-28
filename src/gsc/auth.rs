@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
 use crate::config::corky_config;
+use crate::desktop_notify::notify_oauth;
 use crate::social::token_store::{StoredToken, TokenStore};
 
 /// OAuth2 scope for read-only Search Console access.
@@ -21,8 +22,8 @@ pub(crate) const GSC_SCOPE: &str = "https://www.googleapis.com/auth/webmasters.r
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
 const SA_JWT_LIFETIME_SECS: i64 = 3600;
 
-// User-OAuth loopback: port 8485 (Calendar uses 8484 — avoid collision).
-const REDIRECT_URI: &str = "http://127.0.0.1:8485/callback";
+// Reuse corky's existing Google desktop-app loopback redirect.
+const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 120;
 
 /// Deserialized service-account JSON key.
@@ -343,6 +344,7 @@ fn run_auth_flow() -> Result<StoredToken> {
         urlencode(GSC_SCOPE),
     );
 
+    notify_oauth("Google Search Console");
     println!("Opening browser for Google Search Console authorization...");
     println!("If the browser doesn't open, visit:\n  {}\n", url);
 
@@ -351,7 +353,7 @@ fn run_auth_flow() -> Result<StoredToken> {
     }
 
     println!("Waiting for callback on {}...", REDIRECT_URI);
-    let server = tiny_http::Server::http("127.0.0.1:8485")
+    let server = tiny_http::Server::http("127.0.0.1:8484")
         .map_err(|e| anyhow!("Failed to start callback server: {}", e))?;
 
     let request = server

@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
 
 use crate::config::corky_config;
+use crate::desktop_notify::notify_oauth;
 use crate::social::token_store::{StoredToken, TokenStore};
 
 const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
@@ -158,6 +159,7 @@ fn run_auth_flow() -> Result<StoredToken> {
         urlencode(CALENDAR_SCOPE),
     );
 
+    notify_oauth("Google Calendar");
     println!("Opening browser for Google Calendar authorization...");
     println!("If the browser doesn't open, visit:\n  {}\n", url);
 

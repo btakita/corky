@@ -5,6 +5,7 @@ pub mod cal;
 pub mod cli;
 pub mod config;
 pub mod contact;
+pub mod desktop_notify;
 pub mod doc;
 pub mod doctor;
 pub mod draft;

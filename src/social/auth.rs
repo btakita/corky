@@ -6,6 +6,7 @@ use chrono::{Duration, Utc};
 use super::platform::Platform;
 use super::token_store::{StoredToken, TokenStore};
 use crate::config::corky_config;
+use crate::desktop_notify::notify_oauth;
 
 const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 120;
@@ -295,6 +296,7 @@ fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
 pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
     let (auth_url, expected_state) = build_auth_url(platform)?;
 
+    notify_oauth(&platform.to_string());
     println!("Opening browser for {} authorization...", platform);
     println!("If the browser doesn't open, visit:\n  {}\n", auth_url);
 

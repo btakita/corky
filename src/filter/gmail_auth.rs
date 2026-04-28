@@ -4,6 +4,7 @@ use anyhow::{Result, bail};
 use chrono::{Duration, Utc};
 
 use crate::config::corky_config;
+use crate::desktop_notify::notify_oauth;
 use crate::social::token_store::{StoredToken, TokenStore};
 
 const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
@@ -362,6 +363,7 @@ fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<Sto
         url.push_str(&format!("&login_hint={}", urlencode(hint)));
     }
 
+    notify_oauth("Gmail");
     println!("Opening browser for Gmail authorization...");
     println!("If the browser doesn't open, visit:\n  {}\n", url);
 

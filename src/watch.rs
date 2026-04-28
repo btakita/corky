@@ -7,32 +7,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::accounts::{load_accounts, load_watch_config, resolve_password};
 use crate::config::corky_config;
+use crate::desktop_notify::notify;
 use crate::resolve;
 use crate::sync::gmail_api_sync;
 use crate::sync::imap_sync::sync_account;
 use crate::sync::types::SyncState;
-
-/// Desktop notification (best-effort).
-#[allow(unused_variables)]
-fn notify(title: &str, body: &str) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(format!(
-                "display notification \"{}\" with title \"{}\"",
-                body, title
-            ))
-            .output();
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let _ = std::process::Command::new("notify-send")
-            .arg(title)
-            .arg(body)
-            .output();
-    }
-}
 
 /// Snapshot {account: {label: last_uid}} from current sync state.
 fn snapshot_uids(state: &SyncState) -> HashMap<String, HashMap<String, u32>> {

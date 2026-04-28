@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use crate::cal::auth::urlencode_pub as urlencode;
 use crate::config::contact::load_contacts;
 use crate::config::corky_config;
+use crate::desktop_notify::notify_oauth;
 use crate::resolve;
 use crate::social::token_store::{StoredToken, TokenStore};
 
@@ -156,6 +157,7 @@ fn run_auth_flow() -> Result<StoredToken> {
         urlencode(PEOPLE_SCOPE),
     );
 
+    notify_oauth("Google Contacts");
     println!("Opening browser for Google Contacts authorization...");
     println!("If the browser doesn't open, visit:\n  {}\n", url);
 
