@@ -21,8 +21,6 @@ Sync and triage recent emails across all accounts.
    - Informational (no action)
 7. **Report findings** to the user with a summary of new messages and recommended actions
 
-If a thread looks partially synced or missing decoded body text, re-fetch it with `corky sync refetch THREAD_ID --json` before drafting a reply.
-
 ## Notes
 
 - Conversations are markdown files with YAML frontmatter containing Thread ID, labels, and metadata

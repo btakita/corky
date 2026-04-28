@@ -19,5 +19,3 @@ Import Telegram Desktop JSON export directory.
 corky slack import <FILE.zip>
 ```
 Import Slack workspace export archive.
-
-Imported conversations should preserve stable thread metadata so downstream draft-reply flows can recover `Thread ID` and, where available, message metadata consistently.

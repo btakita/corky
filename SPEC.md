@@ -1766,6 +1766,45 @@ Fetches up to 50 events in the range via `singleEvents=true` (expands recurring)
 | C8 | Check with no events | "Fully available" message |
 | C9 | Create with past start time | Allowed (API permits past events) |
 
+## § 15b Google Search Console
+
+### 15b.1 Overview
+
+Search Console access is tied to a real Google account that already has property access in Search Console. Corky's supported auth path is therefore user OAuth via `corky gsc auth`, reusing the same Google OAuth client credentials as Gmail and Calendar.
+
+An optional `[gsc]` service-account key may still be configured for best-effort headless use, but corky must not assume that the service-account email can be added in Search Console's Users and permissions UI. If the service-account token cannot prove property visibility, corky warns and falls back to user OAuth.
+
+### 15b.2 CLI Commands
+
+| Command | Behavior |
+|---|---|
+| `corky gsc auth [--account NAME]` | Run browser OAuth for a Google account that already has Search Console access |
+| `corky gsc sites [--format json\|csv\|table]` | List properties visible to the resolved Search Console token |
+| `corky gsc query ...` | Placeholder CLI surface; currently returns `gsc searchAnalytics.query not yet implemented` |
+| `corky gsc inspect ...` | Placeholder CLI surface; currently returns `gsc urlInspection.index.inspect not yet implemented` |
+
+### 15b.3 Auth
+
+**OAuth scope:** `https://www.googleapis.com/auth/webmasters.readonly`
+
+**Token storage:** Shared token store key prefix `gsc:` (`gsc:default`, `gsc:<account>`).
+
+**Callback:** Loopback listener on `127.0.0.1:8485` (Calendar uses `8484`).
+
+**Resolution order:**
+1. Valid stored `gsc:*` user token
+2. Refresh stored `gsc:*` token
+3. Configured `[gsc].service_account_json*`, but only if the minted token can successfully list at least one visible Search Console property
+4. Full browser OAuth via `corky gsc auth`
+
+**Diagnostics:** If a service-account token exchange succeeds but Search Console returns no visible properties, corky treats that as an unsupported or ineffective Search Console access path and instructs the user to authenticate a real Google account instead.
+
+### 15b.4 Edge Cases
+
+- Search Console user management requires a valid Google Account email; a service-account identity is not a portable substitute.
+- If the browser does not open automatically during `corky gsc auth`, corky still prints the full authorization URL and waits for the callback on port `8485`.
+- If `[gmail]` client credentials are missing, interactive GSC OAuth fails with the same credential-resolution error surface as other Google integrations.
+
 ## 16. SMS Import
 
 ### 16.1 Overview

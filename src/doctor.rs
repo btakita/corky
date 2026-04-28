@@ -4,14 +4,11 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::config::corky_config::{self, CorkyConfig};
-use crate::filter::gmail_auth::{
-    DEFAULT_GCP_CLIENT_ID, GMAIL_SEND_SCOPE, GMAIL_SYNC_SCOPE,
-};
+use crate::filter::gmail_auth::{DEFAULT_GCP_CLIENT_ID, GMAIL_SEND_SCOPE, GMAIL_SYNC_SCOPE};
 use crate::resolve;
 use crate::social::token_store::{StoredToken, TokenStore, tokens_path};
 
-const GMAIL_FILTER_REQUIRED_SCOPE: &str =
-    "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels";
+const GMAIL_FILTER_REQUIRED_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels";
 
 /// Collected diagnostic output and status.
 #[derive(Debug, Default)]

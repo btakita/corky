@@ -106,8 +106,11 @@ pub struct GmailFilter {
 
 /// Google Search Console config (lives in .corky.toml under `[gsc]`).
 ///
-/// Service-account path: set `service_account_json` or `service_account_json_cmd`.
-/// User-OAuth fallback reuses `[gmail]` client credentials — no fields needed here.
+/// Optional service-account path: set `service_account_json` or
+/// `service_account_json_cmd` for best-effort non-browser access.
+/// The supported default path is `corky gsc auth`, which reuses `[gmail]`
+/// client credentials for a real Google account that already has Search
+/// Console access.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GscConfig {
     #[serde(default)]

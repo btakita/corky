@@ -9,8 +9,6 @@
 3. Wait for explicit "send" instruction
 4. Only then: `corky draft push <file> --send` (requires status = `approved`, `review`, or `scheduled`)
 
-Use `--json` when an adapter or test harness needs the send result without scraping human-readable output.
-
 ## Delivery by Account Type
 
 ### gmail-api accounts (e.g. btak.dev)
@@ -18,7 +16,6 @@ Use `--json` when an adapter or test harness needs the send result without scrap
 - `corky draft push <file>` -> Gmail API `drafts.create` (Drafts folder)
 - `corky draft push <file> --send` -> Gmail API `messages.send` (sends directly)
 - Uses OAuth2 with `gmail.compose` scope (auto-refreshes after first browser consent)
-- `corky doctor gmail --json` reports token presence, scope coverage, and whether re-auth is required
 - No SMTP password needed
 
 ### SMTP accounts (e.g. personal, proton-dev)

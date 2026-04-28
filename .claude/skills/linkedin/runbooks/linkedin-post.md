@@ -31,7 +31,6 @@
 2. Publish the post
 3. Immediately add the first comment with links
 4. Verify both post and comment are visible
-5. If the post is being automated through `corky schedule run`, verify the scheduled draft still reflects the final body before the run executes
 
 ## Timing
 

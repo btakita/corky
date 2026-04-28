@@ -20,8 +20,6 @@ corky transcribe <FILE> --diarize --speakers "Brian,Robert"
 - Confidence-based re-transcription is on by default (re-runs whisper on low-confidence blocks with smaller windows)
 - Opt out: `--no-confidence-retranscribe`
 
-After changing transcription behavior, rerun `make check`; if you also touched instruction files or runbooks, rerun `corky audit-docs` before committing.
-
 ## Configuration (.corky.toml)
 ```toml
 [transcription]

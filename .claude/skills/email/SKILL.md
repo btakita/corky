@@ -24,8 +24,8 @@ Draft a new email or reply to an existing thread.
 
 **Steps:**
 1. If replying, search `mail/conversations/` for the thread
-2. Extract both the RFC 2822 `Message-ID` and the Gmail `Thread ID`, plus the original subject
-3. Create draft via `corky draft new --to <recipient> --in-reply-to <message-id> --thread-id <thread-id> "<subject>"`
+2. Extract thread ID and subject for threading
+3. Create draft via `corky draft new --to <recipient> --in-reply-to <thread-id> "<subject>"`
 4. Write email content to the draft file
 5. Set status to `approved`
 
@@ -48,13 +48,11 @@ See `runbooks/browser-paste.md` for the full workflow.
 - **Never send without approval** — always push to Gmail Drafts first, wait for user to say "send"
 - Always use `file:///` protocol for browser-openable file paths
 - Always search for existing threads before creating standalone emails
-- For Gmail replies, `in_reply_to` must be the original message ID; `thread_id` is a separate Gmail API field
 - Gmail threading requires matching subjects — use `Re: <original subject>`
 - HTML emails use inline CSS (Gmail strips `<style>` tags)
 - Draft content comes from agent-doc session context — read correspondence, resume, and contact files as needed
 - Verify facts against `mail/contacts/<name>/CLAUDE.md` before sending
 - Attachment paths must be absolute (tilde `~` not expanded for attachments in corky)
-- Use `corky doctor gmail --json` when a connector or automation needs auth/scope state without scraping stderr
 
 ## Runbooks
 

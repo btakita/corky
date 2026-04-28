@@ -14,7 +14,6 @@ Update a contact's profile with new information from conversations, research, or
 
 3. **Gather new information from:**
    - Recent conversations in `mail/conversations/` (grep for their email/name)
-   - Reply metadata already synced into the thread (`Thread ID`, `Message-ID`) when the contact context is tied to a specific conversation
    - LinkedIn profile (via `chromium-bridge markdown <url>` if URL known)
    - User-provided context from the agent-doc session
    - Social profiles in `mail/social/` if available

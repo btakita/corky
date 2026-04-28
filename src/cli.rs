@@ -1184,7 +1184,7 @@ pub enum CalCommands {
 
 #[derive(Subcommand)]
 pub enum GscCommands {
-    /// Authenticate with Google Search Console (user-OAuth fallback)
+    /// Authenticate a Google account for Search Console access
     Auth {
         #[arg(long)]
         account: Option<String>,

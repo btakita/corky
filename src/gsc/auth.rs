@@ -1,8 +1,10 @@
 //! Google Search Console authentication.
 //!
-//! Supports service-account JWT auth (preferred, no browser) and user-OAuth
-//! fallback reusing the `[gmail]` client credentials. See `get_access_token`
-//! for the selection logic.
+//! The supported path is user OAuth against a real Google account that already
+//! has Search Console access. If `[gsc]` contains a service-account key, corky
+//! can still attempt that token path opportunistically, but Search Console does
+//! not reliably treat service-account emails as addable property users, so
+//! failed or empty access probes fall back to user OAuth.
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{Duration, Utc};
@@ -66,15 +68,11 @@ fn token_key(account: Option<&str>) -> String {
 /// Acquire a valid access token for the Search Console API.
 ///
 /// Selection order:
-/// 1. Service account from `[gsc]` config (if configured).
-/// 2. Stored user token (valid).
-/// 3. Refresh stored user token.
+/// 1. Stored user token (valid).
+/// 2. Refresh stored user token.
+/// 3. Verified service-account access from `[gsc]` config (if configured).
 /// 4. Full user-OAuth flow (opens browser).
 pub fn get_access_token(account: Option<&str>) -> Result<String> {
-    if let Some(token) = try_service_account()? {
-        return Ok(token);
-    }
-
     let key = token_key(account);
     let mut store = TokenStore::load()?;
 
@@ -99,6 +97,10 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
         }
     }
 
+    if let Some(token) = try_service_account()? {
+        return Ok(token);
+    }
+
     let token = run_auth_flow()?;
     let access = token.access_token.clone();
     store.upsert(key, token);
@@ -117,7 +119,8 @@ pub fn run_auth(account: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Attempt service-account auth. Returns `Ok(None)` if `[gsc]` is not configured.
+/// Attempt service-account auth. Returns `Ok(None)` if `[gsc]` is not configured
+/// or if Search Console access cannot be confirmed for the minted token.
 fn try_service_account() -> Result<Option<String>> {
     let cfg = match corky_config::try_load_config(None).and_then(|c| c.gsc) {
         Some(c) => c,
@@ -128,6 +131,11 @@ fn try_service_account() -> Result<Option<String>> {
     }
 
     if let Some(token) = cached_token() {
+        if let Err(err) = verify_service_account_access(&token) {
+            clear_cached_token();
+            eprintln!("{}", format_service_account_fallback(&err));
+            return Ok(None);
+        }
         return Ok(Some(token));
     }
 
@@ -138,7 +146,17 @@ fn try_service_account() -> Result<Option<String>> {
     )?;
     let sa = parse_service_account_key(&key_json)?;
     let jwt = sign_sa_jwt(&sa)?;
-    let fetched = exchange_sa_jwt(&sa, &jwt)?;
+    let fetched = match exchange_sa_jwt(&sa, &jwt) {
+        Ok(token) => token,
+        Err(err) => {
+            eprintln!("{}", format_service_account_fallback(&err));
+            return Ok(None);
+        }
+    };
+    if let Err(err) = verify_service_account_access(&fetched.access_token) {
+        eprintln!("{}", format_service_account_fallback(&err));
+        return Ok(None);
+    }
     store_token(&fetched);
     Ok(Some(fetched.access_token))
 }
@@ -187,7 +205,9 @@ fn exchange_sa_jwt(sa: &ServiceAccountKey, jwt: &str) -> Result<CachedToken> {
             let err_body = resp.into_string().unwrap_or_default();
             bail!(
                 "gsc SA token exchange failed (HTTP {}): {}\n\
-                 Hint: ensure the SA email is added as a user on each Search Console property.",
+                 Hint: Search Console property access usually requires a real Google \
+                 account with access. If the service-account identity cannot be used \
+                 there, run `corky gsc auth` instead.",
                 status,
                 err_body
             );
@@ -224,6 +244,37 @@ fn store_token(token: &CachedToken) {
     if let Ok(mut guard) = SA_TOKEN_CACHE.lock() {
         *guard = Some(token.clone());
     }
+}
+
+fn clear_cached_token() {
+    if let Ok(mut guard) = SA_TOKEN_CACHE.lock() {
+        *guard = None;
+    }
+}
+
+fn verify_service_account_access(token: &str) -> Result<()> {
+    let sites = crate::gsc::sites::list_sites(token)?;
+    ensure_service_account_sites(&sites)
+}
+
+fn ensure_service_account_sites(sites: &[crate::gsc::sites::SiteEntry]) -> Result<()> {
+    if sites.is_empty() {
+        bail!(
+            "service-account token succeeded, but Search Console returned no visible \
+             properties. Search Console user management expects a valid Google \
+             Account email, so service-account identities are not a reliable \
+             property-access path."
+        );
+    }
+    Ok(())
+}
+
+fn format_service_account_fallback(err: &anyhow::Error) -> String {
+    format!(
+        "GSC service-account auth is unavailable: {}\n\
+         Falling back to user OAuth via `corky gsc auth`.",
+        err
+    )
 }
 
 /// Resolve OAuth2 client credentials from `.corky.toml` `[gmail]` section or env vars.
@@ -547,5 +598,32 @@ jzyrXB+qTE8wF1xUHoaCJKgB
         assert_eq!(token.refresh_token.as_deref(), Some("1//test-refresh"));
         assert_eq!(token.platform, "gsc");
         assert_eq!(token.scopes, vec![GSC_SCOPE.to_string()]);
+    }
+
+    #[test]
+    fn rejects_service_account_probe_with_no_sites() {
+        let sites: Vec<crate::gsc::sites::SiteEntry> = vec![];
+        let err = ensure_service_account_sites(&sites)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no visible properties"));
+        assert!(err.contains("valid Google Account"));
+    }
+
+    #[test]
+    fn accepts_service_account_probe_with_visible_sites() {
+        let sites = vec![crate::gsc::sites::SiteEntry {
+            site_url: "sc-domain:example.com".to_string(),
+            permission_level: "siteOwner".to_string(),
+        }];
+        ensure_service_account_sites(&sites).unwrap();
+    }
+
+    #[test]
+    fn fallback_message_points_to_user_oauth() {
+        let err = anyhow!("probe failed");
+        let msg = format_service_account_fallback(&err);
+        assert!(msg.contains("Falling back to user OAuth"));
+        assert!(msg.contains("corky gsc auth"));
     }
 }

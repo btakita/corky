@@ -15,7 +15,6 @@ sync_days = 30
 - **Sync:** `gmail.readonly` scope (token key: `gmail:btak.dev`)
 - **Send/Draft:** `gmail.compose` scope (token key: `gmail:btak.dev:send`)
 - First use opens browser for OAuth consent; tokens auto-refresh after that
-- `corky doctor gmail --json` reports token presence, expiry, granted scopes, and whether a connector-triggered re-auth is required
 
 ## SMTP Accounts (personal, proton-dev)
 

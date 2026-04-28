@@ -43,8 +43,6 @@ corky schedule list
 corky schedule run
 ```
 
-`corky schedule run` executes due scheduled social drafts; keep the file in a non-published state until that run actually promotes it.
-
 ## Conventions
 
 - **No markdown bold** — `**text**` shows as literal asterisks on LinkedIn

@@ -601,7 +601,7 @@ fn print_gsc_sites(sites: &[corky::gsc::sites::SiteEntry], format: GscOutputForm
         GscOutputFormat::Table => {
             if sites.is_empty() {
                 println!(
-                    "(no sites — ensure the SA email is added in Search Console → Settings → Users & permissions)"
+                    "(no sites — verify this Google account has Search Console access; if service-account auth was configured, run `corky gsc auth` with a real Google account instead)"
                 );
             }
             let url_w = sites

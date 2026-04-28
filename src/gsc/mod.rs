@@ -1,8 +1,9 @@
 //! Google Search Console integration.
 //!
-//! Supports service-account auth (preferred, no browser) and user-OAuth
-//! fallback using the same client as Gmail/Calendar. See `auth.rs` for
-//! selection logic.
+//! Prefers user OAuth with a real Google account that already has Search
+//! Console access. Service-account credentials can be attempted as a best-effort
+//! fallback, but Search Console does not reliably accept service-account
+//! identities as property users. See `auth.rs` for selection logic.
 
 pub mod auth;
 pub mod inspect;

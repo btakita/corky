@@ -1,6 +1,6 @@
 # Browser Paste Workflow
 
-Fallback for sending HTML-formatted emails when `corky draft push` is unavailable or Gmail auth is temporarily blocked.
+Fallback for sending HTML-formatted emails when `corky draft push` is unavailable.
 
 ## Generate HTML
 
@@ -19,5 +19,3 @@ Fallback for sending HTML-formatted emails when `corky draft push` is unavailabl
 3. Copy (Ctrl+C)
 4. Paste into Gmail compose window (Ctrl+V)
 5. Always use `file:///` protocol paths (not bare `/tmp/...`)
-
-If the failure mode looks auth- or scope-related, check `corky doctor gmail --json` before falling back to browser paste.

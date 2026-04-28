@@ -15,11 +15,45 @@ Manage email, calendar, documents, and communications from the command line.
 
 ## Commands
 
-Use the command family that matches the user intent rather than memorizing a long flat list:
+### Email
+```text
+corky unanswered                      # threads awaiting reply
+corky draft new --to EMAIL "Subject" # scaffold a new draft
+corky draft validate                 # validate draft format
+corky sync                           # sync threads from IMAP
+corky contact add --from SLUG        # create contact from conversation
+corky contact info NAME              # show contact details
+```
 
-- **Email:** `corky unanswered`, `corky draft new`, `corky draft validate`, `corky draft push`, `corky draft send`, `corky sync`, `corky contact add --from`, `corky contact info`
-- **Google Workspace / connector surfaces:** `corky doctor gmail --json`, `corky sync refetch THREAD_ID --json`, `corky docs ...`, `corky sheets ...`, `corky cal ...`, `corky chat ...`, `corky tasks ...`
-- **Filters and system:** `corky filter check`, `corky filter push`, `corky filter auth`, `corky watch`, `corky skill install`, `corky audit-docs`
+### Calendar
+```text
+corky cal auth                                           # Google Calendar OAuth2
+corky cal list [--limit N] [--query Q]                  # upcoming events
+corky cal create <SUMMARY> <START> <END> [--description] [--location]
+                                                         # create event
+corky cal check <START> <END>                           # check availability
+corky cal delete <QUERY> [--all] [--dry-run]            # delete events
+```
+
+### Documents
+```text
+corky doc build <FILE> [--format pdf|docx] [--template NAME]
+  # convert markdown to PDF/DOCX
+```
+
+### Filters
+```text
+corky filter check # compare local vs Gmail filters (read-only)
+corky filter push  # push local filters to Gmail (destructive, manual only)
+corky filter auth  # Gmail OAuth2 for filter management
+```
+
+### System
+```text
+corky watch         # IMAP polling + filter drift detection daemon
+corky skill install # install Claude Code skills
+corky audit-docs    # audit instruction files
+```
 
 ## Related Skills
 
