@@ -4097,7 +4097,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "tmux-router"
-version = "0.3.10"
