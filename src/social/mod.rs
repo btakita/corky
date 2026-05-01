@@ -10,7 +10,7 @@ pub mod publish;
 pub mod token_store;
 pub mod youtube;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 
 use crate::resolve;
@@ -104,7 +104,10 @@ pub fn run_youtube_edit(file: &Path) -> Result<()> {
     let draft = SocialDraft::parse(&content)?;
 
     if draft.meta.platform != platform::Platform::Youtube {
-        bail!("Draft is not a YouTube draft (platform: {})", draft.meta.platform);
+        bail!(
+            "Draft is not a YouTube draft (platform: {})",
+            draft.meta.platform
+        );
     }
 
     let video_id = draft.meta.post_id.clone().ok_or_else(|| {
@@ -124,9 +127,11 @@ pub fn run_youtube_edit(file: &Path) -> Result<()> {
         )
     })?;
 
-    let title = draft.meta.title.clone().unwrap_or_else(|| {
-        draft.body.lines().next().unwrap_or("").to_string()
-    });
+    let title = draft
+        .meta
+        .title
+        .clone()
+        .unwrap_or_else(|| draft.body.lines().next().unwrap_or("").to_string());
     let description = if draft.meta.title.is_some() {
         draft.body.clone()
     } else {
@@ -145,7 +150,10 @@ pub fn run_youtube_edit(file: &Path) -> Result<()> {
 
     youtube::update_video(&token.access_token, &video_id, &metadata)?;
 
-    println!("Updated YouTube video: https://www.youtube.com/watch?v={}", video_id);
+    println!(
+        "Updated YouTube video: https://www.youtube.com/watch?v={}",
+        video_id
+    );
     Ok(())
 }
 
@@ -185,11 +193,7 @@ pub fn run_comment(file: &Path, body: &str) -> Result<()> {
 
     let comment_id = linkedin::create_comment(&token.access_token, &urn, &post_id, body)?;
 
-    let post_url = draft
-        .meta
-        .post_url
-        .as_deref()
-        .unwrap_or("(unknown URL)");
+    let post_url = draft.meta.post_url.as_deref().unwrap_or("(unknown URL)");
     println!("Commented on {}", post_url);
     println!("Comment ID: {}", comment_id);
     Ok(())
@@ -257,7 +261,9 @@ fn get_youtube_token() -> Result<String> {
         .collect();
 
     if youtube_profiles.is_empty() {
-        bail!("No YouTube profile found in .corky.toml. Run `corky youtube auth --profile <name>` first.");
+        bail!(
+            "No YouTube profile found in .corky.toml. Run `corky youtube auth --profile <name>` first."
+        );
     }
 
     let (author, _) = youtube_profiles[0];
@@ -277,7 +283,10 @@ fn get_youtube_token() -> Result<String> {
 pub fn run_playlist_create(title: &str, description: &str, visibility: &str) -> Result<()> {
     let access_token = get_youtube_token()?;
     let playlist_id = youtube::create_playlist(&access_token, title, description, visibility)?;
-    println!("Created playlist: https://www.youtube.com/playlist?list={}", playlist_id);
+    println!(
+        "Created playlist: https://www.youtube.com/playlist?list={}",
+        playlist_id
+    );
     println!("Playlist ID: {}", playlist_id);
     Ok(())
 }
@@ -359,7 +368,10 @@ pub fn run_edit(file: &Path, body: Option<&str>) -> Result<()> {
         std::fs::write(file, rendered)?;
     }
 
-    println!("Updated LinkedIn post: https://www.linkedin.com/feed/update/{}", post_id);
+    println!(
+        "Updated LinkedIn post: https://www.linkedin.com/feed/update/{}",
+        post_id
+    );
     Ok(())
 }
 
@@ -409,9 +421,7 @@ pub fn run_list(status_filter: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    let filter: Option<DraftStatus> = status_filter
-        .map(|s| s.parse())
-        .transpose()?;
+    let filter: Option<DraftStatus> = status_filter.map(|s| s.parse()).transpose()?;
 
     let mut entries: Vec<_> = std::fs::read_dir(&social_dir)?
         .filter_map(|e| e.ok())
@@ -424,19 +434,16 @@ pub fn run_list(status_filter: Option<&str>) -> Result<()> {
         let content = std::fs::read_to_string(entry.path())?;
         if let Ok(draft) = SocialDraft::parse(&content) {
             if let Some(ref f) = filter
-                && draft.meta.status != *f {
-                    continue;
-                }
+                && draft.meta.status != *f
+            {
+                continue;
+            }
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
             let preview = util::truncate_preview(&draft.body, 60);
             println!(
                 "  {} [{}] {} @{} — {}",
-                name_str,
-                draft.meta.status,
-                draft.meta.platform,
-                draft.meta.author,
-                preview,
+                name_str, draft.meta.status, draft.meta.platform, draft.meta.author, preview,
             );
             count += 1;
         }
@@ -458,12 +465,13 @@ pub fn run_rename_author(old: &str, new: &str) -> Result<()> {
         let content = std::fs::read_to_string(&corky_path)?;
         let mut doc = content.parse::<toml_edit::DocumentMut>()?;
         if let Some(profiles_table) = doc.get_mut("profiles").and_then(|v| v.as_table_mut())
-            && let Some(item) = profiles_table.remove(old) {
-                profiles_table.insert(new, item);
-                std::fs::write(&corky_path, doc.to_string())?;
-                println!("Renamed profile '{}' -> '{}' in .corky.toml", old, new);
-                count += 1;
-            }
+            && let Some(item) = profiles_table.remove(old)
+        {
+            profiles_table.insert(new, item);
+            std::fs::write(&corky_path, doc.to_string())?;
+            println!("Renamed profile '{}' -> '{}' in .corky.toml", old, new);
+            count += 1;
+        }
     }
     // Also check standalone profiles.toml for backward compat
     let profiles_path = resolve::profiles_toml();
@@ -487,13 +495,14 @@ pub fn run_rename_author(old: &str, new: &str) -> Result<()> {
             if entry.path().extension().map(|x| x == "md").unwrap_or(false) {
                 let content = std::fs::read_to_string(entry.path())?;
                 if let Ok(mut draft) = SocialDraft::parse(&content)
-                    && draft.meta.author == old {
-                        draft.meta.author = new.to_string();
-                        let rendered = draft.render()?;
-                        std::fs::write(entry.path(), rendered)?;
-                        println!("Updated author in {}", entry.path().display());
-                        count += 1;
-                    }
+                    && draft.meta.author == old
+                {
+                    draft.meta.author = new.to_string();
+                    let rendered = draft.render()?;
+                    std::fs::write(entry.path(), rendered)?;
+                    println!("Updated author in {}", entry.path().display());
+                    count += 1;
+                }
             }
         }
     }

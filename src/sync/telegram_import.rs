@@ -146,11 +146,7 @@ fn import_chat(
             continue;
         }
 
-        let body = msg
-            .text
-            .as_ref()
-            .map(|t| t.to_plain())
-            .unwrap_or_default();
+        let body = msg.text.as_ref().map(|t| t.to_plain()).unwrap_or_default();
 
         // Skip empty messages (e.g. media-only)
         if body.trim().is_empty() {
@@ -180,12 +176,7 @@ fn import_chat(
 }
 
 /// Parse a single Telegram Desktop JSON export file.
-fn import_file(
-    path: &Path,
-    label: &str,
-    out_dir: &Path,
-    account_name: &str,
-) -> Result<()> {
+fn import_file(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Result<()> {
     let data = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
     let export: TelegramExport = serde_json::from_str(&data)
@@ -211,9 +202,7 @@ fn import_file(
     }
 
     // Single-chat export (top-level name/id/messages)
-    if let (Some(name), Some(id), Some(messages)) =
-        (export.name, export.id, export.messages)
-    {
+    if let (Some(name), Some(id), Some(messages)) = (export.name, export.id, export.messages) {
         let count = import_chat(&name, id, &messages, label, out_dir, account_name)?;
         println!("{} — {} message(s)", name, count);
         return Ok(());
@@ -242,10 +231,9 @@ fn chat_id_from_name(name: &str) -> i64 {
 /// Parse Telegram HTML date format "DD.MM.YYYY HH:MM:SS UTC±HH:MM" → RFC 2822.
 fn telegram_html_date_to_rfc2822(date_str: &str) -> String {
     // Try parsing "DD.MM.YYYY HH:MM:SS UTC±HH:MM" (from title attr)
-    let re = Regex::new(
-        r"(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s+UTC([+-]\d{2}:\d{2})",
-    )
-    .unwrap();
+    let re =
+        Regex::new(r"(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s+UTC([+-]\d{2}:\d{2})")
+            .unwrap();
 
     if let Some(caps) = re.captures(date_str) {
         let iso = format!(
@@ -263,12 +251,7 @@ fn telegram_html_date_to_rfc2822(date_str: &str) -> String {
 }
 
 /// Parse a Telegram Desktop HTML export file into messages and import them.
-fn import_html_file(
-    path: &Path,
-    label: &str,
-    out_dir: &Path,
-    account_name: &str,
-) -> Result<()> {
+fn import_html_file(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Result<()> {
     let html = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
 
@@ -292,8 +275,7 @@ fn import_html_file(
 
     // Split into message blocks
     let msg_re = Regex::new(r#"<div class="message [^"]*" id="message(\d+)">"#).unwrap();
-    let date_re =
-        Regex::new(r#"class="pull_right date details" title="([^"]+)""#).unwrap();
+    let date_re = Regex::new(r#"class="pull_right date details" title="([^"]+)""#).unwrap();
     let from_re = Regex::new(r#"class="from_name">\s*\n\s*(.+?)\s*\n"#).unwrap();
     let text_re = Regex::new(r#"class="text">\s*\n\s*([\s\S]*?)\s*</div>"#).unwrap();
     let service_re = Regex::new(r#"class="message service""#).unwrap();
@@ -321,10 +303,7 @@ fn import_html_file(
             continue;
         }
 
-        let end = positions
-            .get(i + 1)
-            .map(|p| p.0)
-            .unwrap_or(html.len());
+        let end = positions.get(i + 1).map(|p| p.0).unwrap_or(html.len());
         let block = &html[start..end];
 
         // Extract date from title attribute
@@ -620,12 +599,7 @@ Second message
         let files: Vec<_> = std::fs::read_dir(&out_dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    == Some("md")
-            })
+            .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
             .collect();
         assert_eq!(files.len(), 1);
 
@@ -680,12 +654,7 @@ Second message
         let files: Vec<_> = std::fs::read_dir(&out_dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    == Some("md")
-            })
+            .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
             .collect();
         assert_eq!(files.len(), 1);
 

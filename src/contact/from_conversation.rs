@@ -63,10 +63,7 @@ pub fn run(slug: &str, name: Option<&str>) -> Result<()> {
     let emails = selected.emails.clone();
 
     // 7. Other participants (for AGENTS.md)
-    let other_names: Vec<String> = others
-        .iter()
-        .map(|p| slugify(&p.display_name))
-        .collect();
+    let other_names: Vec<String> = others.iter().map(|p| slugify(&p.display_name)).collect();
 
     // 8. Generate enriched AGENTS.md
     let topics = vec![thread.subject.clone()];
@@ -83,7 +80,10 @@ pub fn run(slug: &str, name: Option<&str>) -> Result<()> {
     );
 
     // 9. Delegate to shared creation logic
-    println!("Creating contact '{}' from conversation '{}'", contact_name, slug);
+    println!(
+        "Creating contact '{}' from conversation '{}'",
+        contact_name, slug
+    );
     for email in &emails {
         println!("  Email: {}", email);
     }
@@ -104,14 +104,15 @@ fn find_conversation(slug: &str) -> Result<std::path::PathBuf> {
     // Search mailboxes/*/conversations/
     let mailboxes_dir = data_dir.join("mailboxes");
     if mailboxes_dir.exists()
-        && let Ok(entries) = std::fs::read_dir(&mailboxes_dir) {
-            for entry in entries.flatten() {
-                let mb_path = entry.path().join("conversations").join(&filename);
-                if mb_path.exists() {
-                    return Ok(mb_path);
-                }
+        && let Ok(entries) = std::fs::read_dir(&mailboxes_dir)
+    {
+        for entry in entries.flatten() {
+            let mb_path = entry.path().join("conversations").join(&filename);
+            if mb_path.exists() {
+                return Ok(mb_path);
             }
         }
+    }
 
     anyhow::bail!(
         "Conversation '{}' not found.\nSearched:\n  - {}\n  - {}",
@@ -139,7 +140,8 @@ fn extract_participants(
     thread: &crate::sync::types::Thread,
     owner_emails: &[String],
 ) -> Vec<Participant> {
-    let mut seen: std::collections::BTreeMap<String, Participant> = std::collections::BTreeMap::new();
+    let mut seen: std::collections::BTreeMap<String, Participant> =
+        std::collections::BTreeMap::new();
 
     for msg in &thread.messages {
         for field in [&msg.from, &msg.to, &msg.cc] {
@@ -221,7 +223,9 @@ fn select_participant<'a>(
             let p_slug = slugify(&p.display_name);
             if p_slug == slug_name
                 || p.display_name.to_lowercase() == name_lower
-                || p.emails.iter().any(|e| e.starts_with(&format!("{}@", name_lower)))
+                || p.emails
+                    .iter()
+                    .any(|e| e.starts_with(&format!("{}@", name_lower)))
             {
                 let others: Vec<&Participant> = participants
                     .iter()
@@ -248,13 +252,7 @@ fn select_participant<'a>(
 fn format_candidates(participants: &[Participant]) -> String {
     participants
         .iter()
-        .map(|p| {
-            format!(
-                "  {} ({})",
-                p.display_name,
-                p.emails.join(", ")
-            )
-        })
+        .map(|p| format!("  {} ({})", p.display_name, p.emails.join(", ")))
         .collect::<Vec<_>>()
         .join("\n")
 }

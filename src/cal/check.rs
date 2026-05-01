@@ -1,6 +1,6 @@
 //! Check calendar availability for a time range.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, FixedOffset};
 
 use super::auth;

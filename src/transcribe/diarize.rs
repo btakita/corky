@@ -88,17 +88,16 @@ pub fn diarize(
         match extractor.compute(&segment.samples) {
             Ok(embedding) => {
                 let embedding_vec: Vec<f32> = embedding.collect();
-                let speaker_id =
-                    if manager.get_all_speakers().len() == max_speakers {
-                        manager
-                            .get_best_speaker_match(embedding_vec.clone())
-                            .map_err(|e| anyhow::anyhow!("Speaker match error: {:?}", e))
-                            .unwrap_or(0)
-                    } else {
-                        manager
-                            .search_speaker(embedding_vec.clone(), threshold)
-                            .unwrap_or(0)
-                    };
+                let speaker_id = if manager.get_all_speakers().len() == max_speakers {
+                    manager
+                        .get_best_speaker_match(embedding_vec.clone())
+                        .map_err(|e| anyhow::anyhow!("Speaker match error: {:?}", e))
+                        .unwrap_or(0)
+                } else {
+                    manager
+                        .search_speaker(embedding_vec.clone(), threshold)
+                        .unwrap_or(0)
+                };
 
                 // Compute confidence score against stored speaker embeddings
                 let (_, confidence) = compute_confidence(&embedding_vec, &manager);
@@ -126,8 +125,11 @@ pub fn diarize(
     // by temporal proximity. There is no valid "Unknown" when speaker count is known.
     reassign_unknown_segments(&mut result);
 
-    let unique_speakers: std::collections::HashSet<usize> =
-        result.iter().map(|s| s.speaker_id).filter(|&id| id != 0).collect();
+    let unique_speakers: std::collections::HashSet<usize> = result
+        .iter()
+        .map(|s| s.speaker_id)
+        .filter(|&id| id != 0)
+        .collect();
     eprintln!(
         "Diarization complete: {} segments, {} speakers detected",
         result.len(),
@@ -225,17 +227,16 @@ pub fn diarize_chunked(
             match extractor.compute(&segment.samples) {
                 Ok(embedding) => {
                     let embedding_vec: Vec<f32> = embedding.collect();
-                    let speaker_id =
-                        if manager.get_all_speakers().len() == max_speakers {
-                            manager
-                                .get_best_speaker_match(embedding_vec.clone())
-                                .map_err(|e| anyhow::anyhow!("Speaker match error: {:?}", e))
-                                .unwrap_or(0)
-                        } else {
-                            manager
-                                .search_speaker(embedding_vec.clone(), threshold)
-                                .unwrap_or(0)
-                        };
+                    let speaker_id = if manager.get_all_speakers().len() == max_speakers {
+                        manager
+                            .get_best_speaker_match(embedding_vec.clone())
+                            .map_err(|e| anyhow::anyhow!("Speaker match error: {:?}", e))
+                            .unwrap_or(0)
+                    } else {
+                        manager
+                            .search_speaker(embedding_vec.clone(), threshold)
+                            .unwrap_or(0)
+                    };
 
                     let (_, confidence) = compute_confidence(&embedding_vec, &manager);
 
@@ -270,8 +271,11 @@ pub fn diarize_chunked(
     // Merge speaker IDs across chunks using embedding similarity
     let merged = merge_cross_chunk_speakers(all_segments, &chunk_embeddings, max_speakers);
 
-    let unique_speakers: std::collections::HashSet<usize> =
-        merged.iter().map(|s| s.speaker_id).filter(|&id| id != 0).collect();
+    let unique_speakers: std::collections::HashSet<usize> = merged
+        .iter()
+        .map(|s| s.speaker_id)
+        .filter(|&id| id != 0)
+        .collect();
     eprintln!(
         "Chunked diarization complete: {} segments, {} speakers across {} chunks",
         merged.len(),
@@ -488,8 +492,7 @@ fn best_overlapping_speaker(
         let overlap = (overlap_end - overlap_start).max(0.0);
         if overlap > 0.0 {
             *speaker_overlap.entry(seg.speaker_id).or_default() += overlap;
-            *speaker_conf_sum.entry(seg.speaker_id).or_default() +=
-                overlap * seg.confidence as f64;
+            *speaker_conf_sum.entry(seg.speaker_id).or_default() += overlap * seg.confidence as f64;
         }
     }
 
@@ -513,16 +516,16 @@ fn best_overlapping_speaker(
         .min_by(|a, b| {
             let dist_a = (mid - (a.start + a.end) / 2.0).abs();
             let dist_b = (mid - (b.start + b.end) / 2.0).abs();
-            dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+            dist_a
+                .partial_cmp(&dist_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
         })
         .map(|seg| (seg.speaker_id, 0.0)) // 0.0 confidence for proximity fallback
         .unwrap_or((0, 0.0))
 }
 
 /// Get representative text excerpts for each speaker (for interactive labeling).
-pub fn get_speaker_excerpts(
-    merged: &[MergedSegment],
-) -> HashMap<usize, Vec<String>> {
+pub fn get_speaker_excerpts(merged: &[MergedSegment]) -> HashMap<usize, Vec<String>> {
     let mut excerpts: HashMap<usize, Vec<String>> = HashMap::new();
 
     for seg in merged {
@@ -540,9 +543,7 @@ pub fn get_speaker_excerpts(
 }
 
 /// Prompt the user to assign names to speaker IDs via stdin.
-pub fn interactive_label(
-    excerpts: &HashMap<usize, Vec<String>>,
-) -> Result<HashMap<usize, String>> {
+pub fn interactive_label(excerpts: &HashMap<usize, Vec<String>>) -> Result<HashMap<usize, String>> {
     use std::io::{self, BufRead, Write};
 
     let mut labels = HashMap::new();

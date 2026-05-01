@@ -3,7 +3,7 @@
 //! Scans social/ and drafts/ (including mailboxes/*/drafts/) for items with
 //! a scheduled_at time in the past, then dispatches to existing publish functions.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 
@@ -69,14 +69,15 @@ pub fn scan_scheduled(now: DateTime<Utc>) -> Result<Vec<ScheduledItem>> {
     // Scan mailboxes/*/drafts/
     let mb_base = resolve::mailboxes_base_dir();
     if mb_base.is_dir()
-        && let Ok(entries) = std::fs::read_dir(&mb_base) {
-            for entry in entries.flatten() {
-                let mb_drafts = entry.path().join("drafts");
-                if mb_drafts.is_dir() {
-                    scan_email_dir(&mb_drafts, deadline, &mut items)?;
-                }
+        && let Ok(entries) = std::fs::read_dir(&mb_base)
+    {
+        for entry in entries.flatten() {
+            let mb_drafts = entry.path().join("drafts");
+            if mb_drafts.is_dir() {
+                scan_email_dir(&mb_drafts, deadline, &mut items)?;
             }
         }
+    }
 
     // Sort by scheduled_at ascending (earliest first)
     items.sort_by_key(|item| item.scheduled_at);
@@ -95,21 +96,23 @@ fn scan_social_dir(
         let path = entry.path();
         if path.extension().map(|e| e == "md").unwrap_or(false)
             && let Ok(content) = std::fs::read_to_string(&path)
-                && let Ok(draft) = SocialDraft::parse(&content) {
-                    // Skip already-published items (prevents double-publish)
-                    if draft.meta.status == crate::social::draft::DraftStatus::Published {
-                        continue;
-                    }
-                    if let Some(scheduled_at) = draft.meta.scheduled_at
-                        && scheduled_at <= deadline {
-                            items.push(ScheduledItem {
-                                path,
-                                kind: ScheduledKind::Social,
-                                scheduled_at,
-                                label: format!("{}", draft.meta.platform),
-                            });
-                        }
-                }
+            && let Ok(draft) = SocialDraft::parse(&content)
+        {
+            // Skip already-published items (prevents double-publish)
+            if draft.meta.status == crate::social::draft::DraftStatus::Published {
+                continue;
+            }
+            if let Some(scheduled_at) = draft.meta.scheduled_at
+                && scheduled_at <= deadline
+            {
+                items.push(ScheduledItem {
+                    path,
+                    kind: ScheduledKind::Social,
+                    scheduled_at,
+                    label: format!("{}", draft.meta.platform),
+                });
+            }
+        }
     }
     Ok(())
 }
@@ -124,9 +127,10 @@ fn scan_email_dir(
         let path = entry.path();
         if path.extension().map(|e| e == "md").unwrap_or(false)
             && let Ok(content) = std::fs::read_to_string(&path)
-                && let Some(item) = parse_email_scheduled(&path, &content, deadline) {
-                    items.push(item);
-                }
+            && let Some(item) = parse_email_scheduled(&path, &content, deadline)
+        {
+            items.push(item);
+        }
     }
     Ok(())
 }
@@ -239,38 +243,34 @@ pub fn run(dry_run: bool) -> Result<()> {
         }
 
         let result = match item.kind {
-            ScheduledKind::Social => {
-                match crate::social::publish::publish(&item.path, false) {
-                    Ok(()) => ProcessResult {
-                        path: item.path.clone(),
-                        kind: item.kind,
-                        success: true,
-                        message: format!("Published {}", item.label),
-                    },
-                    Err(e) => ProcessResult {
-                        path: item.path.clone(),
-                        kind: item.kind,
-                        success: false,
-                        message: format!("Failed: {}", e),
-                    },
-                }
-            }
-            ScheduledKind::Email => {
-                match crate::draft::run(&item.path, true) {
-                    Ok(()) => ProcessResult {
-                        path: item.path.clone(),
-                        kind: item.kind,
-                        success: true,
-                        message: format!("Sent {}", item.label),
-                    },
-                    Err(e) => ProcessResult {
-                        path: item.path.clone(),
-                        kind: item.kind,
-                        success: false,
-                        message: format!("Failed: {}", e),
-                    },
-                }
-            }
+            ScheduledKind::Social => match crate::social::publish::publish(&item.path, false) {
+                Ok(()) => ProcessResult {
+                    path: item.path.clone(),
+                    kind: item.kind,
+                    success: true,
+                    message: format!("Published {}", item.label),
+                },
+                Err(e) => ProcessResult {
+                    path: item.path.clone(),
+                    kind: item.kind,
+                    success: false,
+                    message: format!("Failed: {}", e),
+                },
+            },
+            ScheduledKind::Email => match crate::draft::run(&item.path, true) {
+                Ok(()) => ProcessResult {
+                    path: item.path.clone(),
+                    kind: item.kind,
+                    success: true,
+                    message: format!("Sent {}", item.label),
+                },
+                Err(e) => ProcessResult {
+                    path: item.path.clone(),
+                    kind: item.kind,
+                    success: false,
+                    message: format!("Failed: {}", e),
+                },
+            },
         };
         results.push(result);
     }
@@ -283,9 +283,19 @@ pub fn run(dry_run: bool) -> Result<()> {
     let mut errors = 0;
     for result in &results {
         if result.success {
-            println!("[ok] {} {}: {}", result.kind, result.path.display(), result.message);
+            println!(
+                "[ok] {} {}: {}",
+                result.kind,
+                result.path.display(),
+                result.message
+            );
         } else {
-            eprintln!("[error] {} {}: {}", result.kind, result.path.display(), result.message);
+            eprintln!(
+                "[error] {} {}: {}",
+                result.kind,
+                result.path.display(),
+                result.message
+            );
             errors += 1;
         }
     }
@@ -320,14 +330,15 @@ pub fn list() -> Result<()> {
     // Scan mailboxes/*/drafts/
     let mb_base = resolve::mailboxes_base_dir();
     if mb_base.is_dir()
-        && let Ok(entries) = std::fs::read_dir(&mb_base) {
-            for entry in entries.flatten() {
-                let mb_drafts = entry.path().join("drafts");
-                if mb_drafts.is_dir() {
-                    scan_email_dir(&mb_drafts, far_future, &mut items)?;
-                }
+        && let Ok(entries) = std::fs::read_dir(&mb_base)
+    {
+        for entry in entries.flatten() {
+            let mb_drafts = entry.path().join("drafts");
+            if mb_drafts.is_dir() {
+                scan_email_dir(&mb_drafts, far_future, &mut items)?;
             }
         }
+    }
 
     items.sort_by_key(|item| item.scheduled_at);
 
@@ -669,8 +680,16 @@ mod tests {
         std::fs::create_dir_all(&drafts).unwrap();
 
         let past = Utc::now() - Duration::minutes(5);
-        std::fs::write(social.join("post.md"), make_social_draft(Some(past), "ready")).unwrap();
-        std::fs::write(drafts.join("email.md"), make_email_draft(Some(past), "scheduled")).unwrap();
+        std::fs::write(
+            social.join("post.md"),
+            make_social_draft(Some(past), "ready"),
+        )
+        .unwrap();
+        std::fs::write(
+            drafts.join("email.md"),
+            make_email_draft(Some(past), "scheduled"),
+        )
+        .unwrap();
 
         let now = Utc::now();
         let deadline = now + Duration::seconds(GRACE_SECONDS);

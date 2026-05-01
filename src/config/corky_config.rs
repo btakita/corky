@@ -1,6 +1,6 @@
 //! Unified config type — parse .corky.toml (accounts + routing + mailboxes).
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -28,6 +28,8 @@ pub struct CorkyConfig {
     pub watch: Option<WatchConfig>,
     #[serde(default)]
     pub gmail: Option<GmailConfig>,
+    #[serde(default)]
+    pub gsc: Option<GscConfig>,
     #[serde(default)]
     pub linkedin: Option<OAuthClientConfig>,
     #[serde(default)]
@@ -100,6 +102,21 @@ pub struct GmailFilter {
     pub never_spam: bool,
     #[serde(default)]
     pub always_important: bool,
+}
+
+/// Google Search Console config (lives in .corky.toml under `[gsc]`).
+///
+/// Optional service-account path: set `service_account_json` or
+/// `service_account_json_cmd` for best-effort non-browser access.
+/// The supported default path is `corky gsc auth`, which reuses `[gmail]`
+/// client credentials for a real Google account that already has Search
+/// Console access.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GscConfig {
+    #[serde(default)]
+    pub service_account_json: String,
+    #[serde(default)]
+    pub service_account_json_cmd: String,
 }
 
 /// OAuth client credentials for a platform.
@@ -175,9 +192,7 @@ fn default_model() -> String {
 
 /// Load .corky.toml (or corky.toml) from a given path or resolved location.
 pub fn load_config(path: Option<&Path>) -> Result<CorkyConfig> {
-    let path = path
-        .map(PathBuf::from)
-        .unwrap_or_else(resolve::corky_toml);
+    let path = path.map(PathBuf::from).unwrap_or_else(resolve::corky_toml);
     if !path.exists() {
         bail!(
             ".corky.toml not found at {}.\nRun 'corky init' to create it.",
@@ -191,9 +206,7 @@ pub fn load_config(path: Option<&Path>) -> Result<CorkyConfig> {
 
 /// Try loading config, returning None if the file doesn't exist.
 pub fn try_load_config(path: Option<&Path>) -> Option<CorkyConfig> {
-    let path = path
-        .map(PathBuf::from)
-        .unwrap_or_else(resolve::corky_toml);
+    let path = path.map(PathBuf::from).unwrap_or_else(resolve::corky_toml);
     if !path.exists() {
         return None;
     }

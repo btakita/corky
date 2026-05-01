@@ -1,6 +1,6 @@
 //! List upcoming Google Calendar events.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::Utc;
 
 use super::auth;
@@ -85,15 +85,13 @@ fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
 }
 
 /// Fetch upcoming events, optionally filtering by query string.
-pub fn fetch_events(
-    token: &str,
-    query: Option<&str>,
-    limit: usize,
-) -> Result<Vec<CalendarEvent>> {
+pub fn fetch_events(token: &str, query: Option<&str>, limit: usize) -> Result<Vec<CalendarEvent>> {
     let now = Utc::now().to_rfc3339();
     let mut url = format!(
         "{}/calendars/primary/events?maxResults={}&orderBy=startTime&singleEvents=true&timeMin={}",
-        CALENDAR_API, limit, crate::cal::auth::urlencode_pub(&now),
+        CALENDAR_API,
+        limit,
+        crate::cal::auth::urlencode_pub(&now),
     );
     if let Some(q) = query {
         url.push_str(&format!("&q={}", crate::cal::auth::urlencode_pub(q)));

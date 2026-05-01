@@ -1,16 +1,11 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Build a document from markdown.
 ///
 /// Supports PDF (pandoc → HTML → weasyprint) and DOCX (pandoc native).
-pub fn run(
-    file: &Path,
-    format: &str,
-    template: Option<&str>,
-    output: Option<&str>,
-) -> Result<()> {
+pub fn run(file: &Path, format: &str, template: Option<&str>, output: Option<&str>) -> Result<()> {
     if !file.exists() {
         bail!("Input file not found: {}", file.display());
     }
@@ -44,10 +39,7 @@ fn build_pdf(input: &Path, output: &Path, css: &Path) -> Result<()> {
     check_tool("pandoc")?;
     check_tool("weasyprint")?;
 
-    let tmp_html = std::env::temp_dir().join(format!(
-        "corky-doc-{}.html",
-        std::process::id()
-    ));
+    let tmp_html = std::env::temp_dir().join(format!("corky-doc-{}.html", std::process::id()));
 
     // pandoc markdown → HTML
     let mut pandoc_args = vec![

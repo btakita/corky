@@ -1,7 +1,7 @@
 //! Basic binary invocation tests (assert_cmd).
 
-use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 
 fn corky_cmd() -> Command {
@@ -145,9 +145,11 @@ fn test_cli_sync_routes() {
     cmd.assert().success();
 
     // Verify the file was copied to the mailbox
-    assert!(data_dir
-        .join("mailboxes/alex/conversations/test-thread.md")
-        .exists());
+    assert!(
+        data_dir
+            .join("mailboxes/alex/conversations/test-thread.md")
+            .exists()
+    );
 }
 
 #[test]

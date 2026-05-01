@@ -34,8 +34,7 @@ struct ContactFile {
 }
 
 /// Regex for extracting sender names from conversation `## ` headers.
-static SENDER_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^## (.+?)(?:\s+—\s+.+)?$").unwrap());
+static SENDER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^## (.+?)(?:\s+—\s+.+)?$").unwrap());
 
 /// Regex for stripping " via {Service}" suffix from sender names.
 static VIA_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+via\s+.+$").unwrap());
@@ -91,7 +90,8 @@ pub fn run() -> Result<()> {
     let contacts_config = crate::config::contact::load_contacts(None).unwrap_or_default();
 
     // Load sync state for 3-way merge tracking
-    let mut state = crate::sync::load_state()?;
+    let base_state = crate::sync::load_state()?;
+    let mut state = base_state.clone();
 
     sync_contacts(
         &root_contacts_dir,
@@ -101,7 +101,7 @@ pub fn run() -> Result<()> {
     )?;
 
     // Persist updated sync state
-    crate::sync::save_state(&state)?;
+    crate::sync::save_state_merged(&base_state, &state)?;
 
     Ok(())
 }
@@ -118,11 +118,7 @@ fn sync_contacts(
 
     if mailboxes_dir.is_dir() {
         for mb_path in iter_mailbox_dirs(mailboxes_dir)? {
-            let mb_name = mb_path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
+            let mb_name = mb_path.file_name().unwrap().to_string_lossy().to_string();
             let mb_contacts_dir = mb_path.join("contacts");
 
             // Skip mailboxes without a contacts/ dir
@@ -131,12 +127,7 @@ fn sync_contacts(
             }
 
             // Build eligible set for this mailbox
-            let eligible = build_eligible_set(
-                &root_contacts,
-                contacts_config,
-                &mb_path,
-                &mb_name,
-            )?;
+            let eligible = build_eligible_set(&root_contacts, contacts_config, &mb_path, &mb_name)?;
 
             // Discover existing mailbox contacts
             let mb_contacts = discover_contacts(&mb_contacts_dir)?;
@@ -147,13 +138,9 @@ fn sync_contacts(
                     if let Some(mb_cf) = mb_contacts.get(name) {
                         // Both exist + eligible: 3-way merge
                         let root_content = std::fs::read_to_string(&root_cf.path)
-                            .with_context(|| {
-                                format!("reading {}", root_cf.path.display())
-                            })?;
+                            .with_context(|| format!("reading {}", root_cf.path.display()))?;
                         let mb_content = std::fs::read_to_string(&mb_cf.path)
-                            .with_context(|| {
-                                format!("reading {}", mb_cf.path.display())
-                            })?;
+                            .with_context(|| format!("reading {}", mb_cf.path.display()))?;
                         let root_hash = content_hash(&root_content);
                         let mb_hash = content_hash(&mb_content);
 
@@ -163,8 +150,8 @@ fn sync_contacts(
                             continue;
                         }
 
-                        let base = get_base_hash(contact_state, name, &mb_name)
-                            .map(|s| s.to_string());
+                        let base =
+                            get_base_hash(contact_state, name, &mb_name).map(|s| s.to_string());
 
                         let take_root = match base.as_deref() {
                             Some(b) if root_hash == b => false, // root unchanged, take mb
@@ -184,37 +171,19 @@ fn sync_contacts(
                         };
 
                         if take_root {
-                            write_and_set_mtime(
-                                &mb_cf.path,
-                                &root_content,
-                                root_cf.mtime,
-                            )?;
-                            println!(
-                                "  {} <- {}",
-                                mb_cf.path.display(),
-                                root_cf.path.display()
-                            );
+                            write_and_set_mtime(&mb_cf.path, &root_content, root_cf.mtime)?;
+                            println!("  {} <- {}", mb_cf.path.display(), root_cf.path.display());
                             set_base_hash(contact_state, name, &mb_name, &root_hash);
                         } else {
-                            write_and_set_mtime(
-                                &root_cf.path,
-                                &mb_content,
-                                mb_cf.mtime,
-                            )?;
-                            println!(
-                                "  {} <- {}",
-                                root_cf.path.display(),
-                                mb_cf.path.display()
-                            );
+                            write_and_set_mtime(&root_cf.path, &mb_content, mb_cf.mtime)?;
+                            println!("  {} <- {}", root_cf.path.display(), mb_cf.path.display());
                             set_base_hash(contact_state, name, &mb_name, &mb_hash);
                         }
                         synced += 1;
                     } else {
                         // Only in root + eligible: copy to mailbox
                         let content = std::fs::read_to_string(&root_cf.path)
-                            .with_context(|| {
-                                format!("reading {}", root_cf.path.display())
-                            })?;
+                            .with_context(|| format!("reading {}", root_cf.path.display()))?;
                         let hash = content_hash(&content);
                         let dest_dir = mb_contacts_dir.join(name);
                         let dest = dest_dir.join("CLAUDE.md");
@@ -245,13 +214,9 @@ fn sync_contacts(
                     // Both exist but NOT eligible: 3-way merge, mailbox→root only
                     let root_cf = &root_contacts[name];
                     let root_content = std::fs::read_to_string(&root_cf.path)
-                        .with_context(|| {
-                            format!("reading {}", root_cf.path.display())
-                        })?;
+                        .with_context(|| format!("reading {}", root_cf.path.display()))?;
                     let mb_content = std::fs::read_to_string(&mb_cf.path)
-                        .with_context(|| {
-                            format!("reading {}", mb_cf.path.display())
-                        })?;
+                        .with_context(|| format!("reading {}", mb_cf.path.display()))?;
                     let root_hash = content_hash(&root_content);
                     let mb_hash = content_hash(&mb_content);
 
@@ -260,27 +225,18 @@ fn sync_contacts(
                         continue;
                     }
 
-                    let base = get_base_hash(contact_state, name, &mb_name)
-                        .map(|s| s.to_string());
+                    let base = get_base_hash(contact_state, name, &mb_name).map(|s| s.to_string());
 
                     let should_sync = match base.as_deref() {
-                        Some(b) if mb_hash == b => false, // mb unchanged, skip
-                        Some(b) if root_hash == b => true, // root unchanged, mb changed
+                        Some(b) if mb_hash == b => false,       // mb unchanged, skip
+                        Some(b) if root_hash == b => true,      // root unchanged, mb changed
                         Some(_) => mb_cf.mtime > root_cf.mtime, // both changed, mtime
                         None => mb_cf.mtime > root_cf.mtime,    // no base, mtime
                     };
 
                     if should_sync {
-                        write_and_set_mtime(
-                            &root_cf.path,
-                            &mb_content,
-                            mb_cf.mtime,
-                        )?;
-                        println!(
-                            "  {} <- {}",
-                            root_cf.path.display(),
-                            mb_cf.path.display()
-                        );
+                        write_and_set_mtime(&root_cf.path, &mb_content, mb_cf.mtime)?;
+                        println!("  {} <- {}", root_cf.path.display(), mb_cf.path.display());
                         set_base_hash(contact_state, name, &mb_name, &mb_hash);
                         synced += 1;
                     }
@@ -330,9 +286,7 @@ fn build_eligible_set(
 
     // 2. Check explicit sharing
     for (name, config) in contacts_config {
-        if config.shared_with.iter().any(|s| s == mb_name)
-            && root_contacts.contains_key(name)
-        {
+        if config.shared_with.iter().any(|s| s == mb_name) && root_contacts.contains_key(name) {
             eligible.insert(name.clone());
         }
     }
@@ -396,9 +350,7 @@ pub fn slugify_sender(name: &str) -> String {
 }
 
 /// Discover CLAUDE.md files under `contacts_dir/{name}/CLAUDE.md`.
-fn discover_contacts(
-    contacts_dir: &Path,
-) -> Result<HashMap<String, ContactFile>> {
+fn discover_contacts(contacts_dir: &Path) -> Result<HashMap<String, ContactFile>> {
     let mut map = HashMap::new();
     if !contacts_dir.is_dir() {
         return Ok(map);
@@ -442,8 +394,7 @@ fn iter_mailbox_dirs(mailboxes_dir: &Path) -> Result<Vec<PathBuf>> {
 
 /// Write content to a file and set its mtime to match the source.
 fn write_and_set_mtime(path: &Path, content: &str, mtime: SystemTime) -> Result<()> {
-    std::fs::write(path, content)
-        .with_context(|| format!("writing {}", path.display()))?;
+    std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
     let ft = filetime::FileTime::from_system_time(mtime);
     filetime::set_file_mtime(path, ft)
         .with_context(|| format!("setting mtime on {}", path.display()))?;
@@ -669,11 +620,7 @@ mod tests {
         std::fs::create_dir_all(&mb2_contacts).unwrap();
 
         create_contact(&root2, "cl", "content");
-        create_conversation(
-            &mb2.join("conversations"),
-            "thread.md",
-            &["Connie Lai"],
-        );
+        create_conversation(&mb2.join("conversations"), "thread.md", &["Connie Lai"]);
 
         // "Connie Lai" slugifies to "connie-lai", not "cl". Without alias, no match.
         let empty_config = BTreeMap::new();
@@ -702,11 +649,7 @@ mod tests {
         std::fs::create_dir_all(&mb3_contacts).unwrap();
 
         create_contact(&root3, "cl", "content");
-        create_conversation(
-            &mb3.join("conversations"),
-            "thread.md",
-            &["Connie Lai"],
-        );
+        create_conversation(&mb3.join("conversations"), "thread.md", &["Connie Lai"]);
 
         sync_no_state(&root3, &mbs3, &config).unwrap();
         assert!(
@@ -843,10 +786,7 @@ mod tests {
         sync_no_state(&root_contacts, &mailboxes, &empty_config).unwrap();
 
         // Root→mailbox should NOT happen (ineligible)
-        assert_eq!(
-            std::fs::read_to_string(&mb_file).unwrap(),
-            "older mailbox"
-        );
+        assert_eq!(std::fs::read_to_string(&mb_file).unwrap(), "older mailbox");
     }
 
     #[test]
@@ -1050,10 +990,7 @@ mod tests {
 
         // Hash should be recorded for the new copy
         assert!(cs.contains_key("bob"));
-        assert_eq!(
-            cs["bob"].mailboxes["alice"],
-            content_hash("root content")
-        );
+        assert_eq!(cs["bob"].mailboxes["alice"], content_hash("root content"));
     }
 
     #[test]
@@ -1111,9 +1048,6 @@ mod tests {
 
         // Ineligible: root→mb not allowed, mb unchanged → no sync
         assert_eq!(std::fs::read_to_string(&mb_file).unwrap(), "v1");
-        assert_eq!(
-            std::fs::read_to_string(&root_file).unwrap(),
-            "v2-root"
-        );
+        assert_eq!(std::fs::read_to_string(&root_file).unwrap(), "v2-root");
     }
 }

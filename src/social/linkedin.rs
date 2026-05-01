@@ -1,6 +1,6 @@
 //! LinkedIn API client (REST API).
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde_json::json;
 
 /// Maximum character count for a LinkedIn post.
@@ -157,11 +157,7 @@ pub fn update_post_at(
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
-            bail!(
-                "LinkedIn API error (HTTP {}): {}",
-                status,
-                body
-            );
+            bail!("LinkedIn API error (HTTP {}): {}", status, body);
         }
         Err(e) => bail!("LinkedIn API request failed: {}", e),
     }
@@ -212,10 +208,7 @@ pub fn create_comment_at(
         .replace(')', "%29");
     // Use v2 API (not /rest/) — the versioned /rest/socialActions endpoint
     // requires partner-level permissions that personal tokens don't have.
-    let url = format!(
-        "{}/v2/socialActions/{}/comments",
-        api_base, encoded_urn
-    );
+    let url = format!("{}/v2/socialActions/{}/comments", api_base, encoded_urn);
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", access_token))
         .set("X-Restli-Protocol-Version", "2.0.0")
@@ -223,10 +216,7 @@ pub fn create_comment_at(
 
     match resp {
         Ok(r) => {
-            let comment_id = r
-                .header("x-restli-id")
-                .unwrap_or("unknown")
-                .to_string();
+            let comment_id = r.header("x-restli-id").unwrap_or("unknown").to_string();
             Ok(comment_id)
         }
         Err(ureq::Error::Status(status, resp)) => {
@@ -250,7 +240,14 @@ pub fn create_post(
     visibility: &str,
     image_urns: &[String],
 ) -> Result<(String, String)> {
-    create_post_at(API_BASE, access_token, author_urn, body, visibility, image_urns)
+    create_post_at(
+        API_BASE,
+        access_token,
+        author_urn,
+        body,
+        visibility,
+        image_urns,
+    )
 }
 
 /// Create a post with configurable API base URL (for testing).
@@ -307,10 +304,8 @@ pub fn create_post_at(
             });
         }
         _ => {
-            let images: Vec<serde_json::Value> = image_urns
-                .iter()
-                .map(|urn| json!({ "id": urn }))
-                .collect();
+            let images: Vec<serde_json::Value> =
+                image_urns.iter().map(|urn| json!({ "id": urn })).collect();
             payload["content"] = json!({
                 "multiImage": {
                     "images": images
@@ -329,23 +324,13 @@ pub fn create_post_at(
     match resp {
         Ok(r) => {
             // LinkedIn returns the post ID in the x-restli-id header
-            let post_id = r
-                .header("x-restli-id")
-                .unwrap_or("unknown")
-                .to_string();
-            let post_url = format!(
-                "https://www.linkedin.com/feed/update/{}",
-                post_id
-            );
+            let post_id = r.header("x-restli-id").unwrap_or("unknown").to_string();
+            let post_url = format!("https://www.linkedin.com/feed/update/{}", post_id);
             Ok((post_id, post_url))
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
-            bail!(
-                "LinkedIn API error (HTTP {}): {}",
-                status,
-                body
-            );
+            bail!("LinkedIn API error (HTTP {}): {}", status, body);
         }
         Err(e) => bail!("LinkedIn API request failed: {}", e),
     }

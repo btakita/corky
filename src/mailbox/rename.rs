@@ -10,7 +10,11 @@ pub fn run(old_name: &str, new_name: &str, rename_repo: bool) -> Result<()> {
     let new_dir = resolve::mailbox_dir(new_name);
 
     if new_dir.exists() {
-        anyhow::bail!("Mailbox '{}' already exists at {}", new_name, new_dir.display());
+        anyhow::bail!(
+            "Mailbox '{}' already exists at {}",
+            new_name,
+            new_dir.display()
+        );
     }
 
     // 1. Move directory via git mv (if it exists)
@@ -66,10 +70,7 @@ pub fn run(old_name: &str, new_name: &str, rename_repo: bool) -> Result<()> {
     // 3. Update .corky.toml
     update_config(old_name, new_name)?;
 
-    println!(
-        "Done. Mailbox '{}' renamed to '{}'.",
-        old_name, new_name
-    );
+    println!("Done. Mailbox '{}' renamed to '{}'.", old_name, new_name);
     Ok(())
 }
 
@@ -86,25 +87,27 @@ fn update_config(old_name: &str, new_name: &str) -> Result<()> {
     // Rename [mailboxes.{old}] → [mailboxes.{new}]
     if let Some(mailboxes) = doc.get_mut("mailboxes")
         && let Some(table) = mailboxes.as_table_mut()
-            && let Some(entry) = table.remove(old_name) {
-                table.insert(new_name, entry);
-            }
+        && let Some(entry) = table.remove(old_name)
+    {
+        table.insert(new_name, entry);
+    }
 
     // Update routing paths
     let old_path = format!("mailboxes/{}", old_name);
     let new_path = format!("mailboxes/{}", new_name);
     if let Some(routing) = doc.get_mut("routing")
-        && let Some(table) = routing.as_table_mut() {
-            for (_, item) in table.iter_mut() {
-                if let Some(arr) = item.as_array_mut() {
-                    for i in 0..arr.len() {
-                        if arr.get(i).and_then(|v| v.as_str()) == Some(&old_path) {
-                            arr.replace(i, &new_path);
-                        }
+        && let Some(table) = routing.as_table_mut()
+    {
+        for (_, item) in table.iter_mut() {
+            if let Some(arr) = item.as_array_mut() {
+                for i in 0..arr.len() {
+                    if arr.get(i).and_then(|v| v.as_str()) == Some(&old_path) {
+                        arr.replace(i, &new_path);
                     }
                 }
             }
         }
+    }
 
     std::fs::write(&config_path, doc.to_string())?;
     println!(

@@ -34,7 +34,10 @@ impl BackendRegistry {
         for (name, backend_config) in &config.backends {
             let backend: Box<dyn SearchBackend> = match backend_config.backend_type.as_str() {
                 "sift" => Box::new(super::sift::SiftBackend::from_config(name, backend_config)?),
-                "ragie" => Box::new(super::ragie::RagieBackend::from_config(name, backend_config)?),
+                "ragie" => Box::new(super::ragie::RagieBackend::from_config(
+                    name,
+                    backend_config,
+                )?),
                 other => {
                     eprintln!("Unknown backend type: {other} (skipping {name})");
                     continue;

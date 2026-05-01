@@ -251,7 +251,9 @@ mod tests {
         assert!(xml.contains("<name>Test</name>"));
         assert!(xml.contains("<email>test@example.com</email>"));
         // Multiple match fields use hasTheWord with OR query instead of separate from/to
-        assert!(xml.contains("name='hasTheWord' value='from:(a@b.com OR c@d.com) OR to:(a@b.com OR c@d.com)'"));
+        assert!(xml.contains(
+            "name='hasTheWord' value='from:(a@b.com OR c@d.com) OR to:(a@b.com OR c@d.com)'"
+        ));
         assert!(!xml.contains("name='from'"));
         assert!(!xml.contains("name='to'"));
         assert!(xml.contains("name='label' value='test-label'"));

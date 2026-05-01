@@ -3,13 +3,14 @@
 //! Reuses the same Google OAuth2 client credentials as Gmail ([gmail] in .corky.toml)
 //! but requests the Calendar scope. Tokens stored under "calendar:*" keys.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
 
 use crate::config::corky_config;
+use crate::desktop_notify::notify_oauth;
+use crate::oauth_loopback::{LoopbackServer, PortMode};
 use crate::social::token_store::{StoredToken, TokenStore};
 
-const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 120;
 
 /// OAuth2 scope for full calendar access.
@@ -24,30 +25,32 @@ struct ClientCredentials {
 /// Calendar reuses the same Google project credentials as Gmail.
 fn resolve_credentials() -> Result<ClientCredentials> {
     if let Some(cfg) = corky_config::try_load_config(None)
-        && let Some(gmail) = &cfg.gmail {
-            let has_config = !gmail.client_id.is_empty()
-                || !gmail.client_id_cmd.is_empty()
-                || !gmail.client_secret.is_empty()
-                || !gmail.client_secret_cmd.is_empty();
-            if has_config {
-                let client_id = crate::util::resolve_secret(
-                    &gmail.client_id,
-                    &gmail.client_id_cmd,
-                    "Gmail client_id (check [gmail] in .corky.toml)",
-                )?;
-                let client_secret = crate::util::resolve_secret(
-                    &gmail.client_secret,
-                    &gmail.client_secret_cmd,
-                    "Gmail client_secret (check [gmail] in .corky.toml)",
-                )?;
-                return Ok(ClientCredentials {
-                    client_id,
-                    client_secret,
-                });
-            }
+        && let Some(gmail) = &cfg.gmail
+    {
+        let has_config = !gmail.client_id.is_empty()
+            || !gmail.client_id_cmd.is_empty()
+            || !gmail.client_secret.is_empty()
+            || !gmail.client_secret_cmd.is_empty();
+        if has_config {
+            let client_id = crate::util::resolve_secret(
+                &gmail.client_id,
+                &gmail.client_id_cmd,
+                "Gmail client_id (check [gmail] in .corky.toml)",
+            )?;
+            let client_secret = crate::util::resolve_secret(
+                &gmail.client_secret,
+                &gmail.client_secret_cmd,
+                "Gmail client_secret (check [gmail] in .corky.toml)",
+            )?;
+            return Ok(ClientCredentials {
+                client_id,
+                client_secret,
+            });
         }
-    let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID")
-        .context("Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.")?;
+    }
+    let client_id = std::env::var("CORKY_GMAIL_CLIENT_ID").context(
+        "Gmail client_id not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_ID env var.",
+    )?;
     let client_secret = std::env::var("CORKY_GMAIL_CLIENT_SECRET")
         .context("Gmail client_secret not found.\nSet [gmail] in .corky.toml or CORKY_GMAIL_CLIENT_SECRET env var.")?;
     Ok(ClientCredentials {
@@ -103,20 +106,21 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
 
     // Try refresh
     if let Some(token) = store.tokens.get(&key).cloned()
-        && let Some(ref refresh) = token.refresh_token {
-            println!("Calendar token expired, refreshing...");
-            match refresh_access_token(refresh) {
-                Ok(new_token) => {
-                    let access = new_token.access_token.clone();
-                    store.upsert(key, new_token);
-                    store.save()?;
-                    return Ok(access);
-                }
-                Err(e) => {
-                    eprintln!("Token refresh failed: {}. Re-authenticating...", e);
-                }
+        && let Some(ref refresh) = token.refresh_token
+    {
+        println!("Calendar token expired, refreshing...");
+        match refresh_access_token(refresh) {
+            Ok(new_token) => {
+                let access = new_token.access_token.clone();
+                store.upsert(key, new_token);
+                store.save()?;
+                return Ok(access);
+            }
+            Err(e) => {
+                eprintln!("Token refresh failed: {}. Re-authenticating...", e);
             }
         }
+    }
 
     let token = run_auth_flow()?;
     let access = token.access_token.clone();
@@ -139,6 +143,8 @@ pub fn run_auth(account: Option<&str>) -> Result<()> {
 fn run_auth_flow() -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
+    let callback = LoopbackServer::bind("Google Calendar", PortMode::EphemeralFallback)?;
+    let redirect_uri = callback.redirect_uri().to_string();
 
     let url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth\
@@ -150,11 +156,12 @@ fn run_auth_flow() -> Result<StoredToken> {
          &access_type=offline\
          &prompt=consent",
         urlencode(&creds.client_id),
-        urlencode(REDIRECT_URI),
+        urlencode(&redirect_uri),
         urlencode(&state),
         urlencode(CALENDAR_SCOPE),
     );
 
+    notify_oauth("Google Calendar");
     println!("Opening browser for Google Calendar authorization...");
     println!("If the browser doesn't open, visit:\n  {}\n", url);
 
@@ -162,27 +169,11 @@ fn run_auth_flow() -> Result<StoredToken> {
         eprintln!("Could not open browser automatically.");
     }
 
-    println!("Waiting for callback on {}...", REDIRECT_URI);
-    let server = tiny_http::Server::http("127.0.0.1:8484")
-        .map_err(|e| anyhow::anyhow!("Failed to start callback server: {}", e))?;
-
-    let request = server
-        .recv_timeout(std::time::Duration::from_secs(CALLBACK_TIMEOUT_SECS))
-        .map_err(|e| anyhow::anyhow!("Callback server error: {}", e))?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Timed out waiting for OAuth callback ({}s)",
-                CALLBACK_TIMEOUT_SECS
-            )
-        })?;
-
-    let url_str = request.url().to_string();
-    let query = url_str.split('?').nth(1).unwrap_or("");
-    let (code, cb_state) = crate::social::auth::parse_callback(query)?;
-
-    let response =
-        tiny_http::Response::from_string("Google Calendar authorization successful! You can close this tab.");
-    let _ = request.respond(response);
+    println!("Waiting for callback on {}...", redirect_uri);
+    let callback = callback.recv_callback(CALLBACK_TIMEOUT_SECS)?;
+    let code = callback.code.clone();
+    let cb_state = callback.state.clone();
+    callback.respond_text("Google Calendar authorization successful! You can close this tab.");
 
     if cb_state != state {
         bail!(
@@ -193,14 +184,14 @@ fn run_auth_flow() -> Result<StoredToken> {
     }
 
     println!("Exchanging authorization code...");
-    exchange_code(&creds, &code)
+    exchange_code(&creds, &code, &redirect_uri)
 }
 
-fn exchange_code(creds: &ClientCredentials, code: &str) -> Result<StoredToken> {
+fn exchange_code(creds: &ClientCredentials, code: &str, redirect_uri: &str) -> Result<StoredToken> {
     let body_str = format!(
         "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
         urlencode(code),
-        urlencode(REDIRECT_URI),
+        urlencode(redirect_uri),
         urlencode(&creds.client_id),
         urlencode(&creds.client_secret),
     );

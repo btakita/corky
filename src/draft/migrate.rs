@@ -22,14 +22,15 @@ pub fn run(dry_run: bool) -> Result<()> {
     // mailboxes/*/drafts/
     let mb_base = resolve::mailboxes_base_dir();
     if mb_base.is_dir()
-        && let Ok(entries) = std::fs::read_dir(&mb_base) {
-            for entry in entries.flatten() {
-                let mb_drafts = entry.path().join("drafts");
-                if mb_drafts.is_dir() {
-                    dirs.push(mb_drafts);
-                }
+        && let Ok(entries) = std::fs::read_dir(&mb_base)
+    {
+        for entry in entries.flatten() {
+            let mb_drafts = entry.path().join("drafts");
+            if mb_drafts.is_dir() {
+                dirs.push(mb_drafts);
             }
         }
+    }
 
     if dirs.is_empty() {
         println!("No drafts directories found.");
@@ -193,7 +194,8 @@ mod tests {
 
     #[test]
     fn test_convert_minimal() {
-        let legacy = "# Hello\n\n**To**: alice@example.com\n**Status**: draft\n\n---\n\nBody text\n";
+        let legacy =
+            "# Hello\n\n**To**: alice@example.com\n**Status**: draft\n\n---\n\nBody text\n";
         let result = convert_legacy_to_yaml(legacy).unwrap();
         assert!(result.starts_with("---\n"));
         assert!(result.contains("to: alice@example.com"));

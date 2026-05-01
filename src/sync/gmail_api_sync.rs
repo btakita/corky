@@ -1,10 +1,10 @@
 //! Gmail API sync — fetch messages via REST API and write to Markdown.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::imap_sync::{build_label_routes, merge_message_to_file};
 use super::types::{GmailLabelState, Message, SyncState};
@@ -146,9 +146,7 @@ fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
 fn verify_account_email(token: &str, expected_email: &str) -> Result<()> {
     let resp = api_get(token, &format!("{}/profile", GMAIL_API))?;
     let profile: serde_json::Value = resp.into_json().context("Failed to parse profile")?;
-    let actual_email = profile["emailAddress"]
-        .as_str()
-        .unwrap_or("");
+    let actual_email = profile["emailAddress"].as_str().unwrap_or("");
     if !actual_email.eq_ignore_ascii_case(expected_email) {
         bail!(
             "Account mismatch: OAuth token is for '{}' but account is configured as '{}'.\n\
@@ -178,8 +176,8 @@ fn fetch_label_maps(token: &str) -> Result<(HashMap<String, String>, HashMap<Str
 
 /// Base64url decode (Gmail uses URL-safe base64, sometimes with padding).
 fn base64url_decode(data: &str) -> Result<String> {
-    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
     use base64::Engine;
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
     let bytes = URL_SAFE_NO_PAD
         .decode(data)
         .or_else(|_| URL_SAFE.decode(data))
@@ -293,9 +291,7 @@ fn gmail_to_message(msg: &GmailMessage, token: &str) -> Message {
         .unwrap_or_default();
 
     // Convert internalDate (epoch millis) to RFC 2822
-    let date = if let Some(date_hdr) = headers
-        .iter()
-        .find(|h| h.name.eq_ignore_ascii_case("Date"))
+    let date = if let Some(date_hdr) = headers.iter().find(|h| h.name.eq_ignore_ascii_case("Date"))
     {
         date_hdr.value.clone()
     } else if let Some(ref internal) = msg.internal_date {
@@ -348,7 +344,8 @@ pub fn sync_account(
 
     // Get OAuth2 token (will trigger browser auth on first run)
     // Pass user email as login_hint to pre-select the correct Google account
-    let token = gmail_auth::get_access_token_for_user(Some(account_name), GMAIL_SYNC_SCOPE, Some(user))?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some(account_name), GMAIL_SYNC_SCOPE, Some(user))?;
 
     // Verify the authenticated account matches the configured user
     verify_account_email(&token, user)?;
@@ -360,10 +357,7 @@ pub fn sync_account(
     let label_routes = build_label_routes(account_name);
     let conversations_dir = resolve::conversations_dir();
 
-    let acct_state = state
-        .accounts
-        .entry(account_name.to_string())
-        .or_default();
+    let acct_state = state.accounts.entry(account_name.to_string()).or_default();
 
     for label_name in labels {
         println!("  Label: {}", label_name);
@@ -402,10 +396,7 @@ pub fn sync_account(
                     ids
                 }
                 Err(e) => {
-                    eprintln!(
-                        "    History API failed ({}), falling back to full sync",
-                        e
-                    );
+                    eprintln!("    History API failed ({}), falling back to full sync", e);
                     gmail_state.last_history_id = None;
                     fetch_all_message_ids(&token, &label_id, sync_days, shutdown)?
                 }
@@ -423,10 +414,11 @@ pub fn sync_account(
         for (idx, msg_ref) in message_ids.iter().enumerate() {
             // Check for shutdown signal
             if let Some(s) = shutdown
-                && s.load(Ordering::Relaxed) {
-                    println!("\n    Sync interrupted by shutdown signal");
-                    return Ok(());
-                }
+                && s.load(Ordering::Relaxed)
+            {
+                println!("\n    Sync interrupted by shutdown signal");
+                return Ok(());
+            }
 
             if total > 100 && (idx + 1) % 100 == 0 {
                 print!("    Processing {}/{}...\r", idx + 1, total);
@@ -437,19 +429,17 @@ pub fn sync_account(
             let gmail_msg = match fetch_message(&token, &msg_ref.id)? {
                 Some(msg) => msg,
                 None => {
-                    eprintln!(
-                        "    Skipping message {} (deleted before fetch)",
-                        msg_ref.id
-                    );
+                    eprintln!("    Skipping message {} (deleted before fetch)", msg_ref.id);
                     continue;
                 }
             };
 
             // Track highest history_id
             if let Some(ref hid_str) = gmail_msg.history_id
-                && let Ok(hid) = hid_str.parse::<u64>() {
-                    max_history_id = Some(max_history_id.map_or(hid, |cur| cur.max(hid)));
-                }
+                && let Ok(hid) = hid_str.parse::<u64>()
+            {
+                max_history_id = Some(max_history_id.map_or(hid, |cur| cur.max(hid)));
+            }
 
             let message = gmail_to_message(&gmail_msg, &token);
 
@@ -464,17 +454,13 @@ pub fn sync_account(
                 .collect();
 
             for out_dir in &out_dirs {
-                let result = merge_message_to_file(
-                    out_dir,
-                    label_name,
-                    account_name,
-                    &message,
-                    thread_key,
-                )?;
+                let result =
+                    merge_message_to_file(out_dir, label_name, account_name, &message, thread_key)?;
                 if let Some(ref path) = result
-                    && let Some(ref mut t) = touched.as_deref_mut() {
-                        t.insert(path.clone());
-                    }
+                    && let Some(ref mut t) = touched.as_deref_mut()
+                {
+                    t.insert(path.clone());
+                }
             }
 
             // Also write to any extra routes for message-specific labels
@@ -569,10 +555,11 @@ fn fetch_all_message_ids(
 
         // Check for shutdown signal
         if let Some(s) = shutdown
-            && s.load(Ordering::Relaxed) {
-                println!("\n    Listing interrupted by shutdown signal");
-                return Ok(all_messages); // Return what we have so far
-            }
+            && s.load(Ordering::Relaxed)
+        {
+            println!("\n    Listing interrupted by shutdown signal");
+            return Ok(all_messages); // Return what we have so far
+        }
 
         // Progress indicator every 5 pages
         if page_count.is_multiple_of(5) {
@@ -620,9 +607,10 @@ fn fetch_new_message_ids_incremental(
         let body: HistoryResponse = resp.into_json().context("Failed to parse history")?;
 
         if let Some(ref hid) = body.history_id
-            && let Ok(h) = hid.parse::<u64>() {
-                latest_history_id = Some(latest_history_id.map_or(h, |cur: u64| cur.max(h)));
-            }
+            && let Ok(h) = hid.parse::<u64>()
+        {
+            latest_history_id = Some(latest_history_id.map_or(h, |cur: u64| cur.max(h)));
+        }
 
         for record in &body.history {
             for added in &record.messages_added {
@@ -697,8 +685,8 @@ pub fn fetch_thread_messages(token: &str, thread_id: &str) -> Result<Vec<super::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     fn b64(s: &str) -> String {
         URL_SAFE_NO_PAD.encode(s)

@@ -1,18 +1,15 @@
 //! Find threads where the last message is not from the owner.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::path::PathBuf;
 
 use crate::resolve;
 
-static SENDER_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^## (.+?) \u{2014}").unwrap());
-static DATE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\*\*Last updated\*\*:\s*(\S+)").unwrap());
-static LABELS_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\*\*Labels?\*\*:\s*(.+)").unwrap());
+static SENDER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^## (.+?) \u{2014}").unwrap());
+static DATE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\*\*Last updated\*\*:\s*(\S+)").unwrap());
+static LABELS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\*\*Labels?\*\*:\s*(.+)").unwrap());
 
 /// Scope for unanswered thread search.
 pub enum Scope {

@@ -24,10 +24,8 @@ fn mailbox_status(name: &str, mb_path: &Path) {
     let sp = mb_path.to_string_lossy().to_string();
     run_git(&["git", "-C", &sp, "fetch"]);
 
-    let (incoming, _, inc_code) =
-        run_git(&["git", "-C", &sp, "rev-list", "--count", "HEAD..@{u}"]);
-    let (outgoing, _, out_code) =
-        run_git(&["git", "-C", &sp, "rev-list", "--count", "@{u}..HEAD"]);
+    let (incoming, _, inc_code) = run_git(&["git", "-C", &sp, "rev-list", "--count", "HEAD..@{u}"]);
+    let (outgoing, _, out_code) = run_git(&["git", "-C", &sp, "rev-list", "--count", "@{u}..HEAD"]);
 
     let inc = if inc_code == 0 {
         incoming.trim().to_string()

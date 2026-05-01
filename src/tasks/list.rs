@@ -1,6 +1,6 @@
 //! `corky tasks list` — list Google Tasks.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::filter::gmail_auth;
 
@@ -9,16 +9,10 @@ const TASKS_API: &str = "https://tasks.googleapis.com/tasks/v1";
 /// List tasks from a tasklist (default: `@default`).
 pub fn run(tasklist: Option<&str>, account: Option<&str>) -> Result<()> {
     let list_id = tasklist.unwrap_or("@default");
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::TASKS_SCOPE,
-        account,
-    )?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::TASKS_SCOPE, account)?;
 
-    let url = format!(
-        "{}/lists/{}/tasks?showCompleted=false",
-        TASKS_API, list_id
-    );
+    let url = format!("{}/lists/{}/tasks?showCompleted=false", TASKS_API, list_id);
 
     let resp = ureq::get(&url)
         .set("Authorization", &format!("Bearer {}", token))

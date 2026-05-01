@@ -53,17 +53,18 @@ pub fn run(name: &str) -> Result<()> {
     // Mailbox manifests
     let mailboxes_dir = data_dir.join("mailboxes");
     if mailboxes_dir.exists()
-        && let Ok(entries) = std::fs::read_dir(&mailboxes_dir) {
-            let mut mb_entries: Vec<_> = entries.flatten().collect();
-            mb_entries.sort_by_key(|e| e.file_name());
-            for entry in mb_entries {
-                let mb_name = entry.file_name().to_string_lossy().to_string();
-                let mb_manifest = entry.path().join("manifest.toml");
-                if mb_manifest.exists() {
-                    collect_threads_from_manifest(&mb_manifest, name, &mb_name, &mut all_threads)?;
-                }
+        && let Ok(entries) = std::fs::read_dir(&mailboxes_dir)
+    {
+        let mut mb_entries: Vec<_> = entries.flatten().collect();
+        mb_entries.sort_by_key(|e| e.file_name());
+        for entry in mb_entries {
+            let mb_name = entry.file_name().to_string_lossy().to_string();
+            let mb_manifest = entry.path().join("manifest.toml");
+            if mb_manifest.exists() {
+                collect_threads_from_manifest(&mb_manifest, name, &mb_name, &mut all_threads)?;
             }
         }
+    }
 
     // 5. Print thread list
     if all_threads.is_empty() {
@@ -91,7 +92,10 @@ pub fn run(name: &str) -> Result<()> {
     if !all_threads.is_empty() {
         println!(
             "Last activity: {}",
-            all_threads.first().map(|t| t.1.as_str()).unwrap_or("unknown")
+            all_threads
+                .first()
+                .map(|t| t.1.as_str())
+                .unwrap_or("unknown")
         );
     }
 
@@ -117,11 +121,7 @@ fn collect_threads_from_manifest(
         let contacts = data
             .get("contacts")
             .and_then(|c| c.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
             .unwrap_or_default();
 
         if contacts.contains(&contact_name) {
@@ -135,12 +135,7 @@ fn collect_threads_from_manifest(
                 .and_then(|s| s.as_str())
                 .unwrap_or("")
                 .to_string();
-            out.push((
-                scope.to_string(),
-                last_updated,
-                slug.clone(),
-                subject,
-            ));
+            out.push((scope.to_string(), last_updated, slug.clone(), subject));
         }
     }
 

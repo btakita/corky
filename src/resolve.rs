@@ -21,9 +21,10 @@ pub fn data_dir() -> PathBuf {
         return local;
     }
     if let Ok(env) = std::env::var("CORKY_DATA")
-        && !env.is_empty() {
-            return PathBuf::from(env);
-        }
+        && !env.is_empty()
+    {
+        return PathBuf::from(env);
+    }
     // Try app config mailbox
     if let Ok(Some(mailbox_path)) = crate::app_config::resolve_mailbox(None) {
         return mailbox_path;

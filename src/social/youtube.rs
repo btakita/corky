@@ -1,6 +1,6 @@
 //! YouTube Data API v3 client (REST API).
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
@@ -55,10 +55,7 @@ pub fn get_channel_id(access_token: &str) -> Result<String> {
 
 /// Get channel ID with configurable API base URL (for testing).
 pub fn get_channel_id_at(api_base: &str, access_token: &str) -> Result<String> {
-    let url = format!(
-        "{}/youtube/v3/channels?part=id&mine=true",
-        api_base
-    );
+    let url = format!("{}/youtube/v3/channels?part=id&mine=true", api_base);
     let resp = ureq::get(&url)
         .set("Authorization", &format!("Bearer {}", access_token))
         .call()
@@ -125,10 +122,7 @@ pub fn upload_video_at(
         }
     });
 
-    let init_url = format!(
-        "{}?uploadType=resumable&part=snippet,status",
-        upload_base
-    );
+    let init_url = format!("{}?uploadType=resumable&part=snippet,status", upload_base);
 
     let init_resp = ureq::post(&init_url)
         .set("Authorization", &format!("Bearer {}", access_token))
@@ -138,11 +132,12 @@ pub fn upload_video_at(
         .send_json(&snippet);
 
     let upload_url = match init_resp {
-        Ok(r) => {
-            r.header("Location")
-                .ok_or_else(|| anyhow::anyhow!("Missing Location header in resumable upload init response"))?
-                .to_string()
-        }
+        Ok(r) => r
+            .header("Location")
+            .ok_or_else(|| {
+                anyhow::anyhow!("Missing Location header in resumable upload init response")
+            })?
+            .to_string(),
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
             bail!("YouTube upload init failed (HTTP {}): {}", status, body);
@@ -180,11 +175,21 @@ pub fn upload_video_at(
                     offset += bytes_read as u64;
                     continue;
                 }
-                let body: serde_json::Value = serde_json::from_str(&body_str)
-                    .map_err(|e| anyhow::anyhow!("Failed to parse upload response JSON: {} (body: {})", e, &body_str[..body_str.len().min(200)]))?;
+                let body: serde_json::Value = serde_json::from_str(&body_str).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to parse upload response JSON: {} (body: {})",
+                        e,
+                        &body_str[..body_str.len().min(200)]
+                    )
+                })?;
                 let video_id = body["id"]
                     .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("Missing video 'id' in upload response: {}", &body_str[..body_str.len().min(200)]))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Missing video 'id' in upload response: {}",
+                            &body_str[..body_str.len().min(200)]
+                        )
+                    })?
                     .to_string();
                 return Ok(video_id);
             }
@@ -206,11 +211,7 @@ pub fn upload_video_at(
 /// Update a published video's metadata (title, description, tags, visibility).
 ///
 /// Uses the YouTube Data API v3 videos.update endpoint.
-pub fn update_video(
-    access_token: &str,
-    video_id: &str,
-    metadata: &VideoMetadata,
-) -> Result<()> {
+pub fn update_video(access_token: &str, video_id: &str, metadata: &VideoMetadata) -> Result<()> {
     update_video_at(API_BASE, access_token, video_id, metadata)
 }
 
@@ -237,10 +238,7 @@ pub fn update_video_at(
         }
     });
 
-    let url = format!(
-        "{}/youtube/v3/videos?part=snippet,status",
-        api_base
-    );
+    let url = format!("{}/youtube/v3/videos?part=snippet,status", api_base);
 
     let resp = ureq::put(&url)
         .set("Authorization", &format!("Bearer {}", access_token))
@@ -251,7 +249,11 @@ pub fn update_video_at(
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("YouTube video update failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "YouTube video update failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => bail!("YouTube video update request failed: {}", e),
     }
@@ -267,7 +269,14 @@ pub fn upload_captions(
     language: &str,
     name: &str,
 ) -> Result<String> {
-    upload_captions_at(API_BASE, access_token, video_id, caption_path, language, name)
+    upload_captions_at(
+        API_BASE,
+        access_token,
+        video_id,
+        caption_path,
+        language,
+        name,
+    )
 }
 
 /// Upload captions with configurable API base URL (for testing).
@@ -326,15 +335,16 @@ pub fn upload_captions_at(
     match resp {
         Ok(r) => {
             let resp_body: serde_json::Value = r.into_json()?;
-            let caption_id = resp_body["id"]
-                .as_str()
-                .unwrap_or("unknown")
-                .to_string();
+            let caption_id = resp_body["id"].as_str().unwrap_or("unknown").to_string();
             Ok(caption_id)
         }
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("YouTube caption upload failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "YouTube caption upload failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => bail!("YouTube caption upload request failed: {}", e),
     }
@@ -390,7 +400,11 @@ pub fn create_playlist_at(
         }
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("YouTube playlist create failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "YouTube playlist create failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => bail!("YouTube playlist create request failed: {}", e),
     }
@@ -439,15 +453,16 @@ pub fn add_to_playlist_at(
     match resp {
         Ok(r) => {
             let resp_body: serde_json::Value = r.into_json()?;
-            let item_id = resp_body["id"]
-                .as_str()
-                .unwrap_or("unknown")
-                .to_string();
+            let item_id = resp_body["id"].as_str().unwrap_or("unknown").to_string();
             Ok(item_id)
         }
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("YouTube playlist add failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "YouTube playlist add failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => bail!("YouTube playlist add request failed: {}", e),
     }
@@ -456,9 +471,7 @@ pub fn add_to_playlist_at(
 /// List the authenticated user's YouTube playlists.
 ///
 /// Returns a vec of (playlist_id, title, visibility, item_count).
-pub fn list_playlists(
-    access_token: &str,
-) -> Result<Vec<(String, String, String, u64)>> {
+pub fn list_playlists(access_token: &str) -> Result<Vec<(String, String, String, u64)>> {
     list_playlists_at(API_BASE, access_token)
 }
 
@@ -484,7 +497,10 @@ pub fn list_playlists_at(
     for item in &items {
         let id = item["id"].as_str().unwrap_or("").to_string();
         let title = item["snippet"]["title"].as_str().unwrap_or("").to_string();
-        let privacy = item["status"]["privacyStatus"].as_str().unwrap_or("").to_string();
+        let privacy = item["status"]["privacyStatus"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let count = item["contentDetails"]["itemCount"].as_u64().unwrap_or(0);
         result.push((id, title, privacy, count));
     }
@@ -495,11 +511,7 @@ pub fn list_playlists_at(
 /// Remove a video from a YouTube playlist.
 ///
 /// Finds the playlistItem by video ID and deletes it.
-pub fn remove_from_playlist(
-    access_token: &str,
-    playlist_id: &str,
-    video_id: &str,
-) -> Result<()> {
+pub fn remove_from_playlist(access_token: &str, playlist_id: &str, video_id: &str) -> Result<()> {
     remove_from_playlist_at(API_BASE, access_token, playlist_id, video_id)
 }
 
@@ -535,10 +547,7 @@ pub fn remove_from_playlist_at(
         .ok_or_else(|| anyhow::anyhow!("Missing playlistItem 'id'"))?;
 
     // Delete the playlistItem
-    let delete_url = format!(
-        "{}/youtube/v3/playlistItems?id={}",
-        api_base, item_id
-    );
+    let delete_url = format!("{}/youtube/v3/playlistItems?id={}", api_base, item_id);
 
     let resp = ureq::delete(&delete_url)
         .set("Authorization", &format!("Bearer {}", access_token))
@@ -548,7 +557,11 @@ pub fn remove_from_playlist_at(
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("YouTube playlist remove failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "YouTube playlist remove failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => bail!("YouTube playlist remove request failed: {}", e),
     }
@@ -557,19 +570,12 @@ pub fn remove_from_playlist_at(
 /// Delete a YouTube video by its video ID.
 ///
 /// Uses the YouTube Data API v3 videos.delete endpoint.
-pub fn delete_video(
-    access_token: &str,
-    video_id: &str,
-) -> Result<()> {
+pub fn delete_video(access_token: &str, video_id: &str) -> Result<()> {
     delete_video_at(API_BASE, access_token, video_id)
 }
 
 /// Delete a video with configurable API base URL (for testing).
-pub fn delete_video_at(
-    api_base: &str,
-    access_token: &str,
-    video_id: &str,
-) -> Result<()> {
+pub fn delete_video_at(api_base: &str, access_token: &str, video_id: &str) -> Result<()> {
     let url = format!("{}/youtube/v3/videos?id={}", api_base, video_id);
 
     let resp = ureq::delete(&url)
@@ -580,7 +586,11 @@ pub fn delete_video_at(
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("YouTube video delete failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "YouTube video delete failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => bail!("YouTube video delete request failed: {}", e),
     }
@@ -590,11 +600,7 @@ pub fn delete_video_at(
 ///
 /// Uses the YouTube Data API v3 commentThreads.insert endpoint.
 /// Returns the comment ID on success.
-pub fn insert_comment(
-    access_token: &str,
-    video_id: &str,
-    text: &str,
-) -> Result<String> {
+pub fn insert_comment(access_token: &str, video_id: &str, text: &str) -> Result<String> {
     insert_comment_at(API_BASE, access_token, video_id, text)
 }
 
@@ -605,10 +611,7 @@ pub fn insert_comment_at(
     video_id: &str,
     text: &str,
 ) -> Result<String> {
-    let url = format!(
-        "{}/youtube/v3/commentThreads?part=snippet",
-        api_base
-    );
+    let url = format!("{}/youtube/v3/commentThreads?part=snippet", api_base);
 
     let body = serde_json::json!({
         "snippet": {
@@ -638,7 +641,11 @@ pub fn insert_comment_at(
         }
         Err(ureq::Error::Status(status, resp)) => {
             let err_body = resp.into_string().unwrap_or_default();
-            bail!("YouTube comment insert failed (HTTP {}): {}", status, err_body);
+            bail!(
+                "YouTube comment insert failed (HTTP {}): {}",
+                status,
+                err_body
+            );
         }
         Err(e) => bail!("YouTube comment insert request failed: {}", e),
     }

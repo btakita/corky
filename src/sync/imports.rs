@@ -3,7 +3,7 @@
 //! Reads `[[imports]]` entries from `.corky.toml` and dispatches each to the
 //! appropriate handler (`sms_import`, `telegram_import`, `slack_import`).
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 

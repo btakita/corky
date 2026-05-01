@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 
 use crate::filter::gmail_auth;
@@ -17,7 +17,13 @@ pub fn parse_sheet_id(input: &str) -> &str {
 }
 
 /// Read a Google Sheet range and output as markdown table or CSV.
-pub fn read(sheet: &str, range: Option<&str>, format: &str, output: Option<&Path>, account: Option<&str>) -> Result<()> {
+pub fn read(
+    sheet: &str,
+    range: Option<&str>,
+    format: &str,
+    output: Option<&Path>,
+    account: Option<&str>,
+) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
     let token = gmail_auth::get_access_token_for_user(
         Some("default"),
@@ -27,12 +33,7 @@ pub fn read(sheet: &str, range: Option<&str>, format: &str, output: Option<&Path
 
     // Build URL with optional range
     let url = if let Some(range) = range {
-        format!(
-            "{}/{}/values/{}",
-            SHEETS_API,
-            sheet_id,
-            encode_range(range)
-        )
+        format!("{}/{}/values/{}", SHEETS_API, sheet_id, encode_range(range))
     } else {
         // Get sheet metadata first to find the first sheet name
         let meta_url = format!("{}/{}?fields=sheets.properties.title", SHEETS_API, sheet_id);
@@ -91,17 +92,11 @@ pub fn read(sheet: &str, range: Option<&str>, format: &str, output: Option<&Path
 /// Requires `SHEETS_SCOPE` (read/write), not readonly.
 pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::SHEETS_SCOPE,
-        account,
-    )?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::SHEETS_SCOPE, account)?;
 
     let csv_content = std::fs::read_to_string(file)?;
-    let values: Vec<Vec<String>> = csv_content
-        .lines()
-        .map(parse_csv_line)
-        .collect();
+    let values: Vec<Vec<String>> = csv_content.lines().map(parse_csv_line).collect();
 
     if values.is_empty() {
         eprintln!("No data in CSV file.");
@@ -110,7 +105,9 @@ pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Re
 
     let json_values: Vec<serde_json::Value> = values
         .into_iter()
-        .map(|row| serde_json::Value::Array(row.into_iter().map(serde_json::Value::String).collect()))
+        .map(|row| {
+            serde_json::Value::Array(row.into_iter().map(serde_json::Value::String).collect())
+        })
         .collect();
 
     let body = serde_json::json!({
@@ -283,7 +280,10 @@ mod tests {
 
     #[test]
     fn test_parse_csv_line_quoted() {
-        assert_eq!(parse_csv_line(r#""hello, world",b"#), vec!["hello, world", "b"]);
+        assert_eq!(
+            parse_csv_line(r#""hello, world",b"#),
+            vec!["hello, world", "b"]
+        );
     }
 
     #[test]

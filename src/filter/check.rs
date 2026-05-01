@@ -6,7 +6,7 @@
 use anyhow::Result;
 
 use super::gmail_auth;
-use super::push::{convert_filters, fetch_existing_filters, fetch_label_map, FilterCreateRequest};
+use super::push::{FilterCreateRequest, convert_filters, fetch_existing_filters, fetch_label_map};
 use crate::config::corky_config;
 
 /// Compare local config filters against Gmail and report drift.
@@ -114,38 +114,44 @@ pub fn run_noninteractive(account: Option<&str>) -> Result<bool> {
 
 /// Normalize local filters to comparable signature strings.
 fn normalize_local(filters: &[FilterCreateRequest]) -> Vec<String> {
-    filters.iter().map(|f| {
-        let mut parts = Vec::new();
-        if let Some(ref from) = f.criteria.from {
-            parts.push(format!("from:{}", from));
-        }
-        if let Some(ref to) = f.criteria.to {
-            parts.push(format!("to:{}", to));
-        }
-        if let Some(ref query) = f.criteria.query {
-            parts.push(format!("query:{}", query));
-        }
-        parts.sort();
-        parts.join("|")
-    }).collect()
+    filters
+        .iter()
+        .map(|f| {
+            let mut parts = Vec::new();
+            if let Some(ref from) = f.criteria.from {
+                parts.push(format!("from:{}", from));
+            }
+            if let Some(ref to) = f.criteria.to {
+                parts.push(format!("to:{}", to));
+            }
+            if let Some(ref query) = f.criteria.query {
+                parts.push(format!("query:{}", query));
+            }
+            parts.sort();
+            parts.join("|")
+        })
+        .collect()
 }
 
 /// Normalize remote filters to comparable signature strings.
 fn normalize_remote(filters: &[super::push::ExistingFilter]) -> Vec<String> {
-    filters.iter().map(|f| {
-        let mut parts = Vec::new();
-        if let Some(from) = f.criteria.get("from").and_then(|v| v.as_str()) {
-            parts.push(format!("from:{}", from));
-        }
-        if let Some(to) = f.criteria.get("to").and_then(|v| v.as_str()) {
-            parts.push(format!("to:{}", to));
-        }
-        if let Some(query) = f.criteria.get("query").and_then(|v| v.as_str()) {
-            parts.push(format!("query:{}", query));
-        }
-        parts.sort();
-        parts.join("|")
-    }).collect()
+    filters
+        .iter()
+        .map(|f| {
+            let mut parts = Vec::new();
+            if let Some(from) = f.criteria.get("from").and_then(|v| v.as_str()) {
+                parts.push(format!("from:{}", from));
+            }
+            if let Some(to) = f.criteria.get("to").and_then(|v| v.as_str()) {
+                parts.push(format!("to:{}", to));
+            }
+            if let Some(query) = f.criteria.get("query").and_then(|v| v.as_str()) {
+                parts.push(format!("query:{}", query));
+            }
+            parts.sort();
+            parts.join("|")
+        })
+        .collect()
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -159,8 +165,8 @@ fn truncate(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::push::{ApiAction, ApiCriteria, ExistingFilter};
+    use super::*;
 
     #[test]
     fn test_normalize_local_from() {
@@ -237,8 +243,14 @@ mod tests {
         let local_sigs = normalize_local(&local);
         let remote_sigs = normalize_remote(&remote);
         // They should NOT match
-        let missing: Vec<_> = local_sigs.iter().filter(|s| !remote_sigs.contains(s)).collect();
-        let extra: Vec<_> = remote_sigs.iter().filter(|s| !local_sigs.contains(s)).collect();
+        let missing: Vec<_> = local_sigs
+            .iter()
+            .filter(|s| !remote_sigs.contains(s))
+            .collect();
+        let extra: Vec<_> = remote_sigs
+            .iter()
+            .filter(|s| !local_sigs.contains(s))
+            .collect();
         assert_eq!(missing.len(), 1);
         assert_eq!(extra.len(), 1);
     }

@@ -26,10 +26,7 @@ pub fn run(verbose: bool) -> Result<()> {
                 println!("  mailboxes: {}", config.mailboxes.join(", "));
             }
         } else {
-            let desc = config
-                .description
-                .as_deref()
-                .unwrap_or("");
+            let desc = config.description.as_deref().unwrap_or("");
             if desc.is_empty() {
                 println!("{}", name);
             } else {

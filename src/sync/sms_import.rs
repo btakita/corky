@@ -126,8 +126,8 @@ fn normalize_phone(raw: &str) -> String {
 pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Result<()> {
     println!("SMS import: {}", path.display());
 
-    let data =
-        std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let data = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
 
     let backup: SmsBackup = quick_xml::de::from_str(&data)
         .with_context(|| format!("Failed to parse XML from {}", path.display()))?;
@@ -155,16 +155,24 @@ pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Resu
                 };
 
                 if let Some(name) = &sms.contact_name
-                    && !name.is_empty() && name != "(Unknown)" {
-                        contact_names.entry(phone.clone()).or_insert_with(|| name.clone());
-                    }
+                    && !name.is_empty()
+                    && name != "(Unknown)"
+                {
+                    contact_names
+                        .entry(phone.clone())
+                        .or_insert_with(|| name.clone());
+                }
 
                 msg_counter += 1;
                 let message = Message {
                     id: format!("sms:{}", msg_counter),
                     thread_id: format!("sms:{}", phone),
                     from,
-                    to: if is_sent { sms.address.clone() } else { String::new() },
+                    to: if is_sent {
+                        sms.address.clone()
+                    } else {
+                        String::new()
+                    },
                     cc: String::new(),
                     date: ms_to_rfc2822(&sms.date),
                     subject: contact_names
@@ -220,15 +228,17 @@ pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Resu
                 let from = if is_sent {
                     "Me".to_string()
                 } else {
-                    mms.contact_name
-                        .clone()
-                        .unwrap_or_else(|| phone.clone())
+                    mms.contact_name.clone().unwrap_or_else(|| phone.clone())
                 };
 
                 if let Some(name) = &mms.contact_name
-                    && !name.is_empty() && name != "(Unknown)" {
-                        contact_names.entry(phone.clone()).or_insert_with(|| name.clone());
-                    }
+                    && !name.is_empty()
+                    && name != "(Unknown)"
+                {
+                    contact_names
+                        .entry(phone.clone())
+                        .or_insert_with(|| name.clone());
+                }
 
                 msg_counter += 1;
                 let message = Message {
@@ -271,7 +281,12 @@ pub fn run(path: &Path, label: &str, out_dir: &Path, account_name: &str) -> Resu
             total += 1;
         }
 
-        println!("  {} ({}) — {} message(s)", display_name, phone, messages.len());
+        println!(
+            "  {} ({}) — {} message(s)",
+            display_name,
+            phone,
+            messages.len()
+        );
     }
 
     println!("SMS import complete: {} message(s) total.", total);
@@ -360,12 +375,7 @@ mod tests {
         let files: Vec<_> = std::fs::read_dir(&out_dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    == Some("md")
-            })
+            .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
             .collect();
         assert_eq!(files.len(), 1);
 

@@ -1,7 +1,7 @@
 //! CLI integration tests for `corky sync telegram-import`.
 
-use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -62,23 +62,14 @@ fn test_telegram_import_single_chat() {
     let mut cmd = corky_cmd();
     cmd.current_dir(&project_dir);
     cmd.env("CORKY_DATA", data_dir.to_string_lossy().as_ref());
-    cmd.args([
-        "sync",
-        "telegram-import",
-        &json_path.to_string_lossy(),
-    ]);
+    cmd.args(["sync", "telegram-import", &json_path.to_string_lossy()]);
     cmd.assert().success();
 
     // Verify output file was created
     let files: Vec<_> = std::fs::read_dir(&conv_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("md")
-        })
+        .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
         .collect();
     assert_eq!(files.len(), 1);
 
@@ -132,12 +123,7 @@ fn test_telegram_import_custom_account() {
     let files: Vec<_> = std::fs::read_dir(&conv_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("md")
-        })
+        .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
         .collect();
     assert_eq!(files.len(), 1);
 
@@ -176,22 +162,13 @@ fn test_telegram_import_directory() {
     let mut cmd = corky_cmd();
     cmd.current_dir(&project_dir);
     cmd.env("CORKY_DATA", data_dir.to_string_lossy().as_ref());
-    cmd.args([
-        "sync",
-        "telegram-import",
-        &export_dir.to_string_lossy(),
-    ]);
+    cmd.args(["sync", "telegram-import", &export_dir.to_string_lossy()]);
     cmd.assert().success();
 
     let files: Vec<_> = std::fs::read_dir(&conv_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("md")
-        })
+        .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
         .collect();
     assert_eq!(files.len(), 1);
 

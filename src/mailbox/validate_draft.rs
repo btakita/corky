@@ -86,13 +86,16 @@ fn validate_yaml_draft(text: &str) -> Vec<String> {
     }
 
     if status == "draft" {
-        issues.push(
-            "Warning: Status is 'draft'. Set to 'review' when ready for review".to_string(),
-        );
+        issues
+            .push("Warning: Status is 'draft'. Set to 'review' when ready for review".to_string());
     }
 
     // Check body exists
-    if body_section.is_empty() || body_section.lines().all(|l| l.starts_with("# ") || l.trim().is_empty()) {
+    if body_section.is_empty()
+        || body_section
+            .lines()
+            .all(|l| l.starts_with("# ") || l.trim().is_empty())
+    {
         issues.push("Warning: empty body after subject heading".to_string());
     }
 
@@ -126,10 +129,7 @@ fn validate_legacy_draft(text: &str) -> Vec<String> {
     // Recommended fields (warn, don't error)
     for field in RECOMMENDED_FIELDS {
         if !meta.contains_key(*field) {
-            issues.push(format!(
-                "Warning: missing recommended field: **{}**",
-                field
-            ));
+            issues.push(format!("Warning: missing recommended field: **{}**", field));
         }
     }
 
@@ -147,9 +147,8 @@ fn validate_legacy_draft(text: &str) -> Vec<String> {
     }
 
     if status == "draft" {
-        issues.push(
-            "Warning: Status is 'draft'. Set to 'review' when ready for review".to_string(),
-        );
+        issues
+            .push("Warning: Status is 'draft'. Set to 'review' when ready for review".to_string());
     }
 
     // Check for --- separator
@@ -159,13 +158,12 @@ fn validate_legacy_draft(text: &str) -> Vec<String> {
     }
 
     // Check body exists after separator
-    if has_separator
-        && let Some(sep_idx) = lines.iter().position(|line| line.trim() == "---") {
-            let body: String = lines[sep_idx + 1..].join("\n");
-            if body.trim().is_empty() {
-                issues.push("Warning: empty body after --- separator".to_string());
-            }
+    if has_separator && let Some(sep_idx) = lines.iter().position(|line| line.trim() == "---") {
+        let body: String = lines[sep_idx + 1..].join("\n");
+        if body.trim().is_empty() {
+            issues.push("Warning: empty body after --- separator".to_string());
         }
+    }
 
     issues
 }
@@ -240,9 +238,9 @@ pub fn run_scoped(args: &[String]) -> Result<()> {
 
     // If args look like file paths (any contains '/' or '.' extension), treat as files
     let as_files = !args.is_empty()
-        && args.iter().all(|a| {
-            a != "." && (a.contains('/') || a.contains('.') || PathBuf::from(a).exists())
-        });
+        && args
+            .iter()
+            .all(|a| a != "." && (a.contains('/') || a.contains('.') || PathBuf::from(a).exists()));
 
     if as_files {
         let files: Vec<PathBuf> = args.iter().map(PathBuf::from).collect();
@@ -303,7 +301,10 @@ pub fn run(files: &[PathBuf]) -> Result<()> {
                 .iter()
                 .filter(|i| !i.starts_with("Warning:"))
                 .collect();
-            let warnings: Vec<_> = issues.iter().filter(|i| i.starts_with("Warning:")).collect();
+            let warnings: Vec<_> = issues
+                .iter()
+                .filter(|i| i.starts_with("Warning:"))
+                .collect();
             println!("{}:", path.display());
             for issue in errors {
                 println!("  ERROR: {}", issue);

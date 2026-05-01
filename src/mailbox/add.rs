@@ -242,10 +242,11 @@ fn update_config(name: &str, labels: &[String], account: &str) -> Result<()> {
         .entry("mailboxes")
         .or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
     if let Some(mailboxes_table) = mailboxes.as_table_mut()
-        && !mailboxes_table.contains_key(name) {
-            let mb_config = toml_edit::Table::new();
-            mailboxes_table.insert(name, toml_edit::Item::Table(mb_config));
-        }
+        && !mailboxes_table.contains_key(name)
+    {
+        let mb_config = toml_edit::Table::new();
+        mailboxes_table.insert(name, toml_edit::Item::Table(mb_config));
+    }
 
     std::fs::write(&config_path, doc.to_string())?;
     println!("Updated {}", config_path.display());

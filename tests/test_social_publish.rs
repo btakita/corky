@@ -4,12 +4,12 @@
 
 mod common;
 
+use chrono::{Duration, Utc};
 use corky::social::draft::{DraftStatus, SocialDraft, SocialDraftMeta};
-use corky::social::platform::Platform;
 use corky::social::linkedin;
+use corky::social::platform::Platform;
 use corky::social::profiles::ProfilesFile;
 use corky::social::token_store::{StoredToken, TokenStore};
-use chrono::{Duration, Utc};
 use tempfile::TempDir;
 
 fn ready_meta() -> SocialDraftMeta {
@@ -142,7 +142,8 @@ fn pb7_publish_updates_frontmatter() {
     // Simulate publish updating the draft
     draft.meta.status = DraftStatus::Published;
     draft.meta.post_id = Some("urn:li:share:12345".to_string());
-    draft.meta.post_url = Some("https://www.linkedin.com/feed/update/urn:li:share:12345".to_string());
+    draft.meta.post_url =
+        Some("https://www.linkedin.com/feed/update/urn:li:share:12345".to_string());
     draft.meta.published_at = Some(Utc::now());
 
     let rendered = draft.render().unwrap();
@@ -161,7 +162,10 @@ fn pb7_publish_updates_frontmatter() {
 #[test]
 fn pb9_visibility_mapping() {
     assert_eq!(linkedin::map_visibility("public").unwrap(), "PUBLIC");
-    assert_eq!(linkedin::map_visibility("connections").unwrap(), "CONNECTIONS");
+    assert_eq!(
+        linkedin::map_visibility("connections").unwrap(),
+        "CONNECTIONS"
+    );
     assert!(linkedin::map_visibility("private").is_err());
 }
 
@@ -184,7 +188,10 @@ fn draft_status_roundtrip() {
 
     assert_eq!("draft".parse::<DraftStatus>().unwrap(), DraftStatus::Draft);
     assert_eq!("ready".parse::<DraftStatus>().unwrap(), DraftStatus::Ready);
-    assert_eq!("published".parse::<DraftStatus>().unwrap(), DraftStatus::Published);
+    assert_eq!(
+        "published".parse::<DraftStatus>().unwrap(),
+        DraftStatus::Published
+    );
     assert!("invalid".parse::<DraftStatus>().is_err());
 }
 
@@ -237,7 +244,10 @@ fn im5_image_path_resolution() {
     // Verify the image path resolves correctly relative to draft
     let draft_dir = file.parent().unwrap();
     let resolved = draft_dir.join("assets/photo.png");
-    assert!(resolved.exists(), "Image should resolve relative to draft dir");
+    assert!(
+        resolved.exists(),
+        "Image should resolve relative to draft dir"
+    );
 }
 
 // IM2: Image file not found

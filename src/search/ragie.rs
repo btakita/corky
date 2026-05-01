@@ -37,9 +37,7 @@ impl RagieBackend {
                 String::from_utf8_lossy(&output.stderr)
             );
         }
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string())
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
     /// Push documents to Ragie.
@@ -129,15 +127,9 @@ impl RagieBackend {
         println!("Ragie indexed:  {docs}");
 
         if local_count > docs {
-            println!(
-                "  {} file(s) not yet pushed to Ragie.",
-                local_count - docs
-            );
+            println!("  {} file(s) not yet pushed to Ragie.", local_count - docs);
         } else if docs > local_count {
-            println!(
-                "  {} Ragie doc(s) with no local file.",
-                docs - local_count
-            );
+            println!("  {} Ragie doc(s) with no local file.", docs - local_count);
         } else {
             println!("  In sync.");
         }

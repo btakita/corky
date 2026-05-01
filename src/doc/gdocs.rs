@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 
 use crate::filter::gmail_auth;
@@ -19,7 +19,8 @@ pub fn parse_doc_id(input: &str) -> &str {
 /// Read a Google Doc and return its content as markdown (via HTML export).
 pub fn read(doc: &str, output: Option<&Path>, account: Option<&str>) -> Result<()> {
     let doc_id = parse_doc_id(doc);
-    let token = gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DOCS_SCOPE, account)?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DOCS_SCOPE, account)?;
 
     // Export as HTML via Drive API (Docs API doesn't have a clean markdown export)
     let url = format!("{}/{}/export?mimeType=text/html", DOCS_EXPORT_URL, doc_id);
@@ -48,7 +49,8 @@ pub fn read(doc: &str, output: Option<&Path>, account: Option<&str>) -> Result<(
 /// Docs API batch update requests for each element type.)
 pub fn write(doc: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let doc_id = parse_doc_id(doc);
-    let token = gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DOCS_SCOPE, account)?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DOCS_SCOPE, account)?;
 
     let content = std::fs::read_to_string(file)?;
 
@@ -112,7 +114,10 @@ pub fn write(doc: &str, file: &Path, account: Option<&str>) -> Result<()> {
 fn strip_html_to_text(html: &str) -> String {
     let mut text = html.to_string();
     // Block-level elements → newlines
-    for tag in &["<br>", "<br/>", "<br />", "</p>", "</div>", "</li>", "</tr>", "</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>"] {
+    for tag in &[
+        "<br>", "<br/>", "<br />", "</p>", "</div>", "</li>", "</tr>", "</h1>", "</h2>", "</h3>",
+        "</h4>", "</h5>", "</h6>",
+    ] {
         text = text.replace(tag, "\n");
     }
     // List items

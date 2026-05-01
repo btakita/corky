@@ -1,13 +1,14 @@
 //! OAuth2 authorization code flow with PKCE for social platforms.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
 
 use super::platform::Platform;
 use super::token_store::{StoredToken, TokenStore};
 use crate::config::corky_config;
+use crate::desktop_notify::notify_oauth;
+use crate::oauth_loopback::{LoopbackServer, PortMode};
 
-const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 120;
 
 /// LinkedIn OAuth scopes.
@@ -34,28 +35,29 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
         Platform::LinkedIn => {
             // Try .corky.toml first (inline or _cmd)
             if let Some(cfg) = corky_config::try_load_config(None)
-                && let Some(li) = &cfg.linkedin {
-                    let has_config = !li.client_id.is_empty()
-                        || !li.client_id_cmd.is_empty()
-                        || !li.client_secret.is_empty()
-                        || !li.client_secret_cmd.is_empty();
-                    if has_config {
-                        let client_id = crate::util::resolve_secret(
-                            &li.client_id,
-                            &li.client_id_cmd,
-                            "LinkedIn client_id (check [linkedin] in .corky.toml)",
-                        )?;
-                        let client_secret = crate::util::resolve_secret(
-                            &li.client_secret,
-                            &li.client_secret_cmd,
-                            "LinkedIn client_secret (check [linkedin] in .corky.toml)",
-                        )?;
-                        return Ok(ClientCredentials {
-                            client_id,
-                            client_secret,
-                        });
-                    }
+                && let Some(li) = &cfg.linkedin
+            {
+                let has_config = !li.client_id.is_empty()
+                    || !li.client_id_cmd.is_empty()
+                    || !li.client_secret.is_empty()
+                    || !li.client_secret_cmd.is_empty();
+                if has_config {
+                    let client_id = crate::util::resolve_secret(
+                        &li.client_id,
+                        &li.client_id_cmd,
+                        "LinkedIn client_id (check [linkedin] in .corky.toml)",
+                    )?;
+                    let client_secret = crate::util::resolve_secret(
+                        &li.client_secret,
+                        &li.client_secret_cmd,
+                        "LinkedIn client_secret (check [linkedin] in .corky.toml)",
+                    )?;
+                    return Ok(ClientCredentials {
+                        client_id,
+                        client_secret,
+                    });
                 }
+            }
             // Fall back to env vars
             let client_id = std::env::var("CORKY_LINKEDIN_CLIENT_ID")
                 .context("LinkedIn client_id not found.\nSet [linkedin] in .corky.toml or CORKY_LINKEDIN_CLIENT_ID env var.")?;
@@ -69,28 +71,29 @@ fn resolve_credentials(platform: Platform) -> Result<ClientCredentials> {
         Platform::Youtube => {
             // Try .corky.toml first (inline or _cmd)
             if let Some(cfg) = corky_config::try_load_config(None)
-                && let Some(yt) = &cfg.youtube {
-                    let has_config = !yt.client_id.is_empty()
-                        || !yt.client_id_cmd.is_empty()
-                        || !yt.client_secret.is_empty()
-                        || !yt.client_secret_cmd.is_empty();
-                    if has_config {
-                        let client_id = crate::util::resolve_secret(
-                            &yt.client_id,
-                            &yt.client_id_cmd,
-                            "YouTube client_id (check [youtube] in .corky.toml)",
-                        )?;
-                        let client_secret = crate::util::resolve_secret(
-                            &yt.client_secret,
-                            &yt.client_secret_cmd,
-                            "YouTube client_secret (check [youtube] in .corky.toml)",
-                        )?;
-                        return Ok(ClientCredentials {
-                            client_id,
-                            client_secret,
-                        });
-                    }
+                && let Some(yt) = &cfg.youtube
+            {
+                let has_config = !yt.client_id.is_empty()
+                    || !yt.client_id_cmd.is_empty()
+                    || !yt.client_secret.is_empty()
+                    || !yt.client_secret_cmd.is_empty();
+                if has_config {
+                    let client_id = crate::util::resolve_secret(
+                        &yt.client_id,
+                        &yt.client_id_cmd,
+                        "YouTube client_id (check [youtube] in .corky.toml)",
+                    )?;
+                    let client_secret = crate::util::resolve_secret(
+                        &yt.client_secret,
+                        &yt.client_secret_cmd,
+                        "YouTube client_secret (check [youtube] in .corky.toml)",
+                    )?;
+                    return Ok(ClientCredentials {
+                        client_id,
+                        client_secret,
+                    });
                 }
+            }
             // Fall back to env vars
             let client_id = std::env::var("CORKY_YOUTUBE_CLIENT_ID")
                 .context("YouTube client_id not found.\nSet [youtube] in .corky.toml or CORKY_YOUTUBE_CLIENT_ID env var.")?;
@@ -116,7 +119,7 @@ fn generate_state() -> String {
 }
 
 /// Build the authorization URL for a platform.
-pub fn build_auth_url(platform: Platform) -> Result<(String, String)> {
+pub fn build_auth_url(platform: Platform, redirect_uri: &str) -> Result<(String, String)> {
     let creds = resolve_credentials(platform)?;
     let state = generate_state();
 
@@ -131,7 +134,7 @@ pub fn build_auth_url(platform: Platform) -> Result<(String, String)> {
                  &state={}\
                  &scope={}",
                 urlencode(&creds.client_id),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&state),
                 scopes,
             );
@@ -149,7 +152,7 @@ pub fn build_auth_url(platform: Platform) -> Result<(String, String)> {
                  &access_type=offline\
                  &prompt=consent",
                 urlencode(&creds.client_id),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&state),
                 scopes,
             );
@@ -209,7 +212,7 @@ pub fn parse_callback(query: &str) -> Result<(String, String)> {
 }
 
 /// Exchange authorization code for tokens.
-fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
+fn exchange_code(platform: Platform, code: &str, redirect_uri: &str) -> Result<StoredToken> {
     let creds = resolve_credentials(platform)?;
 
     match platform {
@@ -217,7 +220,7 @@ fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
             let body_str = format!(
                 "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
                 urlencode(code),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&creds.client_id),
                 urlencode(&creds.client_secret),
             );
@@ -253,7 +256,7 @@ fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
             let body_str = format!(
                 "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
                 urlencode(code),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&creds.client_id),
                 urlencode(&creds.client_secret),
             );
@@ -291,8 +294,16 @@ fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
 
 /// Run the full OAuth flow: open browser, wait for callback, exchange code, store token.
 pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
-    let (auth_url, expected_state) = build_auth_url(platform)?;
+    let port_mode = match platform {
+        Platform::Youtube => PortMode::EphemeralFallback,
+        Platform::LinkedIn => PortMode::FixedOnly,
+        _ => PortMode::FixedOnly,
+    };
+    let callback = LoopbackServer::bind(&platform.to_string(), port_mode)?;
+    let redirect_uri = callback.redirect_uri().to_string();
+    let (auth_url, expected_state) = build_auth_url(platform, &redirect_uri)?;
 
+    notify_oauth(&platform.to_string());
     println!("Opening browser for {} authorization...", platform);
     println!("If the browser doesn't open, visit:\n  {}\n", auth_url);
 
@@ -300,26 +311,11 @@ pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
         eprintln!("Could not open browser automatically.");
     }
 
-    // Start local callback server
-    println!("Waiting for callback on {}...", REDIRECT_URI);
-    let server = tiny_http::Server::http("127.0.0.1:8484")
-        .map_err(|e| anyhow::anyhow!("Failed to start callback server: {}", e))?;
-
-    let request = server
-        .recv_timeout(std::time::Duration::from_secs(CALLBACK_TIMEOUT_SECS))
-        .map_err(|e| anyhow::anyhow!("Callback server error: {}", e))?
-        .ok_or_else(|| anyhow::anyhow!("Timed out waiting for OAuth callback ({}s)", CALLBACK_TIMEOUT_SECS))?;
-
-    // Parse callback
-    let url = request.url().to_string();
-    let query = url.split('?').nth(1).unwrap_or("");
-    let (code, state) = parse_callback(query)?;
-
-    // Respond to the browser
-    let response = tiny_http::Response::from_string(
-        "Authorization successful! You can close this tab."
-    );
-    let _ = request.respond(response);
+    println!("Waiting for callback on {}...", redirect_uri);
+    let callback = callback.recv_callback(CALLBACK_TIMEOUT_SECS)?;
+    let code = callback.code.clone();
+    let state = callback.state.clone();
+    callback.respond_text("Authorization successful! You can close this tab.");
 
     // Verify state (CSRF protection)
     if state != expected_state {
@@ -332,7 +328,7 @@ pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
 
     // Exchange code for token
     println!("Exchanging authorization code...");
-    let token = exchange_code(platform, &code)?;
+    let token = exchange_code(platform, &code, &redirect_uri)?;
 
     // Get user URN / channel ID
     let urn = match platform {
@@ -383,7 +379,10 @@ fn update_profile_urn(profile_name: &str, platform: Platform, urn: &str) -> Resu
 
     // Ensure [profiles.<name>] table exists
     if !profiles.contains_key(profile_name) {
-        profiles.insert(profile_name, toml_edit::Item::Table(toml_edit::Table::new()));
+        profiles.insert(
+            profile_name,
+            toml_edit::Item::Table(toml_edit::Table::new()),
+        );
     }
     let profile = profiles[profile_name].as_table_mut().unwrap();
 
@@ -401,6 +400,9 @@ fn update_profile_urn(profile_name: &str, platform: Platform, urn: &str) -> Resu
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&path, doc.to_string())?;
-    println!("Updated .corky.toml: profiles.{}.{}.urn = {}", profile_name, platform_key, urn);
+    println!(
+        "Updated .corky.toml: profiles.{}.{}.urn = {}",
+        profile_name, platform_key, urn
+    );
     Ok(())
 }

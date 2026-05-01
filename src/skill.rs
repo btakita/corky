@@ -46,17 +46,50 @@ struct BundledFile {
 
 /// All bundled files beyond the main corky SKILL.md.
 const EXTRA_FILES: &[BundledFile] = &[
-    BundledFile { rel_path: ".claude/skills/email/SKILL.md", content: EMAIL_SKILL },
-    BundledFile { rel_path: ".claude/skills/email/runbooks/email-send.md", content: EMAIL_RUNBOOK_SEND },
-    BundledFile { rel_path: ".claude/skills/email/runbooks/review-inbox.md", content: EMAIL_RUNBOOK_REVIEW },
-    BundledFile { rel_path: ".claude/skills/email/runbooks/draft-reply.md", content: EMAIL_RUNBOOK_DRAFT },
-    BundledFile { rel_path: ".claude/skills/email/runbooks/enrich-contact.md", content: EMAIL_RUNBOOK_ENRICH },
-    BundledFile { rel_path: ".claude/skills/email/runbooks/gmail-config.md", content: EMAIL_RUNBOOK_GMAIL_CONFIG },
-    BundledFile { rel_path: ".claude/skills/email/runbooks/browser-paste.md", content: EMAIL_RUNBOOK_BROWSER_PASTE },
-    BundledFile { rel_path: ".claude/skills/linkedin/SKILL.md", content: LINKEDIN_SKILL },
-    BundledFile { rel_path: ".claude/skills/linkedin/runbooks/linkedin-post.md", content: LINKEDIN_RUNBOOK_POST },
-    BundledFile { rel_path: ".claude/skills/corky/runbooks/imports.md", content: CORKY_RUNBOOK_IMPORTS },
-    BundledFile { rel_path: ".claude/skills/corky/runbooks/transcription.md", content: CORKY_RUNBOOK_TRANSCRIPTION },
+    BundledFile {
+        rel_path: ".claude/skills/email/SKILL.md",
+        content: EMAIL_SKILL,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/email/runbooks/email-send.md",
+        content: EMAIL_RUNBOOK_SEND,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/email/runbooks/review-inbox.md",
+        content: EMAIL_RUNBOOK_REVIEW,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/email/runbooks/draft-reply.md",
+        content: EMAIL_RUNBOOK_DRAFT,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/email/runbooks/enrich-contact.md",
+        content: EMAIL_RUNBOOK_ENRICH,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/email/runbooks/gmail-config.md",
+        content: EMAIL_RUNBOOK_GMAIL_CONFIG,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/email/runbooks/browser-paste.md",
+        content: EMAIL_RUNBOOK_BROWSER_PASTE,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/linkedin/SKILL.md",
+        content: LINKEDIN_SKILL,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/linkedin/runbooks/linkedin-post.md",
+        content: LINKEDIN_RUNBOOK_POST,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/corky/runbooks/imports.md",
+        content: CORKY_RUNBOOK_IMPORTS,
+    },
+    BundledFile {
+        rel_path: ".claude/skills/corky/runbooks/transcription.md",
+        content: CORKY_RUNBOOK_TRANSCRIPTION,
+    },
 ];
 
 /// Resolve the corky skill file path under the given root.
@@ -162,7 +195,10 @@ pub fn install_at(root: Option<&Path>) -> Result<()> {
     let dep_root = root.unwrap_or_else(|| Path::new("."));
     let dep_written = instruction_files::init(dep_root)?;
     if !dep_written.is_empty() {
-        eprintln!("Installed {} dependency file(s) (instruction-files).", dep_written.len());
+        eprintln!(
+            "Installed {} dependency file(s) (instruction-files).",
+            dep_written.len()
+        );
     }
 
     // Install extra skills + runbooks
@@ -219,7 +255,10 @@ pub fn check() -> Result<()> {
 pub fn run(name: &str) -> Result<()> {
     match name {
         "corky" | "email" | "linkedin" | "all" => install(),
-        _ => anyhow::bail!("Unknown skill '{}'. Available: corky, email, linkedin (or 'all')", name),
+        _ => anyhow::bail!(
+            "Unknown skill '{}'. Available: corky, email, linkedin (or 'all')",
+            name
+        ),
     }
 }
 
@@ -261,23 +300,63 @@ mod tests {
 
         // Email skill + runbooks
         assert!(dir.path().join(".claude/skills/email/SKILL.md").exists());
-        assert!(dir.path().join(".claude/skills/email/runbooks/email-send.md").exists());
-        assert!(dir.path().join(".claude/skills/email/runbooks/review-inbox.md").exists());
-        assert!(dir.path().join(".claude/skills/email/runbooks/draft-reply.md").exists());
-        assert!(dir.path().join(".claude/skills/email/runbooks/enrich-contact.md").exists());
-        assert!(dir.path().join(".claude/skills/email/runbooks/gmail-config.md").exists());
-        assert!(dir.path().join(".claude/skills/email/runbooks/browser-paste.md").exists());
+        assert!(
+            dir.path()
+                .join(".claude/skills/email/runbooks/email-send.md")
+                .exists()
+        );
+        assert!(
+            dir.path()
+                .join(".claude/skills/email/runbooks/review-inbox.md")
+                .exists()
+        );
+        assert!(
+            dir.path()
+                .join(".claude/skills/email/runbooks/draft-reply.md")
+                .exists()
+        );
+        assert!(
+            dir.path()
+                .join(".claude/skills/email/runbooks/enrich-contact.md")
+                .exists()
+        );
+        assert!(
+            dir.path()
+                .join(".claude/skills/email/runbooks/gmail-config.md")
+                .exists()
+        );
+        assert!(
+            dir.path()
+                .join(".claude/skills/email/runbooks/browser-paste.md")
+                .exists()
+        );
 
         // LinkedIn skill + runbook
         assert!(dir.path().join(".claude/skills/linkedin/SKILL.md").exists());
-        assert!(dir.path().join(".claude/skills/linkedin/runbooks/linkedin-post.md").exists());
+        assert!(
+            dir.path()
+                .join(".claude/skills/linkedin/runbooks/linkedin-post.md")
+                .exists()
+        );
 
         // Corky runbooks
-        assert!(dir.path().join(".claude/skills/corky/runbooks/imports.md").exists());
-        assert!(dir.path().join(".claude/skills/corky/runbooks/transcription.md").exists());
+        assert!(
+            dir.path()
+                .join(".claude/skills/corky/runbooks/imports.md")
+                .exists()
+        );
+        assert!(
+            dir.path()
+                .join(".claude/skills/corky/runbooks/transcription.md")
+                .exists()
+        );
 
         // Dependency: instruction-files skill (transitive install)
-        assert!(dir.path().join(".claude/skills/instruction-files/SKILL.md").exists());
+        assert!(
+            dir.path()
+                .join(".claude/skills/instruction-files/SKILL.md")
+                .exists()
+        );
     }
 
     #[test]
@@ -314,7 +393,9 @@ mod tests {
         install_at(Some(dir.path())).unwrap();
 
         // Tamper with one file
-        let path = dir.path().join(".claude/skills/email/runbooks/email-send.md");
+        let path = dir
+            .path()
+            .join(".claude/skills/email/runbooks/email-send.md");
         std::fs::write(&path, "tampered").unwrap();
 
         // check_file should report false

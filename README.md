@@ -36,6 +36,9 @@ corky sync
 
 See the [getting started guide](https://btakita.github.io/corky/getting-started/quick-start.html) for full setup instructions.
 
+When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google desktop-app flows default to `127.0.0.1:8484`, can fall back to another free loopback port if needed, and honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override.
+If `[gsc]` service-account auth is configured, that Search Console token is only cached in-process and is scoped by the resolved account/config fingerprint, so changing mailbox roots or configs does not reuse the wrong SA token.
+
 ## Key features
 
 - **Flat conversations** — one Markdown file per thread, all sources merged
@@ -161,7 +164,12 @@ sync_days = 30           # optional, default 3650
 corky sync account my-gmail
 ```
 
-This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs.
+This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs; corky now writes that shared token store with a lock + atomic replace so concurrent auth flows do not clobber unrelated entries.
+
+`corky draft send` uses a separate `gmail.compose` token under `gmail:<account>:send`, so attachment sends and Gmail API draft sends do not overwrite the read-only sync token. If Gmail returns 401 on the send path, corky clears that cached send token and asks you to re-run `corky draft send`, which triggers compose-scope re-auth.
+
+The IMAP/Gmail sync cursor file (`mail/.sync-state.json`) uses the same lock + atomic-write pattern, with merge-on-save so contact sync and message sync preserve each other's unrelated sections.
+Search Console's optional `[gsc]` service-account fallback is separate from that shared token store: it is cached only in-process and keyed by the resolved account/config fingerprint before corky reuses it.
 
 **Threading:** Synced conversations include a `**Message-ID**` metadata line per message. Draft YAML supports a `thread_id` field (Gmail thread ID) so replies thread correctly via the Gmail API.
 
@@ -171,6 +179,18 @@ This opens your browser for OAuth authorization. Authorize with the correct Goog
 - Post-auth verification ensures the token matches the configured account
 - Incremental sync uses Gmail's `historyId` for efficient polling after initial sync
 - Messages deleted between listing and fetch (404) are skipped gracefully — sync continues with remaining messages
+
+**Connector / Codex-friendly JSON surfaces:**
+
+```sh
+corky doctor gmail --json
+corky sync refetch THREAD_ID --json
+corky draft push drafts/reply.md --json
+corky draft push drafts/reply.md --send --json
+corky draft send drafts/reply.md --attachment /tmp/file.pdf --json
+```
+
+These commands keep the normal human-readable output by default. `--json` emits stable machine-readable summaries for auth state, single-thread refetches, draft creation, and sends.
 
 ## Development
 

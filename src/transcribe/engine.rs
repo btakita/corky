@@ -1,6 +1,6 @@
 //! Whisper-rs transcription engine.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
@@ -36,10 +36,18 @@ pub fn run(
         .or(tc.map(|t| t.model.as_str()))
         .unwrap_or("large-v3-turbo");
     let language = language.or(tc.and_then(|t| {
-        if t.language.is_empty() { None } else { Some(t.language.as_str()) }
+        if t.language.is_empty() {
+            None
+        } else {
+            Some(t.language.as_str())
+        }
     }));
     let cache_dir = tc.and_then(|t| {
-        if t.model_path.is_empty() { None } else { Some(t.model_path.as_str()) }
+        if t.model_path.is_empty() {
+            None
+        } else {
+            Some(t.model_path.as_str())
+        }
     });
 
     // Resolve model
@@ -102,10 +110,8 @@ pub fn run(
     );
 
     // Resolve config-level defaults for adaptive_chunk, resolve_unknown, confidence_retranscribe
-    let adaptive_chunk = !no_adaptive_chunk
-        && tc.map(|t| t.adaptive_chunk).unwrap_or(true);
-    let resolve_unknown = !no_resolve_unknown
-        && tc.map(|t| t.resolve_unknown).unwrap_or(true);
+    let adaptive_chunk = !no_adaptive_chunk && tc.map(|t| t.adaptive_chunk).unwrap_or(true);
+    let resolve_unknown = !no_resolve_unknown && tc.map(|t| t.resolve_unknown).unwrap_or(true);
     let confidence_retranscribe = !no_confidence_retranscribe;
     let confidence_threshold = tc.map(|t| t.confidence_threshold).unwrap_or(0.4);
 
@@ -117,9 +123,18 @@ pub fn run(
         #[cfg(feature = "diarize")]
         {
             format_diarized(
-                &ctx, &state, n_segments, &samples, speakers, duration_secs, cache_dir,
-                adaptive_chunk, resolve_unknown, confidence_retranscribe,
-                confidence_threshold, language,
+                &ctx,
+                &state,
+                n_segments,
+                &samples,
+                speakers,
+                duration_secs,
+                cache_dir,
+                adaptive_chunk,
+                resolve_unknown,
+                confidence_retranscribe,
+                confidence_threshold,
+                language,
             )?
         }
         #[cfg(not(feature = "diarize"))]
@@ -181,7 +196,10 @@ fn format_speakers(
 
     // YAML frontmatter
     text.push_str("---\n");
-    text.push_str(&format!("date: {}\n", chrono::Local::now().format("%Y-%m-%d")));
+    text.push_str(&format!(
+        "date: {}\n",
+        chrono::Local::now().format("%Y-%m-%d")
+    ));
     text.push_str("type: phone-call\n");
     text.push_str("participants:\n");
     for s in speakers {
@@ -293,7 +311,12 @@ fn collect_whisper_segments(
             0.0
         };
 
-        result.push(WhisperSeg { t0, t1, text, confidence });
+        result.push(WhisperSeg {
+            t0,
+            t1,
+            text,
+            confidence,
+        });
     }
     // Remove whisper repetition hallucinations
     result = filter_repetitions(result);
@@ -384,14 +407,13 @@ fn collapse_repeated_phrases(text: &str) -> String {
     // that region is hallucinated. Keep text up to where the spike starts.
     // Stopwords are excluded because they naturally appear at high frequency in speech.
     const STOPWORDS: &[&str] = &[
-        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of",
-        "with", "by", "from", "as", "is", "was", "are", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could", "should",
-        "may", "might", "shall", "can", "that", "this", "these", "those", "it", "its",
-        "i", "you", "he", "she", "we", "they", "me", "him", "her", "us", "them",
-        "my", "your", "his", "our", "their", "not", "so", "if", "up", "out", "about",
-        "just", "like", "very", "all", "also", "into", "than", "then", "there", "what",
-        "which", "who", "how", "when", "well", "yeah", "know", "really", "think",
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+        "from", "as", "is", "was", "are", "were", "be", "been", "being", "have", "has", "had",
+        "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can",
+        "that", "this", "these", "those", "it", "its", "i", "you", "he", "she", "we", "they", "me",
+        "him", "her", "us", "them", "my", "your", "his", "our", "their", "not", "so", "if", "up",
+        "out", "about", "just", "like", "very", "all", "also", "into", "than", "then", "there",
+        "what", "which", "who", "how", "when", "well", "yeah", "know", "really", "think",
     ];
     let window_size = 100;
     let spike_threshold = 15;
@@ -458,8 +480,16 @@ fn format_diarized(
     let whisper_segs = collect_whisper_segments(state, n_segments)?;
 
     // Run diarization (with adaptive chunking if enabled)
-    let max_speakers = if speakers.is_empty() { 6 } else { speakers.len() };
-    let expected_min = if speakers.is_empty() { 2 } else { speakers.len() };
+    let max_speakers = if speakers.is_empty() {
+        6
+    } else {
+        speakers.len()
+    };
+    let expected_min = if speakers.is_empty() {
+        2
+    } else {
+        speakers.len()
+    };
     let diarized = if adaptive_chunk {
         run_adaptive_diarization(samples, max_speakers, expected_min, cache_dir)?
     } else {
@@ -483,9 +513,7 @@ fn format_diarized(
 
     // Confidence-based re-transcription pass
     if confidence_retranscribe {
-        retranscribe_low_confidence(
-            &mut merged, ctx, samples, confidence_threshold, language,
-        )?;
+        retranscribe_low_confidence(&mut merged, ctx, samples, confidence_threshold, language)?;
     }
 
     // Determine speaker names
@@ -505,7 +533,10 @@ fn format_diarized(
         }
         let mut labels = std::collections::HashMap::new();
         for (i, &id) in seen_order.iter().enumerate() {
-            let name = speakers.get(i).cloned().unwrap_or_else(|| format!("Speaker {}", id));
+            let name = speakers
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| format!("Speaker {}", id));
             labels.insert(id, name);
         }
         labels
@@ -559,7 +590,10 @@ fn find_low_confidence_blocks(
             }
         } else if let Some(start) = block_start {
             // Allow a gap of 1 high-confidence segment between low-confidence regions
-            let next_is_low = merged.get(i + 1).map(|s| s.confidence < threshold).unwrap_or(false);
+            let next_is_low = merged
+                .get(i + 1)
+                .map(|s| s.confidence < threshold)
+                .unwrap_or(false);
             if !next_is_low {
                 // End the block
                 let end = i;
@@ -568,7 +602,8 @@ fn find_low_confidence_blocks(
                     let avg = merged[start..end]
                         .iter()
                         .map(|s| s.confidence as f64)
-                        .sum::<f64>() / count as f64;
+                        .sum::<f64>()
+                        / count as f64;
                     blocks.push(LowConfidenceBlock {
                         start_idx: start,
                         end_idx: end,
@@ -588,7 +623,8 @@ fn find_low_confidence_blocks(
             let avg = merged[start..end]
                 .iter()
                 .map(|s| s.confidence as f64)
-                .sum::<f64>() / count as f64;
+                .sum::<f64>()
+                / count as f64;
             blocks.push(LowConfidenceBlock {
                 start_idx: start,
                 end_idx: end,
@@ -639,7 +675,8 @@ fn retranscribe_low_confidence(
         let padding_samples = 2 * sample_rate as usize;
         let start_sample = ((block_t0_cs as f64 * 0.01 * sample_rate as f64) as usize)
             .saturating_sub(padding_samples);
-        let end_sample = ((block_t1_cs as f64 * 0.01 * sample_rate as f64) as usize + padding_samples)
+        let end_sample = ((block_t1_cs as f64 * 0.01 * sample_rate as f64) as usize
+            + padding_samples)
             .min(total_samples);
 
         if end_sample <= start_sample {
@@ -658,9 +695,12 @@ fn retranscribe_low_confidence(
         );
 
         // Create a new whisper state and transcribe the chunk
-        let mut state = ctx
-            .create_state()
-            .map_err(|e| anyhow::anyhow!("Failed to create whisper state for retranscription: {:?}", e))?;
+        let mut state = ctx.create_state().map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create whisper state for retranscription: {:?}",
+                e
+            )
+        })?;
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         if let Some(lang) = language {
@@ -770,7 +810,11 @@ fn retranscribe_low_confidence(
             "Re-transcription: replaced {}/{} block(s), avg improvement +{:.2}",
             replaced_count,
             blocks.len(),
-            if replaced_count > 0 { total_improvement / replaced_count as f64 } else { 0.0 }
+            if replaced_count > 0 {
+                total_improvement / replaced_count as f64
+            } else {
+                0.0
+            }
         );
     }
 
@@ -785,8 +829,8 @@ fn run_adaptive_diarization(
     expected_min: usize,
     cache_dir: Option<&str>,
 ) -> Result<Vec<super::diarize::DiarizedSegment>> {
-    use super::diarize;
     use super::audio;
+    use super::diarize;
 
     // Maximum fraction of total duration a single speaker block may span.
     // If any block exceeds this, the diarization missed speaker changes and we cascade.
@@ -839,10 +883,7 @@ fn run_adaptive_diarization(
 
     // Fall back to smallest chunk result even if quality isn't great
     let smallest = CHUNK_CASCADE.last().copied().unwrap_or(30.0);
-    eprintln!(
-        "Using {:.0}s chunks (best available quality)",
-        smallest,
-    );
+    eprintln!("Using {:.0}s chunks (best available quality)", smallest,);
     let chunks = super::audio::chunk_audio(samples, smallest, 16000);
     diarize::diarize_chunked(&chunks, 16000, max_speakers, cache_dir)
 }
@@ -858,7 +899,10 @@ fn format_merged_output(
 
     // YAML frontmatter
     text.push_str("---\n");
-    text.push_str(&format!("date: {}\n", chrono::Local::now().format("%Y-%m-%d")));
+    text.push_str(&format!(
+        "date: {}\n",
+        chrono::Local::now().format("%Y-%m-%d")
+    ));
     text.push_str("type: phone-call\n");
     text.push_str("participants:\n");
     let mut participant_names: Vec<&String> = speaker_labels.values().collect();
@@ -1012,11 +1056,11 @@ mod tests {
         #[test]
         fn multiple_low_confidence_blocks() {
             let segs = vec![
-                seg(0, 100, 0.1),   // low
-                seg(100, 200, 0.2), // low
-                seg(200, 300, 0.9), // high
-                seg(300, 400, 0.95),// high
-                seg(400, 500, 0.1), // low
+                seg(0, 100, 0.1),    // low
+                seg(100, 200, 0.2),  // low
+                seg(200, 300, 0.9),  // high
+                seg(300, 400, 0.95), // high
+                seg(400, 500, 0.1),  // low
             ];
             let blocks = find_low_confidence_blocks(&segs, 0.4);
             assert_eq!(blocks.len(), 2);

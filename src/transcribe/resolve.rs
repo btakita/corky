@@ -3,8 +3,8 @@
 //! Uses Claude API to attribute segments with speaker_id == 0 to known speakers
 //! based on transcript context.
 
-use anyhow::Result;
 use super::diarize::MergedSegment;
+use anyhow::Result;
 
 /// Resolve Unknown (speaker_id 0) segments using Claude API.
 ///
@@ -26,11 +26,12 @@ pub fn resolve_unknown_speakers(
         return Ok(());
     }
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!(
+    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+        anyhow::anyhow!(
             "ANTHROPIC_API_KEY not set. Required for --resolve-unknown.\n\
              Set it or use --no-resolve-unknown to skip."
-        ))?;
+        )
+    })?;
 
     eprintln!(
         "Resolving {} unknown segment(s) via Claude API...",
@@ -93,8 +94,16 @@ pub fn resolve_unknown_speakers(
             "#{}: \"{}\"\n  Before: {}\n  After: {}\n\n",
             batch_idx + 1,
             text,
-            if ctx_before.is_empty() { "(start of transcript)".to_string() } else { ctx_before.join(" → ") },
-            if ctx_after.is_empty() { "(end of transcript)".to_string() } else { ctx_after.join(" → ") },
+            if ctx_before.is_empty() {
+                "(start of transcript)".to_string()
+            } else {
+                ctx_before.join(" → ")
+            },
+            if ctx_after.is_empty() {
+                "(end of transcript)".to_string()
+            } else {
+                ctx_after.join(" → ")
+            },
         ));
     }
 
@@ -161,16 +170,13 @@ pub fn resolve_unknown_speakers(
             {
                 let seg_idx = unknown_indices[batch_idx - 1];
                 // Find speaker ID by name (case-insensitive match)
-                let matched_id = reverse_labels
-                    .get(name)
-                    .copied()
-                    .or_else(|| {
-                        let name_lower = name.to_lowercase();
-                        reverse_labels
-                            .iter()
-                            .find(|(k, _)| k.to_lowercase() == name_lower)
-                            .map(|(_, &id)| id)
-                    });
+                let matched_id = reverse_labels.get(name).copied().or_else(|| {
+                    let name_lower = name.to_lowercase();
+                    reverse_labels
+                        .iter()
+                        .find(|(k, _)| k.to_lowercase() == name_lower)
+                        .map(|(_, &id)| id)
+                });
                 if let Some(id) = matched_id {
                     merged[seg_idx].speaker_id = id;
                     merged[seg_idx].confidence = 0.0;

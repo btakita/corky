@@ -2,7 +2,7 @@
 //!
 //! Replaces all existing Gmail filters with those defined in .corky.toml.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 
 use super::gmail_auth;
@@ -164,10 +164,7 @@ pub fn run(account: Option<&str>, dry_run: bool) -> Result<()> {
         println!("  [{}] {}", i + 1, truncate(hint, 60));
     }
 
-    println!(
-        "\nDone. {} filter(s) pushed to Gmail.",
-        api_filters.len()
-    );
+    println!("\nDone. {} filter(s) pushed to Gmail.", api_filters.len());
     Ok(())
 }
 

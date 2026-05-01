@@ -58,10 +58,7 @@ fn find_matching_conversations(config: &topic::TopicConfig) -> Result<Vec<String
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        let slug = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let slug = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         let subject = util::thread_key_from_subject(slug);
         if lower_keywords.iter().any(|kw| subject.contains(kw)) {
             matches.push(slug.to_string());

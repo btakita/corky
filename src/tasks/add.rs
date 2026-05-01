@@ -1,6 +1,6 @@
 //! `corky tasks add` — add a task to Google Tasks.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::filter::gmail_auth;
 
@@ -10,13 +10,15 @@ const TASKS_API: &str = "https://tasks.googleapis.com/tasks/v1";
 ///
 /// `due` should be an RFC 3339 date string (e.g. `2026-04-15`) — the time portion
 /// is ignored by the Tasks API; only the date is stored.
-pub fn run(title: &str, due: Option<&str>, tasklist: Option<&str>, account: Option<&str>) -> Result<()> {
+pub fn run(
+    title: &str,
+    due: Option<&str>,
+    tasklist: Option<&str>,
+    account: Option<&str>,
+) -> Result<()> {
     let list_id = tasklist.unwrap_or("@default");
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::TASKS_SCOPE,
-        account,
-    )?;
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::TASKS_SCOPE, account)?;
 
     let mut task = serde_json::json!({ "title": title });
     if let Some(d) = due {

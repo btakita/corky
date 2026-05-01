@@ -71,11 +71,7 @@ fn regenerate(display_name: &str, owner_name: &str, mb_path: &Path) -> Result<()
 fn reset_one(name: &str, owner_name: &str, do_sync: bool) -> Result<()> {
     let mb_path = resolve::mailbox_dir(name);
     if !mb_path.exists() {
-        println!(
-            "  {}: not found at {} -- skipping",
-            name,
-            mb_path.display()
-        );
+        println!("  {}: not found at {} -- skipping", name, mb_path.display());
         return Ok(());
     }
 

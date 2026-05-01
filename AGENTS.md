@@ -8,7 +8,7 @@
 It is a separate, private repo. corky accesses it via a `mail/` path in the
 working directory, which can be either:
 
-- A **symlink** to an external clone (e.g. `mail -> ~/data/mail`)
+- A **symlink** to an external clone (e.g. `mail -> ../mail-data`)
 - A **subdirectory** or nested clone inside the corky checkout
 
 **Developer workflow:** `mail/` exists at the working directory root (symlink or subdirectory).
@@ -17,7 +17,7 @@ The `mail` entry in `.gitignore` keeps the data repo out of corky's git history.
 **General user workflow:** `corky init --user EMAIL` creates `mail/` in the current
 directory with config inside it, and registers the project dir as a named mailbox.
 Commands find the data dir via the resolution order in `src/resolve.rs`: local `mail/`,
-`CORKY_DATA` env, app config mailbox, `~/Documents` fallback. Use `--mailbox NAME` to select a
+`CORKY_DATA` env, app config mailbox, `$HOME/Documents` fallback. Use `--mailbox NAME` to select a
 specific mailbox.
 
 ## Writing Voice
@@ -38,6 +38,8 @@ See `voice.md` (committed) for tone, style, and formatting guidelines.
 - **Gmail threading:** Subject changes break threads. Always use `Re: <original>` for replies, never a new subject.
 
 ## Environment Setup
+
+Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is `127.0.0.1:8484`; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different port for the current session when needed.
 
 **New user (quick install):**
 ```sh
@@ -80,6 +82,14 @@ corky cal auth      # Google Calendar (separate token)
 - Google Tasks → `corky tasks list/add/done`
 - Google Calendar → `corky cal list/create/delete/check`
 
+`corky draft send` uses a dedicated compose-scope token key (`gmail:<account>:send`) instead of the shared filter/sync token. If Gmail returns 401 on that path, re-run `corky draft send` to refresh the send token; `corky filter auth` does not mint `gmail.compose`.
+If `[gsc]` service-account auth is configured, corky only caches that Search Console token in-process and scopes the cache by the resolved account/config fingerprint so switching mailbox roots or configs cannot reuse the wrong SA token.
+
+**Connector / debug surfaces:**
+- `corky doctor gmail --json` reports credential source, token presence, scope coverage, and re-auth state.
+- `corky sync refetch THREAD_ID --json` re-fetches one Gmail thread without mutating sync history.
+- `corky draft push --json` and `corky draft send --json` emit machine-readable summaries for adapters.
+
 ## Sync Behavior
 
 - **Immutable filenames**: Slug derived from subject on first write, never changes.
@@ -88,6 +98,7 @@ corky cal auth      # Google Calendar (separate token)
 - **Multi-label accumulation**: Thread fetched from multiple labels/accounts accumulates all in metadata.
 - **Incremental by default**: Tracks IMAP UIDs per-account in `.sync-state.json`. `sync full` re-fetches everything.
 - **Streaming writes**: Each message merged immediately. If sync crashes, state is not saved; next run re-fetches.
+- **Shared state persistence**: `tokens.json` and `.sync-state.json` are shared across commands. Treat them as locked, atomic-write stores; when behavior changes here, update README/SPEC/instruction files in the same commit.
 - **Shared label routing**: Labels in `[routing]` section of `.corky.toml` route to `mail/mailboxes/{name}/conversations/`.
   One label can fan-out to multiple mailboxes.
 - **Dedup**: Messages deduplicated by `(sender, date)` tuple when merging into existing files.
@@ -208,3 +219,13 @@ Publish order when instruction-files changes: instruction-files → agent-doc �
 - Update `SPEC.md` in the same commit as the code change (see PR Process)
 - Commits must be clean — no dangling unstaged files. When splitting work across commits, stage all related files (including `Cargo.lock`)
 
+
+
+## Library Context Policy
+
+This library follows the agent-loop library-context policy. Contributors
+authoring `AGENTS.md`, `SKILL.md`, or runbooks in this repo must read:
+
+[Library Context Policy](../instruction-files/LIBRARY_CONTEXT_POLICY.md)
+
+before making changes.

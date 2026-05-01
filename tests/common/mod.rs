@@ -35,4 +35,3 @@ default = true
     );
     std::fs::write(dir.join(".corky.toml"), content).unwrap();
 }
-

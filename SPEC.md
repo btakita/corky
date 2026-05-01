@@ -272,6 +272,12 @@ Label scoping syntax: `account:label` (e.g. `"proton-dev:INBOX"`) binds a label 
 }
 ```
 
+Persistence contract:
+- Writes are serialized with a sibling lock file (`.sync-state.json.lock`)
+- State is written via temp-file replace, not in-place overwrite
+- Saves perform a 3-way merge against the caller's baseline so concurrent account-sync and contact-sync runs preserve unrelated updates
+- Label-state conflicts on the same mailbox keep the highest observed sync cursor (`last_uid` / `last_history_id`) when both sides advanced from the same baseline
+
 ### 3.5 manifest.toml
 
 ```toml
@@ -442,9 +448,9 @@ With argument: connects to IMAP and lists all folders with flags.
 
 ### 5.5 draft push
 
-```
-corky draft push FILE [--send]
-corky mailbox draft push FILE [--send]
+``` 
+corky draft push FILE [--send] [--json]
+corky mailbox draft push FILE [--send] [--json]
 ```
 
 Alias: `corky push-draft` (hidden, backwards-compatible).
@@ -463,11 +469,13 @@ Account resolution for sending:
 2. `**From**` field → match by email address
 3. Fall back to default account
 
+`--json` emits a stable summary with the action (`draft_created` or `sent`), transport (`imap`, `smtp`, or `gmail-api`), resolved account, recipient, subject, status transition, reply metadata, and attachment/image paths.
+
 ### 5.5.1 draft send
 
-```
-corky draft send FILE [--attachment PATH]... [--account EMAIL]
-corky mailbox draft send FILE [--attachment PATH]...
+``` 
+corky draft send FILE [--attachment PATH]... [--account EMAIL] [--json]
+corky mailbox draft send FILE [--attachment PATH]... [--json]
 ```
 
 Sends a draft directly via the Gmail REST API (not SMTP). The draft must use YAML frontmatter
@@ -486,6 +494,10 @@ format (run `corky draft migrate` to convert legacy format).
 - Reply threading: `In-Reply-To` + `References` headers set from `in_reply_to:` YAML field; `threadId` set from `thread_id:` YAML field
 
 **OAuth scope:** `GMAIL_SEND_SCOPE` (`gmail.compose`)
+
+**Token handling:** `draft send` resolves the same named account as `draft push`, stores compose-scope OAuth under `gmail:<account>:send`, and uses the resolved account user as the default `From:` header when YAML omits `from:`. The optional CLI `--account` value is treated as a Google login hint for OAuth, not as the token-store key. If Gmail returns 401, corky clears that cached send token and instructs the user to re-run `corky draft send`, which triggers compose-scope re-auth.
+
+`--json` emits the send result, including resolved account key/hint, recipient, subject, attachment paths, Gmail `message_id`, and final `thread_id`.
 
 ### 5.6 add-label
 
@@ -766,6 +778,7 @@ Push local contacts to external platforms. Currently supports Google Contacts vi
 - `**LinkedIn:**` → URL
 
 **OAuth:** Reuses Gmail client credentials (`[gmail]` in `.corky.toml`), requests `https://www.googleapis.com/auth/contacts` scope. Tokens stored as `people:default`.
+Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so interactive auth is harder to miss.
 
 ### 5.26 contact delete
 
@@ -781,7 +794,8 @@ Deletes one or more contacts from Google Contacts by resource name. Accepts full
 corky filter auth [--account NAME]
 ```
 
-Gmail OAuth2 authorization for filter management. Opens a browser for the authorization code flow, starts a local callback server on `127.0.0.1:8484`, and stores the token in the shared token store (keyed as `gmail:{account}` or `gmail:default`).
+Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). Default callback is `127.0.0.1:8484`; Google desktop-app flows fall back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
+Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so auto-triggered re-auth is visible.
 
 Required scopes: `gmail.settings.basic` (read/write filters), `gmail.labels` (list labels for name-to-ID resolution).
 
@@ -1079,7 +1093,7 @@ sync_days = 30
 
 **Shutdown handling:** Checks `AtomicBool` shutdown signal per-message and every 5 pages of listing. Returns early with partial results if interrupted.
 
-**Single-thread refetch (`sync refetch THREAD_ID`):**
+**Single-thread refetch (`sync refetch THREAD_ID [--json]`):**
 Re-fetches all messages in a single Gmail thread, bypassing `historyId` state. Useful when a message was synced but body extraction failed (e.g., `attachmentId` or base64 padding issues fixed in a later release).
 
 1. Scans `conversations/` for a file matching the `**Thread ID**` metadata
@@ -1092,11 +1106,13 @@ Re-fetches all messages in a single Gmail thread, bypassing `historyId` state. U
 
 No sync state is modified — `last_history_id` is untouched.
 
+`--json` emits the chosen account, labels, removed files, fetched message count, routed refresh count, and accounts attempted during fallback lookup.
+
 **Merge and orphan cleanup:** Same as IMAP (§6.4, §6.5) — messages merge into thread files, full sync deletes untouched files.
 
 ### 6.9 Doctor
 
-`corky doctor [PROVIDER]` — health check that validates environment, configuration, and account connectivity.
+`corky doctor [PROVIDER] [--json]` — health check that validates environment, configuration, and account connectivity.
 
 **Always checks:**
 - `.corky.toml` exists and parses successfully
@@ -1106,13 +1122,15 @@ No sync state is modified — `last_history_id` is untouched.
 
 | Provider | Checks |
 |----------|--------|
-| `gmail-api` | OAuth credentials resolution, sync token existence/validity/expiration, refresh token capability, user email match |
+| `gmail-api` | OAuth credentials resolution, sync token existence/validity/expiration, send token existence/validity/expiration, scope coverage, user email match |
 | `gmail`, `imap`, `protonmail-bridge` | Password config (inline or command), IMAP host and port |
 | Gmail filters | Filter auth token status (`gmail:default` key), validity/expiration |
 | `linkedin` | OAuth credentials (config/env), per-profile: handle, URN, token validity, auto-refresh |
 | `youtube` | OAuth credentials (config/env), per-profile: handle, channel ID, token validity, auto-refresh |
 
-**Output:** Line-by-line text. `✓` for pass, `✗` for failure. 2-space indentation for details. Sections separated by blank lines.
+**Output:** Line-by-line text by default. `✓` for pass, `✗` for failure. 2-space indentation for details. Sections separated by blank lines.
+
+`corky doctor gmail --json` includes a connector-oriented Gmail status object with credential source, token-store path, default filter token state, and per-`gmail-api` account sync/send token status keyed exactly as the runtime resolves them.
 
 **Exit code:** 0 if all checks pass, 1 if any fail.
 
@@ -1230,7 +1248,7 @@ Filename convention: `YYYY-MM-DD-{slug}.md`.
 
 Account resolution: Account field → From field → default account.
 
-**Provider dispatch:** For accounts with `provider = "gmail-api"`, draft push and send use the Gmail REST API instead of IMAP/SMTP. OAuth token obtained via `get_send_access_token()` with scope `gmail.send`, stored under key `gmail:<account>:send` (separate from sync token). No password required for gmail-api accounts.
+**Provider dispatch:** For accounts with `provider = "gmail-api"`, draft push and send use the Gmail REST API instead of IMAP/SMTP. OAuth token obtained via `get_send_access_token()` with scope `gmail.compose`, stored under key `gmail:<account>:send` (separate from sync token). No password required for gmail-api accounts.
 
 ## 9. Watch Daemon
 
@@ -1377,6 +1395,8 @@ Social drafts live in `{data_dir}/social/` as Markdown files with YAML frontmatt
 OAuth tokens stored at `{app_config_dir}/tokens.json` keyed by platform URN.
 
 - File permissions: 0600 (owner read/write only)
+- Writes are serialized with `tokens.json.lock`
+- Saves use temp-file replace plus merge-on-save so concurrent OAuth flows preserve unrelated token keys
 - Tokens have a 5-minute grace window: tokens expiring within 5 minutes are treated as expired
 - Token fields: access_token, refresh_token (optional), expires_at, scopes, platform
 
@@ -1384,14 +1404,17 @@ OAuth tokens stored at `{app_config_dir}/tokens.json` keyed by platform URN.
 
 Authorization code flow (LinkedIn):
 
-1. Build auth URL with client_id, redirect_uri, state, scopes
-2. Open browser (`open` crate)
-3. Start local HTTP server on `127.0.0.1:8484` (`tiny_http`)
-4. Wait for callback (120s timeout)
-5. Verify state parameter (CSRF protection)
-6. Exchange code for token via POST
-7. Fetch user URN via `/v2/userinfo`
-8. Store token in tokens.json
+1. Bind the loopback callback listener first (`tiny_http` on `127.0.0.1`, default port `8484`)
+2. Build auth URL with client_id, the bound redirect_uri, state, scopes
+3. Emit a best-effort desktop notification for the interactive OAuth step
+4. Open browser (`open` crate)
+5. Wait for callback (120s timeout)
+6. Verify state parameter (CSRF protection)
+7. Exchange code for token via POST
+8. Fetch user URN via `/v2/userinfo`
+9. Store token in tokens.json
+
+`CORKY_OAUTH_CALLBACK_PORT` pins the loopback port for a single session. Google desktop-app flows may fall back to an available port automatically if `8484` is already in use; fixed-redirect providers such as LinkedIn require either a free registered port or an explicit session override.
 
 Client credentials resolution order per field:
 1. Inline value in `.corky.toml` (e.g. `client_id = "..."`)
@@ -1694,7 +1717,7 @@ Manage Google Calendar events via the Calendar API v3. Reuses Gmail OAuth creden
 
 ### 15.3 Auth
 
-`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account).
+`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and falls back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
 
 ### 15.4 List
 
@@ -1757,6 +1780,47 @@ Fetches up to 50 events in the range via `singleEvents=true` (expands recurring)
 | C7 | End before start | Error: "end must be after start" |
 | C8 | Check with no events | "Fully available" message |
 | C9 | Create with past start time | Allowed (API permits past events) |
+
+## § 15b Google Search Console
+
+### 15b.1 Overview
+
+Search Console access is tied to a real Google account that already has property access in Search Console. Corky's supported auth path is therefore user OAuth via `corky gsc auth`, reusing the same Google OAuth client credentials as Gmail and Calendar.
+
+An optional `[gsc]` service-account key may still be configured for best-effort headless use, but corky must not assume that the service-account email can be added in Search Console's Users and permissions UI. If the service-account token cannot prove property visibility, corky warns and falls back to user OAuth.
+
+### 15b.2 CLI Commands
+
+| Command | Behavior |
+|---|---|
+| `corky gsc auth [--account NAME]` | Run browser OAuth for a Google account that already has Search Console access |
+| `corky gsc sites [--format json\|csv\|table]` | List properties visible to the resolved Search Console token |
+| `corky gsc query ...` | Placeholder CLI surface; currently returns `gsc searchAnalytics.query not yet implemented` |
+| `corky gsc inspect ...` | Placeholder CLI surface; currently returns `gsc urlInspection.index.inspect not yet implemented` |
+
+### 15b.3 Auth
+
+**OAuth scope:** `https://www.googleapis.com/auth/webmasters.readonly`
+
+**Token storage:** Shared token store key prefix `gsc:` (`gsc:default`, `gsc:<account>`).
+If `[gsc]` service-account auth is configured, corky only caches the minted access token in-process, never persists that SA cache to `tokens.json`, and scopes the cache by the resolved account/config fingerprint so switching `.corky.toml` roots or accounts cannot reuse the wrong SA token.
+
+**Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google desktop-app flows may fall back to an available loopback port if `8484` is already in use. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
+**Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
+
+**Resolution order:**
+1. Valid stored `gsc:*` user token
+2. Refresh stored `gsc:*` token
+3. Configured `[gsc].service_account_json*`, but only if the minted token can successfully list at least one visible Search Console property
+4. Full browser OAuth via `corky gsc auth`
+
+**Diagnostics:** If a service-account token exchange succeeds but Search Console returns no visible properties, corky treats that as an unsupported or ineffective Search Console access path and instructs the user to authenticate a real Google account instead.
+
+### 15b.4 Edge Cases
+
+- Search Console user management requires a valid Google Account email; a service-account identity is not a portable substitute.
+- If the browser does not open automatically during `corky gsc auth`, corky still prints the full authorization URL and waits for the callback on the bound loopback port.
+- If `[gmail]` client credentials are missing, interactive GSC OAuth fails with the same credential-resolution error surface as other Google integrations.
 
 ## 16. SMS Import
 
@@ -1978,6 +2042,8 @@ Corky is fully self-hosted — it runs entirely on the user's machine with no ex
 1. **Built-in defaults** (zero config) — corky ships with public OAuth client credentials compiled in. Suitable for most users.
 2. **Self-hosted GCP project** — users create their own GCP project for full control over OAuth tokens, audit logs, and credential rotation. See `docs/guide/self-hosted-gmail.md`.
 
+Loopback browser auth stays machine-local: corky binds the callback listener before browser launch, defaults to `127.0.0.1:8484`, and supports `CORKY_OAUTH_CALLBACK_PORT` for a one-session port override.
+
 ### 18.2 Privacy Model
 
 - No data collection, storage, or transmission to third parties
@@ -1988,4 +2054,3 @@ Corky is fully self-hosted — it runs entirely on the user's machine with no ex
 - Does NOT request: Gmail delete, contacts write, or admin permissions
 - Users can revoke access anytime via Google security settings
 - Full privacy policy: `docs/reference/privacy-policy.md`
-

@@ -53,18 +53,17 @@ pub fn run(query: &str, backend_filter: Option<&str>, all: bool) -> Result<()> {
     }
 
     // Deduplicate and sort by score (descending)
-    all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    all_results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     if all_results.is_empty() {
         println!("No results found.");
     } else {
         for r in &all_results {
-            println!(
-                "[{:.2}] [{}] {}",
-                r.score,
-                r.backend,
-                r.path.display()
-            );
+            println!("[{:.2}] [{}] {}", r.score, r.backend, r.path.display());
             if !r.snippet.is_empty() {
                 println!("  {}", r.snippet);
             }

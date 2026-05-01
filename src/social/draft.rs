@@ -1,6 +1,6 @@
 //! Social media draft parsing and rendering (YAML frontmatter).
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -97,14 +97,16 @@ impl SocialDraft {
         }
 
         let after_first = &content[3..];
-        let end = after_first.find("\n---").ok_or_else(|| {
-            anyhow::anyhow!("Missing closing YAML frontmatter delimiter `---`")
-        })?;
+        let end = after_first
+            .find("\n---")
+            .ok_or_else(|| anyhow::anyhow!("Missing closing YAML frontmatter delimiter `---`"))?;
 
         let yaml_str = &after_first[..end];
         let body_start = end + 4; // skip \n---
         let body = if body_start < after_first.len() {
-            after_first[body_start..].trim_start_matches('\n').to_string()
+            after_first[body_start..]
+                .trim_start_matches('\n')
+                .to_string()
         } else {
             String::new()
         };

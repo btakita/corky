@@ -1,7 +1,7 @@
 //! CLI integration tests for `corky slack import`.
 
-use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use std::io::Write;
 use tempfile::TempDir;
@@ -98,14 +98,12 @@ fn test_slack_import_full_roundtrip() {
     let files: Vec<_> = std::fs::read_dir(&conv_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("md")
-        })
+        .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
         .collect();
-    assert!(!files.is_empty(), "Should have created at least one conversation file");
+    assert!(
+        !files.is_empty(),
+        "Should have created at least one conversation file"
+    );
 
     // Check content of the first file
     let content = std::fs::read_to_string(files[0].path()).unwrap();
@@ -139,12 +137,7 @@ fn test_slack_import_custom_account() {
     let files: Vec<_> = std::fs::read_dir(&conv_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("md")
-        })
+        .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
         .collect();
     assert!(!files.is_empty());
 
@@ -178,12 +171,7 @@ fn test_slack_import_custom_label() {
     let files: Vec<_> = std::fs::read_dir(&conv_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("md")
-        })
+        .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("md"))
         .collect();
     assert!(!files.is_empty());
 
