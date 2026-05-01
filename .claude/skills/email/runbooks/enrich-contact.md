@@ -29,8 +29,6 @@ Update a contact's profile with new information from conversations, research, or
 
 6. **Commit** the updated contact file
 
-If you need `corky contact push google` while enriching a contact, remember the Google OAuth flow now binds the callback listener before browser launch and honors `CORKY_OAUTH_CALLBACK_PORT` for the current session.
-
 ## File Convention
 
 - `AGENTS.md` is canonical (committed)

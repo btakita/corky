@@ -15,11 +15,11 @@ Manage email, calendar, documents, and communications from the command line.
 
 ## Commands
 
-- Email: `corky unanswered`, `corky sync`, `corky draft new --to EMAIL "Subject"`, `corky draft validate`, `corky contact add --from SLUG`, `corky contact info NAME`
-- Calendar: `corky cal auth`, `corky cal list`, `corky cal create`, `corky cal check`, `corky cal delete`
-- Documents: `corky doc build <FILE> [--format pdf|docx] [--template NAME]`
-- Filters: `corky filter check`, `corky filter push`, `corky filter auth`
-- System: `corky watch`, `corky skill install`, `corky audit-docs`
+For email work, start with `corky unanswered`, `corky sync`, `corky draft new --to EMAIL "Subject"`, and `corky draft validate`. Use `corky contact add --from SLUG` or `corky contact info NAME` when thread context needs to become durable contact context.
+
+For Google workflows, use `corky cal auth`, `corky cal list [--limit N] [--query Q]`, `corky cal create <SUMMARY> <START> <END>`, and `corky cal check <START> <END>` for calendar tasks. Document export stays on `corky doc build <FILE> [--format pdf|docx] [--template NAME]`.
+
+For Gmail maintenance and project hygiene, use `corky filter check`, `corky filter push`, and `corky filter auth`, then finish with `corky watch`, `corky skill install`, or `corky audit-docs` as needed.
 
 ## Related Skills
 

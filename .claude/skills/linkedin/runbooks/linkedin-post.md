@@ -32,8 +32,6 @@
 3. Immediately add the first comment with links
 4. Verify both post and comment are visible
 
-If you need to re-auth LinkedIn first, use a free registered loopback port. Corky defaults to `127.0.0.1:8484` and honors `CORKY_OAUTH_CALLBACK_PORT` for a one-session override.
-
 ## Timing
 
 - **Best:** Tuesday-Thursday, 8-10 AM ET (peak developer feed)

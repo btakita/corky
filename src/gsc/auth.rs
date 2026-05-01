@@ -10,11 +10,15 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 use crate::config::corky_config;
 use crate::desktop_notify::notify_oauth;
 use crate::oauth_loopback::{LoopbackServer, PortMode};
+use crate::resolve;
 use crate::social::token_store::{StoredToken, TokenStore};
 
 /// OAuth2 scope for read-only Search Console access.
@@ -51,7 +55,20 @@ struct CachedToken {
     expires_at: chrono::DateTime<Utc>,
 }
 
-static SA_TOKEN_CACHE: Mutex<Option<CachedToken>> = Mutex::new(None);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ServiceAccountCacheKey {
+    account_key: String,
+    config_path: PathBuf,
+    config_fingerprint: u64,
+}
+
+struct ResolvedServiceAccount {
+    cache_key: ServiceAccountCacheKey,
+    service_account: ServiceAccountKey,
+}
+
+static SA_TOKEN_CACHE: LazyLock<Mutex<HashMap<ServiceAccountCacheKey, CachedToken>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 struct ClientCredentials {
     client_id: String,
@@ -97,7 +114,7 @@ pub fn get_access_token(account: Option<&str>) -> Result<String> {
         }
     }
 
-    if let Some(token) = try_service_account()? {
+    if let Some(token) = try_service_account(account)? {
         return Ok(token);
     }
 
@@ -121,32 +138,22 @@ pub fn run_auth(account: Option<&str>) -> Result<()> {
 
 /// Attempt service-account auth. Returns `Ok(None)` if `[gsc]` is not configured
 /// or if Search Console access cannot be confirmed for the minted token.
-fn try_service_account() -> Result<Option<String>> {
-    let cfg = match corky_config::try_load_config(None).and_then(|c| c.gsc) {
-        Some(c) => c,
-        None => return Ok(None),
-    };
-    if cfg.service_account_json.is_empty() && cfg.service_account_json_cmd.is_empty() {
+fn try_service_account(account: Option<&str>) -> Result<Option<String>> {
+    let Some(resolved) = resolve_service_account(account)? else {
         return Ok(None);
-    }
+    };
 
-    if let Some(token) = cached_token() {
+    if let Some(token) = cached_token(&resolved.cache_key) {
         if let Err(err) = verify_service_account_access(&token) {
-            clear_cached_token();
+            clear_cached_token(&resolved.cache_key);
             eprintln!("{}", format_service_account_fallback(&err));
             return Ok(None);
         }
         return Ok(Some(token));
     }
 
-    let key_json = crate::util::resolve_secret(
-        &cfg.service_account_json,
-        &cfg.service_account_json_cmd,
-        "gsc service_account_json (check [gsc] in .corky.toml)",
-    )?;
-    let sa = parse_service_account_key(&key_json)?;
-    let jwt = sign_sa_jwt(&sa)?;
-    let fetched = match exchange_sa_jwt(&sa, &jwt) {
+    let jwt = sign_sa_jwt(&resolved.service_account)?;
+    let fetched = match exchange_sa_jwt(&resolved.service_account, &jwt) {
         Ok(token) => token,
         Err(err) => {
             eprintln!("{}", format_service_account_fallback(&err));
@@ -157,8 +164,31 @@ fn try_service_account() -> Result<Option<String>> {
         eprintln!("{}", format_service_account_fallback(&err));
         return Ok(None);
     }
-    store_token(&fetched);
+    store_token(&resolved.cache_key, &fetched);
     Ok(Some(fetched.access_token))
+}
+
+fn resolve_service_account(account: Option<&str>) -> Result<Option<ResolvedServiceAccount>> {
+    let config_path = resolve::corky_toml();
+    let cfg = match corky_config::try_load_config(Some(config_path.as_path())).and_then(|c| c.gsc) {
+        Some(c) => c,
+        None => return Ok(None),
+    };
+    if cfg.service_account_json.is_empty() && cfg.service_account_json_cmd.is_empty() {
+        return Ok(None);
+    }
+
+    let key_json = crate::util::resolve_secret(
+        &cfg.service_account_json,
+        &cfg.service_account_json_cmd,
+        "gsc service_account_json (check [gsc] in .corky.toml)",
+    )?;
+    let cache_key = service_account_cache_key(account, &config_path, &key_json);
+    let service_account = parse_service_account_key(&key_json)?;
+    Ok(Some(ResolvedServiceAccount {
+        cache_key,
+        service_account,
+    }))
 }
 
 /// Parse a service-account key JSON blob.
@@ -230,25 +260,40 @@ fn parse_sa_token_response(body: &serde_json::Value) -> Result<CachedToken> {
     })
 }
 
-fn cached_token() -> Option<String> {
-    let guard = SA_TOKEN_CACHE.lock().ok()?;
-    let cached = guard.as_ref()?;
+fn service_account_cache_key(
+    account: Option<&str>,
+    config_path: &Path,
+    key_json: &str,
+) -> ServiceAccountCacheKey {
+    let mut hasher = DefaultHasher::new();
+    key_json.hash(&mut hasher);
+    ServiceAccountCacheKey {
+        account_key: token_key(account),
+        config_path: config_path.to_path_buf(),
+        config_fingerprint: hasher.finish(),
+    }
+}
+
+fn cached_token(cache_key: &ServiceAccountCacheKey) -> Option<String> {
+    let mut guard = SA_TOKEN_CACHE.lock().ok()?;
+    let cached = guard.get(cache_key).cloned()?;
     if cached.expires_at > Utc::now() {
-        Some(cached.access_token.clone())
+        Some(cached.access_token)
     } else {
+        guard.remove(cache_key);
         None
     }
 }
 
-fn store_token(token: &CachedToken) {
+fn store_token(cache_key: &ServiceAccountCacheKey, token: &CachedToken) {
     if let Ok(mut guard) = SA_TOKEN_CACHE.lock() {
-        *guard = Some(token.clone());
+        guard.insert(cache_key.clone(), token.clone());
     }
 }
 
-fn clear_cached_token() {
+fn clear_cached_token(cache_key: &ServiceAccountCacheKey) {
     if let Ok(mut guard) = SA_TOKEN_CACHE.lock() {
-        *guard = None;
+        guard.remove(cache_key);
     }
 }
 
@@ -570,6 +615,51 @@ jzyrXB+qTE8wF1xUHoaCJKgB
     #[test]
     fn token_key_named() {
         assert_eq!(token_key(Some("brian")), "gsc:brian");
+    }
+
+    #[test]
+    fn service_account_cache_key_scopes_by_account() {
+        let path = Path::new("/tmp/mail/.corky.toml");
+        let key_json = fixture_sa_json();
+        assert_ne!(
+            service_account_cache_key(None, path, &key_json),
+            service_account_cache_key(Some("brian"), path, &key_json),
+        );
+    }
+
+    #[test]
+    fn service_account_cache_key_scopes_by_config_path() {
+        let key_json = fixture_sa_json();
+        assert_ne!(
+            service_account_cache_key(None, Path::new("/tmp/mail-a/.corky.toml"), &key_json),
+            service_account_cache_key(None, Path::new("/tmp/mail-b/.corky.toml"), &key_json),
+        );
+    }
+
+    #[test]
+    fn cached_service_account_tokens_do_not_leak_across_cache_keys() {
+        let key_json = fixture_sa_json();
+        let key_a =
+            service_account_cache_key(None, Path::new("/tmp/mail-a/.corky.toml"), &key_json);
+        let key_b = service_account_cache_key(
+            Some("brian"),
+            Path::new("/tmp/mail-a/.corky.toml"),
+            &key_json,
+        );
+        let token = CachedToken {
+            access_token: "ya29.test-sa".to_string(),
+            expires_at: Utc::now() + Duration::seconds(300),
+        };
+
+        clear_cached_token(&key_a);
+        clear_cached_token(&key_b);
+        store_token(&key_a, &token);
+
+        assert_eq!(cached_token(&key_a).as_deref(), Some("ya29.test-sa"));
+        assert_eq!(cached_token(&key_b), None);
+
+        clear_cached_token(&key_a);
+        clear_cached_token(&key_b);
     }
 
     #[test]

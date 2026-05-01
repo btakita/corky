@@ -1803,6 +1803,7 @@ An optional `[gsc]` service-account key may still be configured for best-effort 
 **OAuth scope:** `https://www.googleapis.com/auth/webmasters.readonly`
 
 **Token storage:** Shared token store key prefix `gsc:` (`gsc:default`, `gsc:<account>`).
+If `[gsc]` service-account auth is configured, corky only caches the minted access token in-process, never persists that SA cache to `tokens.json`, and scopes the cache by the resolved account/config fingerprint so switching `.corky.toml` roots or accounts cannot reuse the wrong SA token.
 
 **Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google desktop-app flows may fall back to an available loopback port if `8484` is already in use. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
 **Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).

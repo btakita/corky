@@ -19,5 +19,3 @@ Import Telegram Desktop JSON export directory.
 corky slack import <FILE.zip>
 ```
 Import Slack workspace export archive.
-
-When import behavior changes, rerun `cargo run --quiet -- audit-docs` before committing so the corky instruction surfaces stay newer than the Rust sources.

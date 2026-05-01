@@ -8,8 +8,6 @@ argument-hint: "<command> [args]"
 
 Draft and publish LinkedIn posts. Handles formatting constraints, link placement, and scheduling.
 
-Auth note: `corky linkedin auth` still depends on a registered loopback redirect. If `127.0.0.1:8484` is unavailable, set `CORKY_OAUTH_CALLBACK_PORT` to another registered port for that session before retrying.
-
 ## Invocation
 
 ```

@@ -21,6 +21,7 @@ Steps to run before committing code changes.
    - If OAuth callback handling changed, verify the docs mention listener-first bind order and `CORKY_OAUTH_CALLBACK_PORT`
    - If `corky draft send` changed, verify docs mention the dedicated `gmail.compose` send token (`gmail:<account>:send`) and that 401 guidance points to re-running `corky draft send`, not `corky filter auth`
    - If shared state persistence changed, verify docs mention the lock + atomic-write contract for `tokens.json` / `.sync-state.json`
+   - If `[gsc]` service-account auth changed, verify docs mention that any in-process SA token cache is scoped by the resolved account/config fingerprint
    - Check line budget is within limits
 
 4. **Review diff**

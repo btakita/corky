@@ -25,17 +25,15 @@ Draft a new email or reply to an existing thread.
 **Steps:**
 1. If replying, search `mail/conversations/` for the thread
 2. Extract thread ID and subject for threading
-3. Create draft via `corky draft new --to <recipient> --in-reply-to <message-id> --thread-id <thread-id> "<subject>"`
+3. Create draft via `corky draft new --to <recipient> --in-reply-to <thread-id> "<subject>"`
 4. Write email content to the draft file
 5. Set status to `approved`
 
 **Reply threading:**
 - Always search `mail/conversations/` for existing threads with the recipient
-- Extract both the RFC 2822 Message-ID and the Gmail Thread ID from the conversation file
-- Use `--in-reply-to` with the Message-ID and `--thread-id` with the Gmail thread ID
+- Extract Thread ID from the conversation file
+- Use `--in-reply-to` with the thread ID
 - Preserve the original subject with `Re:` prefix (Gmail threading requires matching subjects)
-
-Google-backed auth flows bind the loopback listener before opening the browser, default to `127.0.0.1:8484`, and honor `CORKY_OAUTH_CALLBACK_PORT` for a single-session override.
 
 ### `send` — Send a Draft
 

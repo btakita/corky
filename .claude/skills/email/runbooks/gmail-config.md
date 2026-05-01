@@ -15,7 +15,6 @@ sync_days = 30
 - **Sync:** `gmail.readonly` scope (token key: `gmail:btak.dev`)
 - **Send/Draft:** `gmail.compose` scope (token key: `gmail:btak.dev:send`)
 - First use opens browser for OAuth consent; tokens auto-refresh after that
-- Browser auth binds the loopback listener before opening the browser, defaults to `127.0.0.1:8484`, and honors `CORKY_OAUTH_CALLBACK_PORT` for a one-session override
 
 ## SMTP Accounts (personal, proton-dev)
 
