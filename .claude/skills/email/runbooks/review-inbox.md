@@ -27,3 +27,5 @@ Sync and triage recent emails across all accounts.
 - File mtime reflects the last message date
 - Slug-based filenames are immutable (identity tracked by Thread ID inside the file)
 - Multi-account threads accumulate labels from all accounts
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

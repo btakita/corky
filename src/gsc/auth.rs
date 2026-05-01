@@ -372,7 +372,7 @@ fn generate_state() -> String {
 fn run_auth_flow() -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
-    let callback = LoopbackServer::bind("Google Search Console", PortMode::EphemeralFallback)?;
+    let callback = LoopbackServer::bind("Google Search Console", PortMode::OptInEphemeralFallback)?;
     let redirect_uri = callback.redirect_uri().to_string();
 
     let url = format!(

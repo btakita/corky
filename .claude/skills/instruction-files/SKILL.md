@@ -58,3 +58,5 @@ Never overwrites existing files. Safe to run repeatedly.
 ## Runbooks
 
 - [Instruction Files Audit](runbooks/instruction-files-audit.md) — step-by-step audit procedure
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

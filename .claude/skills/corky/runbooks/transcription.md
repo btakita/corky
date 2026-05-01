@@ -29,3 +29,5 @@ adaptive_chunk = true
 resolve_unknown = true
 confidence_threshold = 0.4
 ```
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

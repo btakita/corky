@@ -23,3 +23,5 @@
 - `corky draft push <file>` -> IMAP APPEND to Drafts folder
 - `corky draft push <file> --send` -> SMTP send
 - Requires password or password_cmd in .corky.toml
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

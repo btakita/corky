@@ -295,7 +295,7 @@ fn exchange_code(platform: Platform, code: &str, redirect_uri: &str) -> Result<S
 /// Run the full OAuth flow: open browser, wait for callback, exchange code, store token.
 pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
     let port_mode = match platform {
-        Platform::Youtube => PortMode::EphemeralFallback,
+        Platform::Youtube => PortMode::OptInEphemeralFallback,
         Platform::LinkedIn => PortMode::FixedOnly,
         _ => PortMode::FixedOnly,
     };

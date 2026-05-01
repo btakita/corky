@@ -31,3 +31,5 @@ Create a threaded reply to an existing email conversation.
 ## Delivery
 
 See `runbooks/email-send.md` for send workflow (gmail-api vs SMTP).
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

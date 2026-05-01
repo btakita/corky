@@ -8,7 +8,7 @@ Steps to run before publishing a release.
 2. Verify version bumped in manifest (Cargo.toml / package.json / pyproject.toml)
 3. Update VERSIONS.md / CHANGELOG.md with new version entry
 4. Audit instruction files for staleness and correctness
-   - For OAuth/browser-flow changes, confirm docs mention listener-first bind order and any session-level callback-port override
+   - For OAuth/browser-flow changes, confirm docs mention listener-first bind order, any session-level callback-port override, and whether arbitrary loopback fallback now requires explicit `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1`
    - For `corky draft send` changes, confirm docs mention the dedicated `gmail.compose` send token key and the rerun-`corky draft send` 401 remediation path
    - For shared token/sync-state changes, confirm docs mention lock files, atomic replace, and merge-on-save behavior
    - For `[gsc]` service-account changes, confirm docs mention that the in-process SA token cache is scoped by the resolved account/config fingerprint
@@ -30,3 +30,5 @@ Steps to run before publishing a release.
 
 - Push a version tag: `git tag v<version> && git push origin v<version>`
 - CI creates the release with cross-platform binaries
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

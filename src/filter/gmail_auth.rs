@@ -349,7 +349,7 @@ fn run_auth_flow() -> Result<StoredToken> {
 fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
-    let callback = LoopbackServer::bind("Gmail", PortMode::EphemeralFallback)?;
+    let callback = LoopbackServer::bind("Gmail", PortMode::OptInEphemeralFallback)?;
     let redirect_uri = callback.redirect_uri().to_string();
 
     let mut url = format!(

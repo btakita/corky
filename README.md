@@ -36,7 +36,7 @@ corky sync
 
 See the [getting started guide](https://btakita.github.io/corky/getting-started/quick-start.html) for full setup instructions.
 
-When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google desktop-app flows default to `127.0.0.1:8484`, can fall back to another free loopback port if needed, and honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override.
+When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google-backed flows default to `127.0.0.1:8484`, honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override, and only fall back to another loopback port when you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects.
 If `[gsc]` service-account auth is configured, that Search Console token is only cached in-process and is scoped by the resolved account/config fingerprint, so changing mailbox roots or configs does not reuse the wrong SA token.
 
 ## Key features

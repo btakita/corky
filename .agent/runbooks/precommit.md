@@ -18,7 +18,7 @@ Steps to run before committing code changes.
 3. **Audit instruction files** (if changed)
    - Verify CLAUDE.md/AGENTS.md reflects any architectural changes
    - Verify instruction examples use `Message-ID` for `in_reply_to` and Gmail `thread_id` separately
-   - If OAuth callback handling changed, verify the docs mention listener-first bind order and `CORKY_OAUTH_CALLBACK_PORT`
+   - If OAuth callback handling changed, verify the docs mention listener-first bind order, `CORKY_OAUTH_CALLBACK_PORT`, and whether arbitrary loopback fallback now requires explicit `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1`
    - If `corky draft send` changed, verify docs mention the dedicated `gmail.compose` send token (`gmail:<account>:send`) and that 401 guidance points to re-running `corky draft send`, not `corky filter auth`
    - If shared state persistence changed, verify docs mention the lock + atomic-write contract for `tokens.json` / `.sync-state.json`
    - If `[gsc]` service-account auth changed, verify docs mention that any in-process SA token cache is scoped by the resolved account/config fingerprint
@@ -28,3 +28,5 @@ Steps to run before committing code changes.
    - No secrets, credentials, or API keys
    - No debug/temporary code left behind
    - No unrelated changes bundled in
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

@@ -19,3 +19,5 @@ Fallback for sending HTML-formatted emails when `corky draft push` is unavailabl
 3. Copy (Ctrl+C)
 4. Paste into Gmail compose window (Ctrl+V)
 5. Always use `file:///` protocol paths (not bare `/tmp/...`)
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

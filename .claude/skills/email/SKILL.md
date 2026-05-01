@@ -64,3 +64,5 @@ When executing these operations, read and follow the linked runbook:
 - `enrich contact` — [runbooks/enrich-contact.md](runbooks/enrich-contact.md)
 - `gmail config` — [runbooks/gmail-config.md](runbooks/gmail-config.md)
 - `browser paste` — [runbooks/browser-paste.md](runbooks/browser-paste.md)
+
+<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

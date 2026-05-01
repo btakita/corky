@@ -39,7 +39,7 @@ See `voice.md` (committed) for tone, style, and formatting guidelines.
 
 ## Environment Setup
 
-Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is `127.0.0.1:8484`; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different port for the current session when needed.
+Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is the fixed `127.0.0.1:8484` redirect; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session, or `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` only when your Google OAuth client supports wildcard loopback redirects.
 
 **New user (quick install):**
 ```sh

@@ -141,7 +141,7 @@ pub fn run_auth() -> Result<()> {
 fn run_auth_flow() -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
-    let callback = LoopbackServer::bind("Google Contacts", PortMode::EphemeralFallback)?;
+    let callback = LoopbackServer::bind("Google Contacts", PortMode::OptInEphemeralFallback)?;
     let redirect_uri = callback.redirect_uri().to_string();
 
     let url = format!(

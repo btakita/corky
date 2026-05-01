@@ -794,7 +794,7 @@ Deletes one or more contacts from Google Contacts by resource name. Accepts full
 corky filter auth [--account NAME]
 ```
 
-Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). Default callback is `127.0.0.1:8484`; Google desktop-app flows fall back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
+Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). Default callback is `127.0.0.1:8484`; Google-backed flows stay on that fixed port unless you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
 Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so auto-triggered re-auth is visible.
 
 Required scopes: `gmail.settings.basic` (read/write filters), `gmail.labels` (list labels for name-to-ID resolution).
@@ -1414,7 +1414,7 @@ Authorization code flow (LinkedIn):
 8. Fetch user URN via `/v2/userinfo`
 9. Store token in tokens.json
 
-`CORKY_OAUTH_CALLBACK_PORT` pins the loopback port for a single session. Google desktop-app flows may fall back to an available port automatically if `8484` is already in use; fixed-redirect providers such as LinkedIn require either a free registered port or an explicit session override.
+`CORKY_OAUTH_CALLBACK_PORT` pins the loopback port for a single session. Google-backed flows default to the fixed `127.0.0.1:8484` redirect and only use an arbitrary loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Fixed-redirect providers such as LinkedIn require either a free registered port or an explicit session override.
 
 Client credentials resolution order per field:
 1. Inline value in `.corky.toml` (e.g. `client_id = "..."`)
@@ -1717,7 +1717,7 @@ Manage Google Calendar events via the Calendar API v3. Reuses Gmail OAuth creden
 
 ### 15.3 Auth
 
-`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and falls back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
+`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and only falls back to an available loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
 
 ### 15.4 List
 
@@ -1805,7 +1805,7 @@ An optional `[gsc]` service-account key may still be configured for best-effort 
 **Token storage:** Shared token store key prefix `gsc:` (`gsc:default`, `gsc:<account>`).
 If `[gsc]` service-account auth is configured, corky only caches the minted access token in-process, never persists that SA cache to `tokens.json`, and scopes the cache by the resolved account/config fingerprint so switching `.corky.toml` roots or accounts cannot reuse the wrong SA token.
 
-**Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google desktop-app flows may fall back to an available loopback port if `8484` is already in use. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
+**Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google-backed flows only fall back to an available loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
 **Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
 
 **Resolution order:**
@@ -2042,7 +2042,7 @@ Corky is fully self-hosted — it runs entirely on the user's machine with no ex
 1. **Built-in defaults** (zero config) — corky ships with public OAuth client credentials compiled in. Suitable for most users.
 2. **Self-hosted GCP project** — users create their own GCP project for full control over OAuth tokens, audit logs, and credential rotation. See `docs/guide/self-hosted-gmail.md`.
 
-Loopback browser auth stays machine-local: corky binds the callback listener before browser launch, defaults to `127.0.0.1:8484`, and supports `CORKY_OAUTH_CALLBACK_PORT` for a one-session port override.
+Loopback browser auth stays machine-local: corky binds the callback listener before browser launch, defaults to the fixed `127.0.0.1:8484` redirect, supports `CORKY_OAUTH_CALLBACK_PORT` for a one-session registered-port override, and only uses arbitrary loopback fallback when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects.
 
 ### 18.2 Privacy Model
 
