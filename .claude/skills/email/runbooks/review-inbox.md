@@ -27,3 +27,4 @@ Sync and triage recent emails across all accounts.
 - File mtime reflects the last message date
 - Slug-based filenames are immutable (identity tracked by Thread ID inside the file)
 - Multi-account threads accumulate labels from all accounts
+- If a follow-up action triggers Google OAuth, corky now binds the callback listener before opening the browser and honors `CORKY_OAUTH_CALLBACK_PORT` for the current session

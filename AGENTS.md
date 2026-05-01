@@ -39,6 +39,8 @@ See `voice.md` (committed) for tone, style, and formatting guidelines.
 
 ## Environment Setup
 
+Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is `127.0.0.1:8484`; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different port for the current session when needed.
+
 **New user (quick install):**
 ```sh
 curl -sSf https://raw.githubusercontent.com/btakita/corky/main/install.sh | sh

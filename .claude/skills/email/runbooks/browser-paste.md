@@ -2,6 +2,8 @@
 
 Fallback for sending HTML-formatted emails when `corky draft push` is unavailable.
 
+This path also avoids local OAuth callback issues entirely, so it remains a valid fallback when a browser-auth flow cannot complete in the current shell.
+
 ## Generate HTML
 
 1. Read the draft markdown file

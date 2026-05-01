@@ -14,6 +14,7 @@ use std::sync::Mutex;
 
 use crate::config::corky_config;
 use crate::desktop_notify::notify_oauth;
+use crate::oauth_loopback::{LoopbackServer, PortMode};
 use crate::social::token_store::{StoredToken, TokenStore};
 
 /// OAuth2 scope for read-only Search Console access.
@@ -22,8 +23,6 @@ pub(crate) const GSC_SCOPE: &str = "https://www.googleapis.com/auth/webmasters.r
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
 const SA_JWT_LIFETIME_SECS: i64 = 3600;
 
-// Reuse corky's existing Google desktop-app loopback redirect.
-const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 120;
 
 /// Deserialized service-account JSON key.
@@ -328,6 +327,8 @@ fn generate_state() -> String {
 fn run_auth_flow() -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
+    let callback = LoopbackServer::bind("Google Search Console", PortMode::EphemeralFallback)?;
+    let redirect_uri = callback.redirect_uri().to_string();
 
     let url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth\
@@ -339,7 +340,7 @@ fn run_auth_flow() -> Result<StoredToken> {
          &access_type=offline\
          &prompt=consent",
         urlencode(&creds.client_id),
-        urlencode(REDIRECT_URI),
+        urlencode(&redirect_uri),
         urlencode(&state),
         urlencode(GSC_SCOPE),
     );
@@ -352,28 +353,12 @@ fn run_auth_flow() -> Result<StoredToken> {
         eprintln!("Could not open browser automatically.");
     }
 
-    println!("Waiting for callback on {}...", REDIRECT_URI);
-    let server = tiny_http::Server::http("127.0.0.1:8484")
-        .map_err(|e| anyhow!("Failed to start callback server: {}", e))?;
-
-    let request = server
-        .recv_timeout(std::time::Duration::from_secs(CALLBACK_TIMEOUT_SECS))
-        .map_err(|e| anyhow!("Callback server error: {}", e))?
-        .ok_or_else(|| {
-            anyhow!(
-                "Timed out waiting for OAuth callback ({}s)",
-                CALLBACK_TIMEOUT_SECS
-            )
-        })?;
-
-    let url_str = request.url().to_string();
-    let query = url_str.split('?').nth(1).unwrap_or("");
-    let (code, cb_state) = crate::social::auth::parse_callback(query)?;
-
-    let response = tiny_http::Response::from_string(
-        "Google Search Console authorization successful! You can close this tab.",
-    );
-    let _ = request.respond(response);
+    println!("Waiting for callback on {}...", redirect_uri);
+    let callback = callback.recv_callback(CALLBACK_TIMEOUT_SECS)?;
+    let code = callback.code.clone();
+    let cb_state = callback.state.clone();
+    callback
+        .respond_text("Google Search Console authorization successful! You can close this tab.");
 
     if cb_state != state {
         bail!(
@@ -384,14 +369,14 @@ fn run_auth_flow() -> Result<StoredToken> {
     }
 
     println!("Exchanging authorization code...");
-    exchange_code(&creds, &code)
+    exchange_code(&creds, &code, &redirect_uri)
 }
 
-fn exchange_code(creds: &ClientCredentials, code: &str) -> Result<StoredToken> {
+fn exchange_code(creds: &ClientCredentials, code: &str, redirect_uri: &str) -> Result<StoredToken> {
     let body_str = format!(
         "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
         urlencode(code),
-        urlencode(REDIRECT_URI),
+        urlencode(redirect_uri),
         urlencode(&creds.client_id),
         urlencode(&creds.client_secret),
     );

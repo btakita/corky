@@ -18,6 +18,7 @@ Steps to run before committing code changes.
 3. **Audit instruction files** (if changed)
    - Verify CLAUDE.md/AGENTS.md reflects any architectural changes
    - Verify instruction examples use `Message-ID` for `in_reply_to` and Gmail `thread_id` separately
+   - If OAuth callback handling changed, verify the docs mention listener-first bind order and `CORKY_OAUTH_CALLBACK_PORT`
    - Check line budget is within limits
 
 4. **Review diff**

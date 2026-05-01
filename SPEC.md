@@ -786,7 +786,7 @@ Deletes one or more contacts from Google Contacts by resource name. Accepts full
 corky filter auth [--account NAME]
 ```
 
-Gmail OAuth2 authorization for filter management. Opens a browser for the authorization code flow, starts a local callback server on `127.0.0.1:8484`, and stores the token in the shared token store (keyed as `gmail:{account}` or `gmail:default`).
+Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). Default callback is `127.0.0.1:8484`; Google desktop-app flows fall back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
 Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so auto-triggered re-auth is visible.
 
 Required scopes: `gmail.settings.basic` (read/write filters), `gmail.labels` (list labels for name-to-ID resolution).
@@ -1394,15 +1394,17 @@ OAuth tokens stored at `{app_config_dir}/tokens.json` keyed by platform URN.
 
 Authorization code flow (LinkedIn):
 
-1. Build auth URL with client_id, redirect_uri, state, scopes
-2. Emit a best-effort desktop notification for the interactive OAuth step
-3. Open browser (`open` crate)
-4. Start local HTTP server on `127.0.0.1:8484` (`tiny_http`)
+1. Bind the loopback callback listener first (`tiny_http` on `127.0.0.1`, default port `8484`)
+2. Build auth URL with client_id, the bound redirect_uri, state, scopes
+3. Emit a best-effort desktop notification for the interactive OAuth step
+4. Open browser (`open` crate)
 5. Wait for callback (120s timeout)
 6. Verify state parameter (CSRF protection)
 7. Exchange code for token via POST
 8. Fetch user URN via `/v2/userinfo`
 9. Store token in tokens.json
+
+`CORKY_OAUTH_CALLBACK_PORT` pins the loopback port for a single session. Google desktop-app flows may fall back to an available port automatically if `8484` is already in use; fixed-redirect providers such as LinkedIn require either a free registered port or an explicit session override.
 
 Client credentials resolution order per field:
 1. Inline value in `.corky.toml` (e.g. `client_id = "..."`)
@@ -1705,7 +1707,7 @@ Manage Google Calendar events via the Calendar API v3. Reuses Gmail OAuth creden
 
 ### 15.3 Auth
 
-`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
+`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and falls back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
 
 ### 15.4 List
 
@@ -1792,7 +1794,7 @@ An optional `[gsc]` service-account key may still be configured for best-effort 
 
 **Token storage:** Shared token store key prefix `gsc:` (`gsc:default`, `gsc:<account>`).
 
-**Callback:** Loopback listener on `127.0.0.1:8484`, matching the existing Gmail/Calendar OAuth client registration.
+**Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google desktop-app flows may fall back to an available loopback port if `8484` is already in use. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
 **Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
 
 **Resolution order:**
@@ -1806,7 +1808,7 @@ An optional `[gsc]` service-account key may still be configured for best-effort 
 ### 15b.4 Edge Cases
 
 - Search Console user management requires a valid Google Account email; a service-account identity is not a portable substitute.
-- If the browser does not open automatically during `corky gsc auth`, corky still prints the full authorization URL and waits for the callback on port `8484`.
+- If the browser does not open automatically during `corky gsc auth`, corky still prints the full authorization URL and waits for the callback on the bound loopback port.
 - If `[gmail]` client credentials are missing, interactive GSC OAuth fails with the same credential-resolution error surface as other Google integrations.
 
 ## 16. SMS Import
@@ -2028,6 +2030,8 @@ Corky is fully self-hosted — it runs entirely on the user's machine with no ex
 
 1. **Built-in defaults** (zero config) — corky ships with public OAuth client credentials compiled in. Suitable for most users.
 2. **Self-hosted GCP project** — users create their own GCP project for full control over OAuth tokens, audit logs, and credential rotation. See `docs/guide/self-hosted-gmail.md`.
+
+Loopback browser auth stays machine-local: corky binds the callback listener before browser launch, defaults to `127.0.0.1:8484`, and supports `CORKY_OAUTH_CALLBACK_PORT` for a one-session port override.
 
 ### 18.2 Privacy Model
 

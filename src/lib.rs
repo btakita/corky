@@ -15,6 +15,7 @@ pub mod help;
 pub mod init;
 pub mod label;
 pub mod mailbox;
+pub mod oauth_loopback;
 pub mod resolve;
 pub mod schedule;
 pub mod search;

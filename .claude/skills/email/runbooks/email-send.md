@@ -16,6 +16,7 @@
 - `corky draft push <file>` -> Gmail API `drafts.create` (Drafts folder)
 - `corky draft push <file> --send` -> Gmail API `messages.send` (sends directly)
 - Uses OAuth2 with `gmail.compose` scope (auto-refreshes after first browser consent)
+- Browser auth binds the local callback listener before opening the browser and honors `CORKY_OAUTH_CALLBACK_PORT` for a one-session port override
 - No SMTP password needed
 
 ### SMTP accounts (e.g. personal, proton-dev)

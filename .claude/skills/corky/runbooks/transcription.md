@@ -29,3 +29,5 @@ adaptive_chunk = true
 resolve_unknown = true
 confidence_threshold = 0.4
 ```
+
+When transcription workflows or flags change, rerun `cargo run --quiet -- audit-docs` before committing so the instruction surfaces stay in sync with the Rust sources.

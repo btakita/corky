@@ -36,6 +36,8 @@ corky sync
 
 See the [getting started guide](https://btakita.github.io/corky/getting-started/quick-start.html) for full setup instructions.
 
+When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google desktop-app flows default to `127.0.0.1:8484`, can fall back to another free loopback port if needed, and honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override.
+
 ## Key features
 
 - **Flat conversations** — one Markdown file per thread, all sources merged

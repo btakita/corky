@@ -7,8 +7,8 @@ use super::platform::Platform;
 use super::token_store::{StoredToken, TokenStore};
 use crate::config::corky_config;
 use crate::desktop_notify::notify_oauth;
+use crate::oauth_loopback::{LoopbackServer, PortMode};
 
-const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 120;
 
 /// LinkedIn OAuth scopes.
@@ -119,7 +119,7 @@ fn generate_state() -> String {
 }
 
 /// Build the authorization URL for a platform.
-pub fn build_auth_url(platform: Platform) -> Result<(String, String)> {
+pub fn build_auth_url(platform: Platform, redirect_uri: &str) -> Result<(String, String)> {
     let creds = resolve_credentials(platform)?;
     let state = generate_state();
 
@@ -134,7 +134,7 @@ pub fn build_auth_url(platform: Platform) -> Result<(String, String)> {
                  &state={}\
                  &scope={}",
                 urlencode(&creds.client_id),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&state),
                 scopes,
             );
@@ -152,7 +152,7 @@ pub fn build_auth_url(platform: Platform) -> Result<(String, String)> {
                  &access_type=offline\
                  &prompt=consent",
                 urlencode(&creds.client_id),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&state),
                 scopes,
             );
@@ -212,7 +212,7 @@ pub fn parse_callback(query: &str) -> Result<(String, String)> {
 }
 
 /// Exchange authorization code for tokens.
-fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
+fn exchange_code(platform: Platform, code: &str, redirect_uri: &str) -> Result<StoredToken> {
     let creds = resolve_credentials(platform)?;
 
     match platform {
@@ -220,7 +220,7 @@ fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
             let body_str = format!(
                 "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
                 urlencode(code),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&creds.client_id),
                 urlencode(&creds.client_secret),
             );
@@ -256,7 +256,7 @@ fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
             let body_str = format!(
                 "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
                 urlencode(code),
-                urlencode(REDIRECT_URI),
+                urlencode(redirect_uri),
                 urlencode(&creds.client_id),
                 urlencode(&creds.client_secret),
             );
@@ -294,7 +294,14 @@ fn exchange_code(platform: Platform, code: &str) -> Result<StoredToken> {
 
 /// Run the full OAuth flow: open browser, wait for callback, exchange code, store token.
 pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
-    let (auth_url, expected_state) = build_auth_url(platform)?;
+    let port_mode = match platform {
+        Platform::Youtube => PortMode::EphemeralFallback,
+        Platform::LinkedIn => PortMode::FixedOnly,
+        _ => PortMode::FixedOnly,
+    };
+    let callback = LoopbackServer::bind(&platform.to_string(), port_mode)?;
+    let redirect_uri = callback.redirect_uri().to_string();
+    let (auth_url, expected_state) = build_auth_url(platform, &redirect_uri)?;
 
     notify_oauth(&platform.to_string());
     println!("Opening browser for {} authorization...", platform);
@@ -304,30 +311,11 @@ pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
         eprintln!("Could not open browser automatically.");
     }
 
-    // Start local callback server
-    println!("Waiting for callback on {}...", REDIRECT_URI);
-    let server = tiny_http::Server::http("127.0.0.1:8484")
-        .map_err(|e| anyhow::anyhow!("Failed to start callback server: {}", e))?;
-
-    let request = server
-        .recv_timeout(std::time::Duration::from_secs(CALLBACK_TIMEOUT_SECS))
-        .map_err(|e| anyhow::anyhow!("Callback server error: {}", e))?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Timed out waiting for OAuth callback ({}s)",
-                CALLBACK_TIMEOUT_SECS
-            )
-        })?;
-
-    // Parse callback
-    let url = request.url().to_string();
-    let query = url.split('?').nth(1).unwrap_or("");
-    let (code, state) = parse_callback(query)?;
-
-    // Respond to the browser
-    let response =
-        tiny_http::Response::from_string("Authorization successful! You can close this tab.");
-    let _ = request.respond(response);
+    println!("Waiting for callback on {}...", redirect_uri);
+    let callback = callback.recv_callback(CALLBACK_TIMEOUT_SECS)?;
+    let code = callback.code.clone();
+    let state = callback.state.clone();
+    callback.respond_text("Authorization successful! You can close this tab.");
 
     // Verify state (CSRF protection)
     if state != expected_state {
@@ -340,7 +328,7 @@ pub fn run(platform: Platform, profile_name: Option<&str>) -> Result<()> {
 
     // Exchange code for token
     println!("Exchanging authorization code...");
-    let token = exchange_code(platform, &code)?;
+    let token = exchange_code(platform, &code, &redirect_uri)?;
 
     // Get user URN / channel ID
     let urn = match platform {

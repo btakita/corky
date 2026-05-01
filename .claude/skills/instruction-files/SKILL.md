@@ -32,6 +32,8 @@ The audit discovers and validates these file types:
 4. **Staleness** — Flag instruction files older than the newest source file
 5. **Context invariant** — Flag home-directory shortcuts and user-specific absolute paths that won't resolve on other machines
 
+Staleness is mtime-based during local development, so after code changes such as OAuth loopback behavior updates you should refresh the relevant instruction surfaces before expecting `audit-docs` to pass.
+
 ### Running the Audit
 
 From the project root:

@@ -5,9 +5,9 @@ use chrono::{Duration, Utc};
 
 use crate::config::corky_config;
 use crate::desktop_notify::notify_oauth;
+use crate::oauth_loopback::{LoopbackServer, PortMode};
 use crate::social::token_store::{StoredToken, TokenStore};
 
-const REDIRECT_URI: &str = "http://127.0.0.1:8484/callback";
 const CALLBACK_TIMEOUT_SECS: u64 = 300;
 
 /// Default GCP OAuth2 client credentials for the corky desktop application.
@@ -342,6 +342,8 @@ fn run_auth_flow() -> Result<StoredToken> {
 fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
+    let callback = LoopbackServer::bind("Gmail", PortMode::EphemeralFallback)?;
+    let redirect_uri = callback.redirect_uri().to_string();
 
     let mut url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth\
@@ -353,7 +355,7 @@ fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<Sto
          &access_type=offline\
          &prompt=consent",
         urlencode(&creds.client_id),
-        urlencode(REDIRECT_URI),
+        urlencode(&redirect_uri),
         urlencode(&state),
         urlencode(scope),
     );
@@ -371,30 +373,11 @@ fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<Sto
         eprintln!("Could not open browser automatically.");
     }
 
-    // Start local callback server
-    println!("Waiting for callback on {}...", REDIRECT_URI);
-    let server = tiny_http::Server::http("127.0.0.1:8484")
-        .map_err(|e| anyhow::anyhow!("Failed to start callback server: {}", e))?;
-
-    let request = server
-        .recv_timeout(std::time::Duration::from_secs(CALLBACK_TIMEOUT_SECS))
-        .map_err(|e| anyhow::anyhow!("Callback server error: {}", e))?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Timed out waiting for OAuth callback ({}s)",
-                CALLBACK_TIMEOUT_SECS
-            )
-        })?;
-
-    // Parse callback
-    let url_str = request.url().to_string();
-    let query = url_str.split('?').nth(1).unwrap_or("");
-    let (code, cb_state) = crate::social::auth::parse_callback(query)?;
-
-    // Respond to the browser
-    let response =
-        tiny_http::Response::from_string("Gmail authorization successful! You can close this tab.");
-    let _ = request.respond(response);
+    println!("Waiting for callback on {}...", redirect_uri);
+    let callback = callback.recv_callback(CALLBACK_TIMEOUT_SECS)?;
+    let code = callback.code.clone();
+    let cb_state = callback.state.clone();
+    callback.respond_text("Gmail authorization successful! You can close this tab.");
 
     // Verify state (CSRF protection)
     if cb_state != state {
@@ -407,15 +390,20 @@ fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<Sto
 
     // Exchange code for token
     println!("Exchanging authorization code...");
-    exchange_code(&creds, &code, scope)
+    exchange_code(&creds, &code, &redirect_uri, scope)
 }
 
 /// Exchange an authorization code for access + refresh tokens.
-fn exchange_code(creds: &ClientCredentials, code: &str, scope: &str) -> Result<StoredToken> {
+fn exchange_code(
+    creds: &ClientCredentials,
+    code: &str,
+    redirect_uri: &str,
+    scope: &str,
+) -> Result<StoredToken> {
     let body_str = format!(
         "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
         urlencode(code),
-        urlencode(REDIRECT_URI),
+        urlencode(redirect_uri),
         urlencode(&creds.client_id),
         urlencode(&creds.client_secret),
     );
