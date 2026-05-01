@@ -95,6 +95,7 @@ corky cal auth      # Google Calendar (separate token)
 - **Multi-label accumulation**: Thread fetched from multiple labels/accounts accumulates all in metadata.
 - **Incremental by default**: Tracks IMAP UIDs per-account in `.sync-state.json`. `sync full` re-fetches everything.
 - **Streaming writes**: Each message merged immediately. If sync crashes, state is not saved; next run re-fetches.
+- **Shared state persistence**: `tokens.json` and `.sync-state.json` are shared across commands. Treat them as locked, atomic-write stores; when behavior changes here, update README/SPEC/instruction files in the same commit.
 - **Shared label routing**: Labels in `[routing]` section of `.corky.toml` route to `mail/mailboxes/{name}/conversations/`.
   One label can fan-out to multiple mailboxes.
 - **Dedup**: Messages deduplicated by `(sender, date)` tuple when merging into existing files.

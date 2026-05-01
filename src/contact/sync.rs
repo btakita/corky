@@ -90,7 +90,8 @@ pub fn run() -> Result<()> {
     let contacts_config = crate::config::contact::load_contacts(None).unwrap_or_default();
 
     // Load sync state for 3-way merge tracking
-    let mut state = crate::sync::load_state()?;
+    let base_state = crate::sync::load_state()?;
+    let mut state = base_state.clone();
 
     sync_contacts(
         &root_contacts_dir,
@@ -100,7 +101,7 @@ pub fn run() -> Result<()> {
     )?;
 
     // Persist updated sync state
-    crate::sync::save_state(&state)?;
+    crate::sync::save_state_merged(&base_state, &state)?;
 
     Ok(())
 }

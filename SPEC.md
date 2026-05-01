@@ -272,6 +272,12 @@ Label scoping syntax: `account:label` (e.g. `"proton-dev:INBOX"`) binds a label 
 }
 ```
 
+Persistence contract:
+- Writes are serialized with a sibling lock file (`.sync-state.json.lock`)
+- State is written via temp-file replace, not in-place overwrite
+- Saves perform a 3-way merge against the caller's baseline so concurrent account-sync and contact-sync runs preserve unrelated updates
+- Label-state conflicts on the same mailbox keep the highest observed sync cursor (`last_uid` / `last_history_id`) when both sides advanced from the same baseline
+
 ### 3.5 manifest.toml
 
 ```toml
@@ -1387,6 +1393,8 @@ Social drafts live in `{data_dir}/social/` as Markdown files with YAML frontmatt
 OAuth tokens stored at `{app_config_dir}/tokens.json` keyed by platform URN.
 
 - File permissions: 0600 (owner read/write only)
+- Writes are serialized with `tokens.json.lock`
+- Saves use temp-file replace plus merge-on-save so concurrent OAuth flows preserve unrelated token keys
 - Tokens have a 5-minute grace window: tokens expiring within 5 minutes are treated as expired
 - Token fields: access_token, refresh_token (optional), expires_at, scopes, platform
 

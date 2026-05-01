@@ -35,20 +35,20 @@ pub struct Thread {
     pub tracking: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LabelState {
     pub uidvalidity: u32,
     pub last_uid: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GmailLabelState {
     /// Highest historyId seen for this label (for incremental sync).
     #[serde(default)]
     pub last_history_id: Option<u64>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct AccountSyncState {
     #[serde(default)]
     pub labels: HashMap<String, LabelState>,
@@ -57,7 +57,7 @@ pub struct AccountSyncState {
     pub gmail_labels: HashMap<String, GmailLabelState>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ContactSyncState {
     /// Per-mailbox: FNV-1a hash of the CLAUDE.md content at last sync.
     /// Key = mailbox name, Value = hash hex string.
@@ -65,7 +65,7 @@ pub struct ContactSyncState {
     pub mailboxes: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SyncState {
     #[serde(default)]
     pub accounts: HashMap<String, AccountSyncState>,

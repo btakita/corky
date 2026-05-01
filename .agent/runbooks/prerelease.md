@@ -9,6 +9,7 @@ Steps to run before publishing a release.
 3. Update VERSIONS.md / CHANGELOG.md with new version entry
 4. Audit instruction files for staleness and correctness
    - For OAuth/browser-flow changes, confirm docs mention listener-first bind order and any session-level callback-port override
+   - For shared token/sync-state changes, confirm docs mention lock files, atomic replace, and merge-on-save behavior
 5. No secrets in the diff or release notes
 6. No machine-local paths in released files
 7. For Gmail connector-facing changes, verify `corky doctor gmail --json`, `corky sync refetch --json`, and draft JSON surfaces still match the documented contract

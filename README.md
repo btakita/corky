@@ -163,7 +163,9 @@ sync_days = 30           # optional, default 3650
 corky sync account my-gmail
 ```
 
-This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs.
+This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs; corky now writes that shared token store with a lock + atomic replace so concurrent auth flows do not clobber unrelated entries.
+
+The IMAP/Gmail sync cursor file (`mail/.sync-state.json`) uses the same lock + atomic-write pattern, with merge-on-save so contact sync and message sync preserve each other's unrelated sections.
 
 **Threading:** Synced conversations include a `**Message-ID**` metadata line per message. Draft YAML supports a `thread_id` field (Gmail thread ID) so replies thread correctly via the Gmail API.
 

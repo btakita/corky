@@ -9,6 +9,7 @@ pub mod desktop_notify;
 pub mod doc;
 pub mod doctor;
 pub mod draft;
+pub mod file_store;
 pub mod filter;
 pub mod gsc;
 pub mod help;

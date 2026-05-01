@@ -45,20 +45,11 @@ fn count_new_messages(
 }
 
 fn load_state() -> SyncState {
-    let sf = resolve::sync_state_file();
-    if sf.exists()
-        && let Ok(data) = std::fs::read(&sf)
-        && let Ok(state) = crate::sync::types::load_state(&data)
-    {
-        return state;
-    }
-    SyncState::default()
+    crate::sync::load_state().unwrap_or_default()
 }
 
-fn save_state(state: &SyncState) {
-    if let Ok(data) = serde_json::to_vec(state) {
-        let _ = std::fs::write(resolve::sync_state_file(), data);
-    }
+fn save_state(base: &SyncState, state: &SyncState) {
+    let _ = crate::sync::save_state_merged(base, state);
 }
 
 fn sync_mailboxes() {
@@ -159,7 +150,8 @@ fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
         }
     };
 
-    let mut state = load_state();
+    let base_state = load_state();
+    let mut state = base_state.clone();
     let before = snapshot_uids(&state);
 
     for (acct_name, acct) in &accounts {
@@ -207,7 +199,7 @@ fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
         }
     }
 
-    save_state(&state);
+    save_state(&base_state, &state);
 
     let after = snapshot_uids(&state);
     let new_count = count_new_messages(&before, &after);
