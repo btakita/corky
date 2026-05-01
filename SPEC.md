@@ -495,6 +495,8 @@ format (run `corky draft migrate` to convert legacy format).
 
 **OAuth scope:** `GMAIL_SEND_SCOPE` (`gmail.compose`)
 
+**Token handling:** `draft send` resolves the same named account as `draft push`, stores compose-scope OAuth under `gmail:<account>:send`, and uses the resolved account user as the default `From:` header when YAML omits `from:`. The optional CLI `--account` value is treated as a Google login hint for OAuth, not as the token-store key. If Gmail returns 401, corky clears that cached send token and instructs the user to re-run `corky draft send`, which triggers compose-scope re-auth.
+
 `--json` emits the send result, including resolved account key/hint, recipient, subject, attachment paths, Gmail `message_id`, and final `thread_id`.
 
 ### 5.6 add-label
@@ -1246,7 +1248,7 @@ Filename convention: `YYYY-MM-DD-{slug}.md`.
 
 Account resolution: Account field → From field → default account.
 
-**Provider dispatch:** For accounts with `provider = "gmail-api"`, draft push and send use the Gmail REST API instead of IMAP/SMTP. OAuth token obtained via `get_send_access_token()` with scope `gmail.send`, stored under key `gmail:<account>:send` (separate from sync token). No password required for gmail-api accounts.
+**Provider dispatch:** For accounts with `provider = "gmail-api"`, draft push and send use the Gmail REST API instead of IMAP/SMTP. OAuth token obtained via `get_send_access_token()` with scope `gmail.compose`, stored under key `gmail:<account>:send` (separate from sync token). No password required for gmail-api accounts.
 
 ## 9. Watch Daemon
 

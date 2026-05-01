@@ -15,12 +15,10 @@ Manage email, calendar, documents, and communications from the command line.
 
 ## Commands
 
-Use these entry points first, then consult `README.md` for the full command matrix:
-
-- Email and sync: `corky unanswered`, `corky draft new`, `corky draft validate`, `corky sync`
-- Contacts: `corky contact add --from SLUG`, `corky contact info NAME`
+- Email: `corky unanswered`, `corky sync`, `corky draft new --to EMAIL "Subject"`, `corky draft validate`, `corky contact add --from SLUG`, `corky contact info NAME`
 - Calendar: `corky cal auth`, `corky cal list`, `corky cal create`, `corky cal check`, `corky cal delete`
-- Documents and filters: `corky doc build`, `corky filter auth`, `corky filter check`, `corky filter push`
+- Documents: `corky doc build <FILE> [--format pdf|docx] [--template NAME]`
+- Filters: `corky filter check`, `corky filter push`, `corky filter auth`
 - System: `corky watch`, `corky skill install`, `corky audit-docs`
 
 ## Related Skills

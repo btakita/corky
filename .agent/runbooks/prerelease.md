@@ -9,6 +9,7 @@ Steps to run before publishing a release.
 3. Update VERSIONS.md / CHANGELOG.md with new version entry
 4. Audit instruction files for staleness and correctness
    - For OAuth/browser-flow changes, confirm docs mention listener-first bind order and any session-level callback-port override
+   - For `corky draft send` changes, confirm docs mention the dedicated `gmail.compose` send token key and the rerun-`corky draft send` 401 remediation path
    - For shared token/sync-state changes, confirm docs mention lock files, atomic replace, and merge-on-save behavior
 5. No secrets in the diff or release notes
 6. No machine-local paths in released files

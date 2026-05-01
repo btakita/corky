@@ -82,6 +82,8 @@ corky cal auth      # Google Calendar (separate token)
 - Google Tasks → `corky tasks list/add/done`
 - Google Calendar → `corky cal list/create/delete/check`
 
+`corky draft send` uses a dedicated compose-scope token key (`gmail:<account>:send`) instead of the shared filter/sync token. If Gmail returns 401 on that path, re-run `corky draft send` to refresh the send token; `corky filter auth` does not mint `gmail.compose`.
+
 **Connector / debug surfaces:**
 - `corky doctor gmail --json` reports credential source, token presence, scope coverage, and re-auth state.
 - `corky sync refetch THREAD_ID --json` re-fetches one Gmail thread without mutating sync history.

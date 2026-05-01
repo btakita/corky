@@ -296,6 +296,13 @@ pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) ->
     Ok(access)
 }
 
+/// Remove the cached Gmail send token so the next send flow re-authenticates.
+pub fn clear_send_token(account: Option<&str>) -> Result<bool> {
+    let key = scoped_token_key(account, "send");
+    let mut store = TokenStore::load()?;
+    store.remove_persisted(&key)
+}
+
 /// Get a valid access token without interactive auth.
 ///
 /// Returns the cached/refreshed token if available, or an error with

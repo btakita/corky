@@ -85,6 +85,22 @@ impl TokenStore {
     pub fn remove(&mut self, urn: &str) -> Option<StoredToken> {
         self.tokens.remove(urn)
     }
+
+    /// Remove a token by URN and persist the deletion under the store lock.
+    pub fn remove_persisted(&mut self, urn: &str) -> Result<bool> {
+        self.remove_persisted_from(&tokens_path(), urn)
+    }
+
+    /// Remove a token from a specific path and persist the deletion atomically.
+    pub fn remove_persisted_from(&mut self, path: &Path, urn: &str) -> Result<bool> {
+        let removed_in_memory = self.tokens.remove(urn).is_some();
+        let mut removed_on_disk = false;
+        file_store::save_json_with_lock::<TokenStore, _>(path, Some(0o600), |mut current| {
+            removed_on_disk = current.tokens.remove(urn).is_some();
+            Ok(current)
+        })?;
+        Ok(removed_in_memory || removed_on_disk)
+    }
 }
 
 #[cfg(test)]
@@ -123,5 +139,23 @@ mod tests {
         assert_eq!(merged.tokens["shared"].access_token, "base");
         assert_eq!(merged.tokens["gmail:a"].access_token, "a");
         assert_eq!(merged.tokens["gmail:b"].access_token, "b");
+    }
+
+    #[test]
+    fn remove_persisted_deletes_only_requested_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tokens.json");
+
+        let mut initial = TokenStore::default();
+        initial.upsert("gmail:a:send".to_string(), token("a"));
+        initial.upsert("gmail:b:send".to_string(), token("b"));
+        initial.save_to(&path).unwrap();
+
+        let mut store = TokenStore::load_from(&path).unwrap();
+        assert!(store.remove_persisted_from(&path, "gmail:a:send").unwrap());
+
+        let persisted = TokenStore::load_from(&path).unwrap();
+        assert!(!persisted.tokens.contains_key("gmail:a:send"));
+        assert_eq!(persisted.tokens["gmail:b:send"].access_token, "b");
     }
 }

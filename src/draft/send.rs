@@ -52,7 +52,8 @@ fn run_internal(
     quiet: bool,
 ) -> Result<DraftSendResult> {
     let content = std::fs::read_to_string(file)?;
-    let (_map, subject, body) = parse_draft(file)?;
+    let (draft_meta, subject, body) = parse_draft(file)?;
+    let (account_name, acct, _password) = super::resolve_account(&draft_meta, file)?;
 
     let meta = parse_draft_yaml(&content).ok_or_else(|| {
         anyhow::anyhow!(
@@ -68,17 +69,14 @@ fn run_internal(
         .map(|p| p.display().to_string())
         .collect();
 
-    let from = meta
-        .from
-        .as_deref()
-        .or(meta.account.as_deref())
-        .unwrap_or("");
-    let effective_account = account.or(meta.account.as_deref()).or(meta.from.as_deref());
+    let from = meta.from.as_deref().unwrap_or(&acct.user);
+    let account_hint = account
+        .map(str::to_string)
+        .or_else(|| Some(acct.user.clone()));
 
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::GMAIL_SEND_SCOPE,
-        effective_account,
+    let token = gmail_auth::get_send_access_token(
+        Some(&account_name),
+        account.or(Some(acct.user.as_str())),
     )?;
 
     let mime = build_mime_message(
@@ -121,8 +119,8 @@ fn run_internal(
             Ok(DraftSendResult {
                 action: "sent".to_string(),
                 transport: "gmail-api".to_string(),
-                account_key: effective_account.unwrap_or("default").to_string(),
-                account_hint: effective_account.map(str::to_string),
+                account_key: account_name.clone(),
+                account_hint,
                 to: meta.to.clone(),
                 subject,
                 in_reply_to: meta.in_reply_to.clone(),
@@ -135,7 +133,19 @@ fn run_internal(
             })
         }
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Gmail API: unauthorized (401). Re-run `corky filter auth`.")
+            let cleared = gmail_auth::clear_send_token(Some(&account_name));
+            match cleared {
+                Ok(true) => bail!(
+                    "Gmail API: unauthorized (401). Cleared the cached gmail.compose send token; re-run `corky draft send` to re-authenticate."
+                ),
+                Ok(false) => bail!(
+                    "Gmail API: unauthorized (401). Re-run `corky draft send` to re-authenticate the gmail.compose send token."
+                ),
+                Err(err) => bail!(
+                    "Gmail API: unauthorized (401). Re-run `corky draft send` to re-authenticate the gmail.compose send token. Also failed to clear the cached send token: {}",
+                    err
+                ),
+            }
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
