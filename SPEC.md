@@ -778,7 +778,7 @@ Push local contacts to external platforms. Currently supports Google Contacts vi
 - `**LinkedIn:**` → URL
 
 **OAuth:** Reuses Gmail client credentials (`[gmail]` in `.corky.toml`), requests `https://www.googleapis.com/auth/contacts` scope. Tokens stored as `people:default`.
-Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so interactive auth is harder to miss.
+Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon) so interactive auth is harder to miss.
 
 ### 5.26 contact delete
 
@@ -795,7 +795,7 @@ corky filter auth [--account NAME]
 ```
 
 Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). Default callback is `127.0.0.1:8484`; Google-backed flows stay on that fixed port unless you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
-Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so auto-triggered re-auth is visible.
+Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon) so auto-triggered re-auth is visible.
 
 Required scopes: `gmail.settings.basic` (read/write filters), `gmail.labels` (list labels for name-to-ID resolution).
 
@@ -1274,7 +1274,8 @@ SIGTERM, SIGINT → clean shutdown (finish current poll, then exit). Both IMAP a
 ### 9.3 Notifications
 
 - macOS: `osascript -e 'display notification ...'`
-- Linux: `notify-send`
+- Linux: `notify-desktop`
+- Windows: `powershell` NotifyIcon balloon notification
 - Silently degrades if tool not installed.
 
 ### 9.4 Config
@@ -1749,7 +1750,7 @@ Manage Google Calendar events via the Calendar API v3. Reuses Gmail OAuth creden
 
 ### 15.3 Auth
 
-`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and only falls back to an available loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
+`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and only falls back to an available loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon).
 
 ### 15.4 List
 
@@ -1838,7 +1839,7 @@ An optional `[gsc]` service-account key may still be configured for best-effort 
 If `[gsc]` service-account auth is configured, corky only caches the minted access token in-process, never persists that SA cache to `tokens.json`, and scopes the cache by the resolved account/config fingerprint so switching `.corky.toml` roots or accounts cannot reuse the wrong SA token.
 
 **Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google-backed flows only fall back to an available loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
-**Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
+**Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon).
 
 **Resolution order:**
 1. Valid stored `gsc:*` user token

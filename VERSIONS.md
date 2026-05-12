@@ -7,7 +7,7 @@ Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 ## 0.28.0
 
 - **GSC auth + diagnostics**: Added `corky gsc auth/sites/query/inspect`, plus `corky doctor gmail --json` and the Gmail connector-oriented JSON surfaces for refetch, draft push, and draft send workflows.
-- **Google OAuth hardening**: Interactive OAuth flows now bind the loopback listener before browser launch, default Google-backed auth to the fixed `127.0.0.1:8484` redirect, require explicit opt-in before arbitrary loopback fallback, reuse the shared redirect for GSC, and raise a best-effort desktop notification when user action is required.
+- **Google OAuth hardening**: Interactive OAuth flows now bind the loopback listener before browser launch, default Google-backed auth to the fixed `127.0.0.1:8484` redirect, require explicit opt-in before arbitrary loopback fallback, reuse the shared redirect for GSC, and raise a best-effort desktop notification when user action is required. Linux uses `notify-desktop`; macOS uses `osascript`; Windows uses a PowerShell NotifyIcon balloon.
 - **State-write safety**: Token store and `.sync-state.json` writes now use locked atomic writes with merge-aware persistence so concurrent auth/sync processes do not clobber unrelated state.
 - **Gmail send-token isolation**: `corky draft send` now uses a dedicated `gmail:<account>:send` token path, clears only that token on Gmail 401s, and guides the user back through the compose-scope re-auth path.
 - **GSC token correctness**: Search Console auth now falls back to user OAuth when service-account visibility checks fail, and the in-process service-account token cache is scoped by resolved account/config fingerprint instead of a single global slot.

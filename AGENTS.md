@@ -39,7 +39,7 @@ See `voice.md` (committed) for tone, style, and formatting guidelines.
 
 ## Environment Setup
 
-Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is the fixed `127.0.0.1:8484` redirect; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session, or `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` only when your Google OAuth client supports wildcard loopback redirects.
+Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is the fixed `127.0.0.1:8484` redirect; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session, or `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` only when your Google OAuth client supports wildcard loopback redirects. Interactive OAuth prompts should raise a best-effort desktop notification through `notify-desktop` on Linux, `osascript` on macOS, and PowerShell NotifyIcon on Windows.
 
 **New user (quick install):**
 ```sh

@@ -739,7 +739,8 @@ SIGTERM, SIGINT → clean shutdown (finish current poll, then exit).
 ### 9.3 Notifications
 
 - macOS: `osascript -e 'display notification ...'`
-- Linux: `notify-send`
+- Linux: `notify-desktop`
+- Windows: `powershell` NotifyIcon balloon notification
 - Silently degrades if tool not installed.
 
 ### 9.4 Config
@@ -789,4 +790,3 @@ When a draft lives inside a `mailboxes/` subtree, the child mailbox may not have
 4. If no credentials found at any level, bail with error
 
 This enables child mailboxes to draft replies that the parent's account sends.
-

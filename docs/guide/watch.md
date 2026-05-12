@@ -27,7 +27,8 @@ CLI `--interval` overrides config.
 ## Notifications
 
 - macOS: `osascript -e 'display notification ...'`
-- Linux: `notify-send`
+- Linux: `notify-desktop`
+- Windows: `powershell` NotifyIcon balloon notification
 - Silently degrades if the notification tool is not installed.
 
 ## Running as a system service
