@@ -3,10 +3,10 @@ use clap::Parser;
 
 use corky::cli::{
     CalCommands, ChatCommands, Cli, Commands, ContactCommands, DocCommands, DocsCommands,
-    DraftCommands, FilterCommands, GscCommands, GscOutputFormat, LabelCommands, LinkedinCommands,
-    MailboxCommands, PlaylistCommands, RagieCommands, ScheduleCommands, SheetsCommands,
-    SiftCommands, SkillCommands, SlackCommands, SyncCommands, TasksCommands, TopicCommands,
-    YoutubeCommands,
+    DraftCommands, FilterCommands, GoogleAuthScope, GscCommands, GscOutputFormat, LabelCommands,
+    LinkedinCommands, MailboxCommands, PlaylistCommands, RagieCommands, ScheduleCommands,
+    SheetsCommands, SiftCommands, SkillCommands, SlackCommands, SyncCommands, TasksCommands,
+    TopicCommands, YoutubeCommands,
 };
 
 fn main() -> Result<()> {
@@ -87,6 +87,11 @@ fn main() -> Result<()> {
             }
         },
         Commands::SyncAuth => corky::sync::auth::run(),
+        Commands::Auth {
+            account,
+            email,
+            scope,
+        } => run_google_auth(account.as_deref(), email.as_deref(), scope),
         Commands::ListFolders { account } => corky::sync::folders::run(account.as_deref()),
         Commands::PushDraft { file, send } => corky::draft::run(&file, send),
         Commands::AddLabel { label, account } => corky::accounts::add_label_cmd(&label, &account),
@@ -488,6 +493,59 @@ fn main() -> Result<()> {
         },
         Commands::Doctor { provider, json } => corky::doctor::run(provider.as_deref(), json),
         Commands::Upgrade => corky::upgrade::run(),
+    }
+}
+
+fn run_google_auth(
+    account: Option<&str>,
+    email: Option<&str>,
+    scope: GoogleAuthScope,
+) -> Result<()> {
+    let login_hint = email.or_else(|| account.filter(|value| value.contains('@')));
+    match scope {
+        GoogleAuthScope::Filter => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::GMAIL_FILTER_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::Sync => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::GMAIL_SYNC_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::Send => {
+            corky::filter::gmail_auth::run_send_auth(account.or(email), login_hint)
+        }
+        GoogleAuthScope::Drive => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::DRIVE_FILE_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::Docs => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::DOCS_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::SheetsReadonly => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::SHEETS_READONLY_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::Sheets => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::SHEETS_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::Chat => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::CHAT_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::Tasks => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::TASKS_SCOPE,
+            login_hint,
+        ),
     }
 }
 

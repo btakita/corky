@@ -67,6 +67,8 @@ corky contact delete RES_NAME   # Delete contact from Google Contacts
 corky filter push               # Push Gmail filters from .corky.toml
 corky filter push --dry-run     # Preview filter changes
 corky filter pull               # Show current Gmail filters
+corky auth --email you@gmail.com --scope sync  # Pre-authenticate Gmail API sync
+corky auth --account my-gmail --email you@gmail.com --scope send  # Pre-authenticate Gmail compose
 corky filter auth               # Authenticate for Gmail filter API
 corky linkedin draft              # Create LinkedIn draft
 corky linkedin publish FILE      # Publish to LinkedIn
@@ -168,6 +170,8 @@ corky sync account my-gmail
 
 This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs; corky now writes that shared token store with a lock + atomic replace so concurrent auth flows do not clobber unrelated entries.
 
+You can also authenticate before running sync: `corky auth --email you@gmail.com --scope sync` stores the Gmail read-only token under the same `gmail:<email>` key used by `gmail-api` sync. For Gmail API draft/send, use `corky auth --account my-gmail --email you@gmail.com --scope send` so the compose token is stored under `gmail:<account>:send`.
+
 `corky draft send` uses a separate `gmail.compose` token under `gmail:<account>:send`, so attachment sends and Gmail API draft sends do not overwrite the read-only sync token. If Gmail returns 401 on the send path, corky clears that cached send token and asks you to re-run `corky draft send`, which triggers compose-scope re-auth.
 
 The IMAP/Gmail sync cursor file (`mail/.sync-state.json`) uses the same lock + atomic-write pattern, with merge-on-save so contact sync and message sync preserve each other's unrelated sections.
@@ -178,6 +182,7 @@ Search Console's optional `[gsc]` service-account fallback is separate from that
 **Notes:**
 - If your OAuth app is in testing mode, add the Gmail account as a test user in the Cloud Console
 - `login_hint` pre-selects the configured email in the consent screen
+- Google access tokens are short-lived by design; Corky stores refresh tokens and refreshes access tokens automatically when the original authorization is still valid
 - Post-auth verification ensures the token matches the configured account
 - Incremental sync uses Gmail's `historyId` for efficient polling after initial sync
 - Messages deleted between listing and fetch (404) are skipped gracefully — sync continues with remaining messages

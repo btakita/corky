@@ -437,6 +437,16 @@ Gmail OAuth setup. Requires `credentials.json` from Google Cloud Console.
 Runs a local server on port 3000 for the OAuth callback.
 Outputs the refresh token for `.env`.
 
+### 5.3.1 auth
+
+```
+corky auth [--email EMAIL] [--account NAME] [--scope filter|sync|send|drive|docs|sheets-readonly|sheets|chat|tasks]
+```
+
+Manual Google OAuth pre-authentication for integrations that otherwise trigger browser auth on first use. `--email` is passed as the OAuth `login_hint` so the consent screen opens on the intended Google account. For non-send Gmail-backed scopes, a provided email also becomes the token-store key (`gmail:<email>`), matching the lookup used by Gmail API sync and Docs/Sheets/Chat/Tasks commands. For `--scope send`, Corky stores the compose token under `gmail:<account>:send`; use the `.corky.toml` account name for `--account` and the Google address for `--email`.
+
+Default scope is `sync` (`gmail.readonly`). Google access tokens remain short-lived according to Google's token endpoint, but Corky stores refresh tokens and refreshes access tokens automatically while the authorization grant remains valid. Refresh persistence must preserve the token's original scopes so a refreshed sync/docs/sheets token is not downgraded to filter scope metadata.
+
 ### 5.4 list-folders
 
 ```
@@ -794,7 +804,7 @@ Deletes one or more contacts from Google Contacts by resource name. Accepts full
 corky filter auth [--account NAME]
 ```
 
-Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). Default callback is `127.0.0.1:8484`; Google-backed flows stay on that fixed port unless you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
+Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). If `--account` is an email address, Corky also passes it as the OAuth `login_hint` so manual auth can target that address directly. Default callback is `127.0.0.1:8484`; Google-backed flows stay on that fixed port unless you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
 Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon) so auto-triggered re-auth is visible.
 
 Required scopes: `gmail.settings.basic` (read/write filters), `gmail.labels` (list labels for name-to-ID resolution).
