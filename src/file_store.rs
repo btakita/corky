@@ -32,6 +32,9 @@ fn write_json_atomic<T>(path: &Path, value: &T, permissions: Option<u32>) -> Res
 where
     T: Serialize,
 {
+    #[cfg(not(unix))]
+    let _ = permissions;
+
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;

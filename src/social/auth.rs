@@ -189,10 +189,8 @@ pub fn parse_callback(query: &str) -> Result<(String, String)> {
             "code" => code = Some(val.into_owned()),
             "state" => state = Some(val.into_owned()),
             "error" => error = Some(val.into_owned()),
-            "error_description" => {
-                if error.is_some() {
-                    error = Some(format!("{}: {}", error.unwrap(), val));
-                }
+            "error_description" if error.is_some() => {
+                error = Some(format!("{}: {}", error.unwrap(), val));
             }
             _ => {}
         }

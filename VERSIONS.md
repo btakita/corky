@@ -4,6 +4,10 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.28.2
+
+- **Release CI fixes**: Cleaned up OAuth callback parsing for current stable Clippy and fixed Windows release builds by marking Unix-only atomic-write permissions as intentionally unused off Unix.
+
 ## 0.28.1
 
 - **OAuth callback decoding**: Loopback callback parsing now URL-decodes `code`, `state`, and OAuth error descriptions before CSRF comparison and token exchange, fixing encoded Google/LinkedIn callback values.
