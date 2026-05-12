@@ -1408,6 +1408,7 @@ OAuth tokens stored at `{app_config_dir}/tokens.json` keyed by platform URN.
 - File permissions: 0600 (owner read/write only)
 - Writes are serialized with `tokens.json.lock`
 - Saves use temp-file replace plus merge-on-save so concurrent OAuth flows preserve unrelated token keys
+- TokenStore tracks the load baseline and dirty/deleted keys so a stale writer saving an unrelated token cannot restore a token another process cleared
 - Tokens have a 5-minute grace window: tokens expiring within 5 minutes are treated as expired
 - Token fields: access_token, refresh_token (optional), expires_at, scopes, platform
 

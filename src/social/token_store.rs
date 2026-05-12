@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -39,6 +39,12 @@ impl StoredToken {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct TokenStore {
     pub tokens: HashMap<String, StoredToken>,
+    #[serde(skip)]
+    loaded_tokens: HashMap<String, StoredToken>,
+    #[serde(skip)]
+    dirty_tokens: HashSet<String>,
+    #[serde(skip)]
+    deleted_tokens: HashSet<String>,
 }
 
 /// Return the path to tokens.json.
@@ -54,8 +60,10 @@ impl TokenStore {
 
     /// Load from a specific path.
     pub fn load_from(path: &Path) -> Result<Self> {
-        file_store::load_json_or_default(path)
-            .with_context(|| format!("Failed to load tokens from {}", path.display()))
+        let mut store: Self = file_store::load_json_or_default(path)
+            .with_context(|| format!("Failed to load tokens from {}", path.display()))?;
+        store.loaded_tokens = store.tokens.clone();
+        Ok(store)
     }
 
     /// Save the token store to disk with 0600 permissions.
@@ -66,7 +74,20 @@ impl TokenStore {
     /// Save to a specific path.
     pub fn save_to(&self, path: &Path) -> Result<()> {
         file_store::save_json_with_lock::<TokenStore, _>(path, Some(0o600), |mut current| {
-            current.tokens.extend(self.tokens.clone());
+            for urn in self.loaded_tokens.keys() {
+                if !self.tokens.contains_key(urn) || self.deleted_tokens.contains(urn) {
+                    current.tokens.remove(urn);
+                }
+            }
+
+            for (urn, token) in &self.tokens {
+                match self.loaded_tokens.get(urn) {
+                    Some(loaded) if loaded == token && !self.dirty_tokens.contains(urn) => {}
+                    _ => {
+                        current.tokens.insert(urn.clone(), token.clone());
+                    }
+                }
+            }
             Ok(current)
         })
     }
@@ -78,11 +99,15 @@ impl TokenStore {
 
     /// Insert or update a token for a URN.
     pub fn upsert(&mut self, urn: String, token: StoredToken) {
+        self.deleted_tokens.remove(&urn);
+        self.dirty_tokens.insert(urn.clone());
         self.tokens.insert(urn, token);
     }
 
     /// Remove a token by URN.
     pub fn remove(&mut self, urn: &str) -> Option<StoredToken> {
+        self.dirty_tokens.remove(urn);
+        self.deleted_tokens.insert(urn.to_string());
         self.tokens.remove(urn)
     }
 
@@ -93,7 +118,7 @@ impl TokenStore {
 
     /// Remove a token from a specific path and persist the deletion atomically.
     pub fn remove_persisted_from(&mut self, path: &Path, urn: &str) -> Result<bool> {
-        let removed_in_memory = self.tokens.remove(urn).is_some();
+        let removed_in_memory = self.remove(urn).is_some();
         let mut removed_on_disk = false;
         file_store::save_json_with_lock::<TokenStore, _>(path, Some(0o600), |mut current| {
             removed_on_disk = current.tokens.remove(urn).is_some();
@@ -139,6 +164,55 @@ mod tests {
         assert_eq!(merged.tokens["shared"].access_token, "base");
         assert_eq!(merged.tokens["gmail:a"].access_token, "a");
         assert_eq!(merged.tokens["gmail:b"].access_token, "b");
+    }
+
+    #[test]
+    fn stale_save_does_not_restore_concurrently_deleted_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tokens.json");
+
+        let mut initial = TokenStore::default();
+        initial.upsert("gmail:a:send".to_string(), token("a"));
+        initial.save_to(&path).unwrap();
+
+        let mut stale_writer = TokenStore::load_from(&path).unwrap();
+        let mut remover = TokenStore::load_from(&path).unwrap();
+
+        assert!(
+            remover
+                .remove_persisted_from(&path, "gmail:a:send")
+                .unwrap()
+        );
+
+        stale_writer.upsert("gmail:b:send".to_string(), token("b"));
+        stale_writer.save_to(&path).unwrap();
+
+        let persisted = TokenStore::load_from(&path).unwrap();
+        assert!(!persisted.tokens.contains_key("gmail:a:send"));
+        assert_eq!(persisted.tokens["gmail:b:send"].access_token, "b");
+    }
+
+    #[test]
+    fn explicit_upsert_can_readd_concurrently_deleted_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tokens.json");
+
+        let mut initial = TokenStore::default();
+        initial.upsert("gmail:a:send".to_string(), token("old"));
+        initial.save_to(&path).unwrap();
+
+        let mut writer = TokenStore::load_from(&path).unwrap();
+        let mut remover = TokenStore::load_from(&path).unwrap();
+
+        remover
+            .remove_persisted_from(&path, "gmail:a:send")
+            .unwrap();
+
+        writer.upsert("gmail:a:send".to_string(), token("new"));
+        writer.save_to(&path).unwrap();
+
+        let persisted = TokenStore::load_from(&path).unwrap();
+        assert_eq!(persisted.tokens["gmail:a:send"].access_token, "new");
     }
 
     #[test]
