@@ -17,6 +17,7 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            container: off
           - target: x86_64-apple-darwin
             os: macos-14
           - target: aarch64-apple-darwin
@@ -41,8 +42,9 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --features vendored-openssl
           manylinux: auto
+          container: ${{ matrix.container }}
           before-script-linux: |
-            yum install -y perl-core openssl-devel || apk add --no-cache perl openssl-dev || true
+            sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config perl || yum install -y perl-core openssl-devel || apk add --no-cache perl openssl-dev || true
 
       - uses: actions/upload-artifact@v4
         with:
