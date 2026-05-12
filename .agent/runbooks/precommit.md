@@ -22,6 +22,7 @@ Steps to run before committing code changes.
    - If `corky draft send` changed, verify docs mention the dedicated `gmail.compose` send token (`gmail:<account>:send`) and that 401 guidance points to re-running `corky draft send`, not `corky filter auth`
    - If shared state persistence changed, verify docs mention the lock + atomic-write contract for `tokens.json` / `.sync-state.json`
    - If `[gsc]` service-account auth changed, verify docs mention that any in-process SA token cache is scoped by the resolved account/config fingerprint
+   - If Google Sheets tab sync changed, verify docs mention `corky sheets pull` / `corky sheets push`, tab creation, and clear-before-write semantics
    - Check line budget is within limits
 
 4. **Review diff**
@@ -29,4 +30,4 @@ Steps to run before committing code changes.
    - No debug/temporary code left behind
    - No unrelated changes bundled in
 
-<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->
+<!-- Refreshed for Google Sheets tab-level CSV sync commands. -->

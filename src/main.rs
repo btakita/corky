@@ -406,6 +406,18 @@ fn main() -> Result<()> {
                 file,
                 account,
             } => corky::doc::sheets::write(&sheet, &range, &file, account.as_deref()),
+            SheetsCommands::Pull {
+                sheet,
+                tab,
+                file,
+                account,
+            } => corky::doc::sheets::pull_tab(&sheet, &tab, &file, account.as_deref()),
+            SheetsCommands::Push {
+                sheet,
+                tab,
+                file,
+                account,
+            } => corky::doc::sheets::push_tab(&sheet, &tab, &file, account.as_deref()),
         },
         Commands::Transcribe {
             file,

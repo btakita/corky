@@ -38,5 +38,3 @@
 - **Good:** Monday 9 AM ET
 - **Avoid:** Weekends, holidays, Friday afternoon
 - Exception: post early if a specific person (interviewer, contact) will check your profile before a meeting
-
-<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

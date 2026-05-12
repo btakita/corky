@@ -34,5 +34,3 @@ Update a contact's profile with new information from conversations, research, or
 - `AGENTS.md` is canonical (committed)
 - `CLAUDE.md` is a symlink to `AGENTS.md`
 - Personal overrides: `CLAUDE.local.md` / `AGENTS.local.md` (gitignored)
-
-<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

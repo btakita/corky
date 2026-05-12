@@ -77,7 +77,7 @@ corky cal auth      # Google Calendar (separate token)
 - Gmail draft → `corky draft push`
 - Google Docs → `corky docs read <url>` / `corky docs write <url> <file>`
 - Google Drive → `corky doc upload`
-- Google Sheets → `corky sheets read <url>` / `corky sheets write <url> <range> <file>`
+- Google Sheets → `corky sheets read <url>` / `corky sheets write <url> <range> <file>` / `corky sheets pull <url> <tab> <csv>` / `corky sheets push <url> <tab> <csv>` (push clears or creates the tab before writing)
 - Google Chat → `corky chat send <space> <message>`
 - Google Tasks → `corky tasks list/add/done`
 - Google Calendar → `corky cal list/create/delete/check`

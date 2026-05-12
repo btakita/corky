@@ -1067,6 +1067,36 @@ pub enum SheetsCommands {
         #[arg(long)]
         account: Option<String>,
     },
+    /// Pull a Google Sheet tab into a local CSV file
+    Pull {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Sheet tab name
+        tab: String,
+
+        /// Local CSV file to write
+        file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Push a local CSV file into a Google Sheet tab
+    Push {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Sheet tab name. Created when missing.
+        tab: String,
+
+        /// Local CSV file to sync
+        file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

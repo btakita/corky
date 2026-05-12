@@ -56,5 +56,3 @@ corky schedule run
 When drafting or posting, read and follow the linked runbook:
 
 - `linkedin post` — [runbooks/linkedin-post.md](runbooks/linkedin-post.md)
-
-<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

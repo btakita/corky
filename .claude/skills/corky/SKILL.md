@@ -15,11 +15,20 @@ Manage email, calendar, documents, and communications from the command line.
 
 ## Commands
 
-- Email triage and drafting: `corky unanswered`, `corky draft new --to EMAIL "Subject"`, `corky draft validate`, `corky sync`, `corky contact add --from SLUG`, `corky contact info NAME`
-- Calendar: `corky cal auth`, `corky cal list [--limit N] [--query Q]`, `corky cal create <SUMMARY> <START> <END> [--description] [--location]`, `corky cal check <START> <END>`, `corky cal delete <QUERY> [--all] [--dry-run]`
-- Documents: `corky doc build <FILE> [--format pdf|docx] [--template NAME]`
-- Filters: `corky filter check`, `corky filter push`, `corky filter auth`
-- System: `corky watch`, `corky skill install`, `corky audit-docs`
+### Email
+Use `corky unanswered` for threads awaiting reply, `corky sync` for IMAP sync, `corky draft new --to EMAIL "Subject"` and `corky draft validate` for draft work, and `corky contact add --from SLUG` / `corky contact info NAME` for contact context.
+
+### Calendar
+Use `corky cal auth` for OAuth, `corky cal list [--limit N] [--query Q]` for upcoming events, `corky cal create <SUMMARY> <START> <END>` for event creation, `corky cal check <START> <END>` for availability, and `corky cal delete <QUERY> [--all] [--dry-run]` for deletion.
+
+### Documents
+Use `corky doc build <FILE> [--format pdf|docx] [--template NAME]` to convert markdown, `corky sheets pull <SHEET> <TAB> <CSV>` to sync a Google Sheet tab to CSV, and `corky sheets push <SHEET> <TAB> <CSV>` to clear/create a tab and sync CSV into it.
+
+### Filters
+Use `corky filter check` for read-only drift detection, `corky filter push` for manual Gmail filter updates, and `corky filter auth` for filter OAuth.
+
+### System
+Use `corky watch` for polling/filter drift, `corky skill install` for Claude Code skills, and `corky audit-docs` for instruction audits.
 
 ## Related Skills
 
@@ -37,5 +46,3 @@ Email drafting, LinkedIn posting, and their runbooks are installed as separate s
 - No email sent without explicit approval
 - Threads read in full before drafting
 - Calendar queries answered without asking the user to check manually
-
-<!-- Refreshed for the fixed 127.0.0.1:8484 Google OAuth callback default with opt-in arbitrary-port fallback. -->

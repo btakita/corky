@@ -78,6 +78,8 @@ corky youtube playlist list         # List your playlists
 corky doc upload FILE --account a@gmail.com  # Google Drive upload (account-targeted OAuth)
 corky doc sheet SHEET_URL                   # Read Google Sheet as markdown table
 corky doc sheet-write SHEET_URL RANGE CSV  # Write CSV to Google Sheet range
+corky sheets pull SHEET_URL TAB CSV        # Sync a Google Sheet tab to local CSV
+corky sheets push SHEET_URL TAB CSV        # Clear/create tab, then sync local CSV
 corky chat send SPACE_ID "message"          # Send Google Chat message
 corky tasks list                            # List pending Google Tasks
 corky tasks add "Task title" --due 2026-04-20  # Add a task

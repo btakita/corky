@@ -1600,6 +1600,8 @@ Run `corky watch` and it handles both IMAP sync and scheduled publishing.
 | `corky doc write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
 | `corky doc sheet <SHEET> [--range R] [--format table\|csv] [-o FILE] [--account EMAIL]` | Read a Google Sheet range |
 | `corky doc sheet-write <SHEET> <RANGE> <CSV> [--account EMAIL]` | Write CSV data to a Google Sheet range |
+| `corky sheets pull <SHEET> <TAB> <CSV> [--account EMAIL]` | Sync a whole Google Sheet tab down to a local CSV |
+| `corky sheets push <SHEET> <TAB> <CSV> [--account EMAIL]` | Sync a local CSV up to a whole Google Sheet tab |
 
 The `--account EMAIL` flag selects which Google account's OAuth token to use. When omitted, the default account is used. This enables multi-account workflows where different documents belong to different Google accounts.
 
@@ -1648,6 +1650,7 @@ Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `-
 
 ```
 corky doc sheet-write <SHEET_URL_OR_ID> <RANGE> <CSV_FILE> [--account EMAIL]
+corky sheets write <SHEET_URL_OR_ID> <RANGE> <CSV_FILE> [--account EMAIL]
 ```
 
 Writes the contents of a local CSV file to a Google Sheet range.
@@ -1665,6 +1668,35 @@ Writes the contents of a local CSV file to a Google Sheet range.
 | SW1 | Empty CSV file | Prints "No data in CSV file." and returns Ok |
 | SW2 | Auth error (401) | Error: "Sheets API: unauthorized. Re-run `corky filter auth`." |
 | SW3 | Quoted commas in CSV | Field preserved correctly (parser handles RFC 4180) |
+
+### 14.2.6 Google Sheets CSV Tab Sync
+
+```
+corky sheets pull <SHEET_URL_OR_ID> <TAB> <CSV_FILE> [--account EMAIL]
+corky sheets push <SHEET_URL_OR_ID> <TAB> <CSV_FILE> [--account EMAIL]
+```
+
+`pull` reads every value from the named tab and writes the result as CSV. `push` treats the named tab as a whole-file sync target: it creates the tab when missing, clears the existing tab values so stale cells cannot survive, and writes the local CSV from `A1`.
+
+Tabs with spaces or punctuation are emitted as quoted A1 notation internally (for example, `Project Plan` becomes `'Project Plan'!A1` for writes). CSV parsing handles quoted fields, escaped quotes, embedded newlines, empty fields, and CRLF or LF line endings.
+
+**API:**
+- pull: `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}`
+- push clear: `POST https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}:clear`
+- push write: `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}!A1?valueInputOption=USER_ENTERED`
+- missing tab creation: `POST https://sheets.googleapis.com/v4/spreadsheets/{id}:batchUpdate` with `addSheet`
+
+**OAuth scopes:** `SHEETS_READONLY_SCOPE` for `pull`; `SHEETS_SCOPE` for `push`.
+
+**Edge cases:**
+
+| ID | Scenario | Behavior |
+|----|----------|----------|
+| SS1 | Push to a missing tab | Create the tab before clearing/writing |
+| SS2 | Push a shorter CSV over old data | Clear the tab first so stale cells are removed |
+| SS3 | Empty CSV file | Prints "No data in CSV file." and returns Ok |
+| SS4 | Tab name contains spaces or punctuation | Quote and URL-encode the A1 range |
+| SS5 | Pull empty tab | Writes an empty CSV file |
 
 ### 14.3 Format Pipelines
 

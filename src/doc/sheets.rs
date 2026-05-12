@@ -31,41 +31,8 @@ pub fn read(
         account,
     )?;
 
-    // Build URL with optional range
-    let url = if let Some(range) = range {
-        format!("{}/{}/values/{}", SHEETS_API, sheet_id, encode_range(range))
-    } else {
-        // Get sheet metadata first to find the first sheet name
-        let meta_url = format!("{}/{}?fields=sheets.properties.title", SHEETS_API, sheet_id);
-        let meta_resp = api_get(&token, &meta_url)?;
-        let meta: serde_json::Value = meta_resp.into_json()?;
-        let first_sheet = meta["sheets"][0]["properties"]["title"]
-            .as_str()
-            .unwrap_or("Sheet1");
-        format!("{}/{}/values/{}", SHEETS_API, sheet_id, first_sheet)
-    };
-
     eprintln!("Fetching sheet data...");
-    let resp = api_get(&token, &url)?;
-    let data: serde_json::Value = resp.into_json()?;
-
-    let rows: Vec<Vec<String>> = data["values"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|row| {
-                    row.as_array()
-                        .map(|cells| {
-                            cells
-                                .iter()
-                                .map(|c| c.as_str().unwrap_or("").to_string())
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let rows = fetch_rows(sheet_id, range, &token)?;
 
     if rows.is_empty() {
         eprintln!("No data found.");
@@ -95,24 +62,121 @@ pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Re
     let token =
         gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::SHEETS_SCOPE, account)?;
 
-    let csv_content = std::fs::read_to_string(file)?;
-    let values: Vec<Vec<String>> = csv_content.lines().map(parse_csv_line).collect();
+    let values = read_csv_values(file)?;
 
     if values.is_empty() {
         eprintln!("No data in CSV file.");
         return Ok(());
     }
 
-    let json_values: Vec<serde_json::Value> = values
-        .into_iter()
-        .map(|row| {
-            serde_json::Value::Array(row.into_iter().map(serde_json::Value::String).collect())
-        })
-        .collect();
+    eprintln!("Writing {} rows to {}...", values.len(), range);
+    let updated = update_values(sheet_id, range, &values, &token)?;
+    println!("Updated {} cells.", updated);
 
-    let body = serde_json::json!({
-        "values": json_values
-    });
+    Ok(())
+}
+
+/// Pull a whole Google Sheet tab into a local CSV file.
+pub fn pull_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> Result<()> {
+    let sheet_id = parse_sheet_id(sheet);
+    let token = gmail_auth::get_access_token_for_user(
+        Some("default"),
+        gmail_auth::SHEETS_READONLY_SCOPE,
+        account,
+    )?;
+    let range = tab_range(tab);
+
+    eprintln!("Fetching tab {tab}...");
+    let rows = fetch_rows(sheet_id, Some(&range), &token)?;
+    let csv = format_csv(&rows);
+    std::fs::write(file, csv)?;
+    eprintln!(
+        "Synced {} rows from {tab} to {}",
+        rows.len(),
+        file.display()
+    );
+
+    Ok(())
+}
+
+/// Push a local CSV file into a whole Google Sheet tab.
+///
+/// This is a tab-level sync, not a partial update: the tab is created if it is
+/// missing, then cleared before values are written from A1.
+pub fn push_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> Result<()> {
+    let sheet_id = parse_sheet_id(sheet);
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::SHEETS_SCOPE, account)?;
+    let values = read_csv_values(file)?;
+
+    if values.is_empty() {
+        eprintln!("No data in CSV file.");
+        return Ok(());
+    }
+
+    ensure_tab_exists(sheet_id, tab, &token)?;
+
+    let clear_range = tab_range(tab);
+    eprintln!("Clearing tab {tab}...");
+    clear_values(sheet_id, &clear_range, &token)?;
+
+    let start_range = tab_start_range(tab);
+    eprintln!("Writing {} rows to tab {tab}...", values.len());
+    let updated = update_values(sheet_id, &start_range, &values, &token)?;
+    println!(
+        "Synced {} rows to {tab} ({} cells updated).",
+        values.len(),
+        updated
+    );
+
+    Ok(())
+}
+
+fn fetch_rows(sheet_id: &str, range: Option<&str>, token: &str) -> Result<Vec<Vec<String>>> {
+    let selected_range = match range {
+        Some(range) => range.to_string(),
+        None => first_sheet_title(sheet_id, token)?,
+    };
+    let url = format!(
+        "{}/{}/values/{}",
+        SHEETS_API,
+        sheet_id,
+        encode_range(&selected_range)
+    );
+    let resp = api_get(token, &url)?;
+    let data: serde_json::Value = resp.into_json()?;
+
+    Ok(data["values"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|row| {
+                    row.as_array()
+                        .map(|cells| {
+                            cells
+                                .iter()
+                                .map(|c| c.as_str().unwrap_or("").to_string())
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                })
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+fn first_sheet_title(sheet_id: &str, token: &str) -> Result<String> {
+    let meta_url = format!("{}/{}?fields=sheets.properties.title", SHEETS_API, sheet_id);
+    let meta_resp = api_get(token, &meta_url)?;
+    let meta: serde_json::Value = meta_resp.into_json()?;
+    Ok(meta["sheets"][0]["properties"]["title"]
+        .as_str()
+        .unwrap_or("Sheet1")
+        .to_string())
+}
+
+fn update_values(sheet_id: &str, range: &str, values: &[Vec<String>], token: &str) -> Result<u64> {
+    let body = serde_json::json!({ "values": values });
 
     let url = format!(
         "{}/{}/values/{}?valueInputOption=USER_ENTERED",
@@ -120,8 +184,6 @@ pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Re
         sheet_id,
         encode_range(range)
     );
-
-    eprintln!("Writing {} rows to {}...", json_values.len(), range);
 
     let resp = ureq::put(&url)
         .set("Authorization", &format!("Bearer {}", token))
@@ -131,9 +193,7 @@ pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Re
     match resp {
         Ok(r) => {
             let result: serde_json::Value = r.into_json()?;
-            let updated = result["updatedCells"].as_u64().unwrap_or(0);
-            println!("Updated {} cells.", updated);
-            Ok(())
+            Ok(result["updatedCells"].as_u64().unwrap_or(0))
         }
         Err(ureq::Error::Status(401, _)) => {
             bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
@@ -146,12 +206,98 @@ pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Re
     }
 }
 
-/// Parse a single CSV line, handling quoted fields.
-fn parse_csv_line(line: &str) -> Vec<String> {
-    let mut fields = Vec::new();
+fn clear_values(sheet_id: &str, range: &str, token: &str) -> Result<()> {
+    let url = format!(
+        "{}/{}/values/{}:clear",
+        SHEETS_WRITE_API,
+        sheet_id,
+        encode_range(range)
+    );
+
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .send_json(serde_json::json!({}));
+
+    match resp {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(401, _)) => {
+            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Sheets API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn ensure_tab_exists(sheet_id: &str, tab: &str, token: &str) -> Result<()> {
+    if tab_exists(sheet_id, tab, token)? {
+        return Ok(());
+    }
+
+    eprintln!("Creating tab {tab}...");
+    let url = format!("{}/{}:batchUpdate", SHEETS_WRITE_API, sheet_id);
+    let body = serde_json::json!({
+        "requests": [
+            {
+                "addSheet": {
+                    "properties": {
+                        "title": tab
+                    }
+                }
+            }
+        ]
+    });
+
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .send_json(body);
+
+    match resp {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(401, _)) => {
+            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Sheets API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn tab_exists(sheet_id: &str, tab: &str, token: &str) -> Result<bool> {
+    let meta_url = format!("{}/{}?fields=sheets.properties.title", SHEETS_API, sheet_id);
+    let meta_resp = api_get(token, &meta_url)?;
+    let meta: serde_json::Value = meta_resp.into_json()?;
+
+    Ok(meta["sheets"]
+        .as_array()
+        .map(|sheets| {
+            sheets.iter().any(|sheet| {
+                sheet["properties"]["title"]
+                    .as_str()
+                    .map(|title| title == tab)
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false))
+}
+
+fn read_csv_values(file: &Path) -> Result<Vec<Vec<String>>> {
+    let csv_content = std::fs::read_to_string(file)?;
+    Ok(parse_csv(&csv_content))
+}
+
+fn parse_csv(content: &str) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    let mut row = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
-    let mut chars = line.chars().peekable();
+    let mut chars = content.chars().peekable();
 
     while let Some(ch) = chars.next() {
         match ch {
@@ -165,14 +311,29 @@ fn parse_csv_line(line: &str) -> Vec<String> {
             }
             '"' => in_quotes = true,
             ',' if !in_quotes => {
-                fields.push(current.clone());
-                current.clear();
+                row.push(std::mem::take(&mut current));
+            }
+            '\n' if !in_quotes => {
+                row.push(std::mem::take(&mut current));
+                rows.push(std::mem::take(&mut row));
+            }
+            '\r' if !in_quotes => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                row.push(std::mem::take(&mut current));
+                rows.push(std::mem::take(&mut row));
             }
             other => current.push(other),
         }
     }
-    fields.push(current);
-    fields
+
+    if !current.is_empty() || !row.is_empty() {
+        row.push(current);
+        rows.push(row);
+    }
+
+    rows
 }
 
 fn format_markdown_table(rows: &[Vec<String>]) -> String {
@@ -242,12 +403,34 @@ fn format_csv(rows: &[Vec<String>]) -> String {
         .join("\n")
 }
 
+fn tab_range(tab: &str) -> String {
+    if needs_quoted_tab(tab) {
+        format!("'{}'", tab.replace('\'', "''"))
+    } else {
+        tab.to_string()
+    }
+}
+
+fn tab_start_range(tab: &str) -> String {
+    format!("{}!A1", tab_range(tab))
+}
+
+fn needs_quoted_tab(tab: &str) -> bool {
+    tab.chars()
+        .any(|ch| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'))
+}
+
 /// URL-encode a sheet range (e.g., "Sheet1!A1:D10" → "Sheet1%21A1%3AD10").
 fn encode_range(range: &str) -> String {
-    range
-        .replace('!', "%21")
-        .replace(':', "%3A")
-        .replace(' ', "%20")
+    let mut encoded = String::new();
+    for byte in range.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]
@@ -271,29 +454,58 @@ mod tests {
     fn test_encode_range() {
         assert_eq!(encode_range("Sheet1!A1:D10"), "Sheet1%21A1%3AD10");
         assert_eq!(encode_range("A1"), "A1");
+        assert_eq!(
+            encode_range("'Project Plan'!A1"),
+            "%27Project%20Plan%27%21A1"
+        );
     }
 
     #[test]
     fn test_parse_csv_line_simple() {
-        assert_eq!(parse_csv_line("a,b,c"), vec!["a", "b", "c"]);
+        assert_eq!(parse_csv("a,b,c"), vec![vec!["a", "b", "c"]]);
     }
 
     #[test]
     fn test_parse_csv_line_quoted() {
         assert_eq!(
-            parse_csv_line(r#""hello, world",b"#),
-            vec!["hello, world", "b"]
+            parse_csv(r#""hello, world",b"#),
+            vec![vec!["hello, world", "b"]]
         );
     }
 
     #[test]
     fn test_parse_csv_line_escaped_quotes() {
-        assert_eq!(parse_csv_line(r#""say ""hi""",b"#), vec!["say \"hi\"", "b"]);
+        assert_eq!(
+            parse_csv(r#""say ""hi""",b"#),
+            vec![vec!["say \"hi\"", "b"]]
+        );
     }
 
     #[test]
     fn test_parse_csv_line_empty_fields() {
-        assert_eq!(parse_csv_line("a,,c"), vec!["a", "", "c"]);
+        assert_eq!(parse_csv("a,,c"), vec![vec!["a", "", "c"]]);
+    }
+
+    #[test]
+    fn test_parse_csv_multiline_quoted_field() {
+        assert_eq!(
+            parse_csv("name,notes\nAlice,\"line 1\nline 2\"\n"),
+            vec![
+                vec!["name".to_string(), "notes".to_string()],
+                vec!["Alice".to_string(), "line 1\nline 2".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_csv_crlf() {
+        assert_eq!(
+            parse_csv("a,b\r\nc,d\r\n"),
+            vec![
+                vec!["a".to_string(), "b".to_string()],
+                vec!["c".to_string(), "d".to_string()],
+            ]
+        );
     }
 
     #[test]
@@ -311,6 +523,18 @@ mod tests {
         let rows = vec![vec!["hello, world".to_string()]];
         let csv = format_csv(&rows);
         assert_eq!(csv, "\"hello, world\"");
+    }
+
+    #[test]
+    fn test_tab_range_quotes_names_with_spaces() {
+        assert_eq!(tab_range("Sheet1"), "Sheet1");
+        assert_eq!(tab_range("Project Plan"), "'Project Plan'");
+        assert_eq!(tab_start_range("Project Plan"), "'Project Plan'!A1");
+    }
+
+    #[test]
+    fn test_tab_range_escapes_single_quotes() {
+        assert_eq!(tab_range("Bob's Plan"), "'Bob''s Plan'");
     }
 }
 
