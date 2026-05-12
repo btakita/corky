@@ -184,17 +184,14 @@ pub fn parse_callback(query: &str) -> Result<(String, String)> {
     let mut state = None;
     let mut error = None;
 
-    for pair in query.split('&') {
-        let mut parts = pair.splitn(2, '=');
-        let key = parts.next().unwrap_or("");
-        let val = parts.next().unwrap_or("");
-        match key {
-            "code" => code = Some(val.to_string()),
-            "state" => state = Some(val.to_string()),
-            "error" => error = Some(val.to_string()),
+    for (key, val) in form_urlencoded::parse(query.as_bytes()) {
+        match key.as_ref() {
+            "code" => code = Some(val.into_owned()),
+            "state" => state = Some(val.into_owned()),
+            "error" => error = Some(val.into_owned()),
             "error_description" => {
                 if error.is_some() {
-                    error = Some(format!("{}: {}", error.unwrap(), val.replace('+', " ")));
+                    error = Some(format!("{}: {}", error.unwrap(), val));
                 }
             }
             _ => {}

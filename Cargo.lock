@@ -547,6 +547,7 @@ dependencies = [
  "clap",
  "directories",
  "filetime",
+ "form_urlencoded",
  "glob",
  "hound",
  "htmd",

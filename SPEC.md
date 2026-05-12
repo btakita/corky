@@ -1421,10 +1421,11 @@ Authorization code flow (LinkedIn):
 3. Emit a best-effort desktop notification for the interactive OAuth step
 4. Open browser (`open` crate)
 5. Wait for callback (120s timeout)
-6. Verify state parameter (CSRF protection)
-7. Exchange code for token via POST
-8. Fetch user URN via `/v2/userinfo`
-9. Store token in tokens.json
+6. Parse callback query parameters with `application/x-www-form-urlencoded` decoding, including percent escapes and `+` spaces
+7. Verify state parameter (CSRF protection)
+8. Exchange code for token via POST
+9. Fetch user URN via `/v2/userinfo`
+10. Store token in tokens.json
 
 `CORKY_OAUTH_CALLBACK_PORT` pins the loopback port for a single session. Google-backed flows default to the fixed `127.0.0.1:8484` redirect and only use an arbitrary loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Fixed-redirect providers such as LinkedIn require either a free registered port or an explicit session override.
 
@@ -1499,10 +1500,10 @@ corky linkedin comment <file> <body>             # Comment on a published post
 | T9 | Malformed tokens.json | Error with parse details |
 | **Auth Flow** | | |
 | A1 | Correct auth URL generation | Contains client_id, redirect_uri, scopes, state |
-| A2 | Valid callback parse | Extracts code + state |
+| A2 | Valid callback parse | Extracts URL-decoded code + state |
 | A3 | Callback missing code | Error message |
 | A4 | State mismatch (CSRF) | Error message |
-| A5 | Callback with error param | Error: user denied |
+| A5 | Callback with error param | Error: user denied with URL-decoded description |
 | **Publish Flow** | | |
 | PB1 | Draft not in "ready" status | Error: wrong status |
 | PB2 | Already published | Error: already published |
