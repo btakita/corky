@@ -16,32 +16,19 @@ Manage email, calendar, documents, and communications from the command line.
 ## Commands
 
 ### Email
-- `corky unanswered` — threads awaiting reply
-- `corky draft new --to EMAIL "Subject"` — scaffold a new draft
-- `corky draft validate` — validate draft format
-- `corky sync` — sync threads from IMAP
-- `corky contact add --from SLUG` — create contact from conversation
-- `corky contact info NAME` — show contact details
+Use `corky unanswered` for threads awaiting reply, `corky sync` for IMAP sync, `corky draft new --to EMAIL "Subject"` and `corky draft validate` for draft work, and `corky contact add --from SLUG` / `corky contact info NAME` for contact context.
 
 ### Calendar
-- `corky cal auth` — Google Calendar OAuth2
-- `corky cal list [--limit N] [--query Q]` — upcoming events
-- `corky cal create <SUMMARY> <START> <END> [--description] [--location]` — create event
-- `corky cal check <START> <END>` — check availability
-- `corky cal delete <QUERY> [--all] [--dry-run]` — delete events
+Use `corky cal auth` for OAuth, `corky cal list [--limit N] [--query Q]` for upcoming events, `corky cal create <SUMMARY> <START> <END>` for event creation, `corky cal check <START> <END>` for availability, and `corky cal delete <QUERY> [--all] [--dry-run]` for deletion.
 
 ### Documents
-- `corky doc build <FILE> [--format pdf|docx] [--template NAME]` — convert markdown to PDF/DOCX
+Use `corky doc build <FILE> [--format pdf|docx] [--template NAME]` to convert markdown, `corky sheets pull <SHEET> <TAB> <CSV>` to sync a Google Sheet tab to CSV, and `corky sheets push <SHEET> <TAB> <CSV>` to clear/create a tab and sync CSV into it.
 
 ### Filters
-- `corky filter check` — compare local vs Gmail filters (read-only)
-- `corky filter push` — push local filters to Gmail (destructive, manual only)
-- `corky filter auth` — Gmail OAuth2 for filter management
+Use `corky filter check` for read-only drift detection, `corky filter push` for manual Gmail filter updates, and `corky filter auth` for filter OAuth.
 
 ### System
-- `corky watch` — IMAP polling + filter drift detection daemon
-- `corky skill install` — install Claude Code skills
-- `corky audit-docs` — audit instruction files
+Use `corky watch` for polling/filter drift, `corky skill install` for Claude Code skills, and `corky audit-docs` for instruction audits.
 
 ## Related Skills
 

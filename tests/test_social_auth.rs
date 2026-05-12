@@ -18,6 +18,14 @@ fn a2_valid_callback_parse() {
     assert_eq!(state, "STATE_ABC");
 }
 
+#[test]
+fn callback_parse_decodes_form_encoded_values() {
+    let query = "code=4%2F0AZEOvh%2Babc%3D&state=STATE%2BABC%2F123";
+    let (code, state) = auth::parse_callback(query).unwrap();
+    assert_eq!(code, "4/0AZEOvh+abc=");
+    assert_eq!(state, "STATE+ABC/123");
+}
+
 // A3: Callback missing code
 #[test]
 fn a3_callback_missing_code() {
@@ -52,6 +60,17 @@ fn a5_callback_with_error() {
         err.contains("user_cancelled_authorize") || err.contains("denied"),
         "Expected user denied error, got: {}",
         err
+    );
+}
+
+#[test]
+fn callback_error_description_is_url_decoded() {
+    let query = "error=invalid_request&error_description=Bad%2Bstate+value";
+    let result = auth::parse_callback(query);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "OAuth error: invalid_request: Bad+state value"
     );
 }
 

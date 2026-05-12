@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -70,6 +70,21 @@ pub enum Commands {
 
     /// Gmail OAuth setup
     SyncAuth,
+
+    /// Manually authenticate a Google OAuth token
+    Auth {
+        /// Token storage account/key. Defaults to "default"; for --scope send this should match the .corky.toml account name.
+        #[arg(long)]
+        account: Option<String>,
+
+        /// Google account email to pre-select in the browser and use as the token key for non-send scopes
+        #[arg(long)]
+        email: Option<String>,
+
+        /// Google OAuth scope to authorize
+        #[arg(long, value_enum, default_value = "sync")]
+        scope: GoogleAuthScope,
+    },
 
     /// List IMAP folders for an account
     ListFolders {
@@ -303,6 +318,28 @@ pub enum Commands {
 
     /// Check for updates and upgrade to the latest version.
     Upgrade,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+pub enum GoogleAuthScope {
+    /// Gmail filter management: gmail.settings.basic + gmail.labels
+    Filter,
+    /// Gmail API read-only sync
+    Sync,
+    /// Gmail API draft/send compose scope
+    Send,
+    /// Google Drive file upload scope
+    Drive,
+    /// Google Docs read/write scope
+    Docs,
+    /// Google Sheets read-only scope
+    SheetsReadonly,
+    /// Google Sheets read/write scope
+    Sheets,
+    /// Google Chat message send scope
+    Chat,
+    /// Google Tasks scope
+    Tasks,
 }
 
 #[derive(Subcommand)]
@@ -1061,6 +1098,36 @@ pub enum SheetsCommands {
         range: String,
 
         /// Path to the CSV file to write
+        file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Pull a Google Sheet tab into a local CSV file
+    Pull {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Sheet tab name
+        tab: String,
+
+        /// Local CSV file to write
+        file: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Push a local CSV file into a Google Sheet tab
+    Push {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Sheet tab name. Created when missing.
+        tab: String,
+
+        /// Local CSV file to sync
         file: PathBuf,
 
         /// Google account email (login hint for OAuth)

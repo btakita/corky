@@ -1,6 +1,6 @@
 # Watch Daemon
 
-Run as a daemon to poll IMAP, sync threads, and push to shared repos automatically.
+Run as a daemon to poll IMAP and Gmail API accounts, sync threads, and push to shared repos automatically.
 
 ## Usage
 
@@ -27,7 +27,8 @@ CLI `--interval` overrides config.
 ## Notifications
 
 - macOS: `osascript -e 'display notification ...'`
-- Linux: `notify-send`
+- Linux: `notify-desktop`
+- Windows: `powershell` NotifyIcon balloon notification
 - Silently degrades if the notification tool is not installed.
 
 ## Running as a system service

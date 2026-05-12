@@ -24,7 +24,6 @@ name = "agent-kit"
 version = "0.4.0"
 dependencies = [
  "anyhow",
- "glob",
  "once_cell",
  "regex",
 ]
@@ -538,7 +537,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "corky"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "agent-kit",
  "anyhow",
@@ -548,6 +547,7 @@ dependencies = [
  "clap",
  "directories",
  "filetime",
+ "form_urlencoded",
  "glob",
  "hound",
  "htmd",
@@ -4097,3 +4097,7 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "tmux-router"
+version = "0.3.10"

@@ -387,7 +387,7 @@ Hidden backward-compatible alias for `contact add`. The `--label` and `--account
 corky watch [--interval N]
 ```
 
-IMAP polling daemon. Syncs all accounts, then pushes to shared mailboxes.
+Mail polling daemon. Syncs all IMAP and Gmail API accounts, then pushes to shared mailboxes.
 Desktop notifications on new messages if `notify = true` in `.corky.toml`.
 Clean shutdown on SIGTERM/SIGINT.
 
@@ -725,7 +725,7 @@ while not shutdown:
     for each account:
         sync_account(full=false)
     save_state()
-    count_new = compare uid snapshots before/after
+    count_new = compare IMAP last_uid and Gmail API last_history_id snapshots before/after
     if count_new > 0:
         sync_mailboxes()
         notify(count_new)
@@ -739,7 +739,8 @@ SIGTERM, SIGINT → clean shutdown (finish current poll, then exit).
 ### 9.3 Notifications
 
 - macOS: `osascript -e 'display notification ...'`
-- Linux: `notify-send`
+- Linux: `notify-desktop`
+- Windows: `powershell` NotifyIcon balloon notification
 - Silently degrades if tool not installed.
 
 ### 9.4 Config
@@ -789,4 +790,3 @@ When a draft lives inside a `mailboxes/` subtree, the child mailbox may not have
 4. If no credentials found at any level, bail with error
 
 This enables child mailboxes to draft replies that the parent's account sends.
-

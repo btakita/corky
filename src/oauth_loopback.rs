@@ -8,11 +8,12 @@ const CALLBACK_HOST: &str = "127.0.0.1";
 const CALLBACK_PATH: &str = "/callback";
 const DEFAULT_CALLBACK_PORT: u16 = 8484;
 pub(crate) const CALLBACK_PORT_ENV: &str = "CORKY_OAUTH_CALLBACK_PORT";
+pub(crate) const CALLBACK_ALLOW_EPHEMERAL_PORT_ENV: &str = "CORKY_OAUTH_ALLOW_EPHEMERAL_PORT";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PortMode {
     FixedOnly,
-    EphemeralFallback,
+    OptInEphemeralFallback,
 }
 
 pub(crate) struct LoopbackServer {
@@ -105,12 +106,29 @@ fn bind_with_settings(
     default_port: u16,
     port_mode: PortMode,
 ) -> Result<LoopbackServer> {
+    let ephemeral_fallback_opt_in = ephemeral_fallback_opt_in_from_env()?;
+    bind_with_settings_for_test(
+        provider_name,
+        requested_port,
+        default_port,
+        port_mode,
+        ephemeral_fallback_opt_in,
+    )
+}
+
+fn bind_with_settings_for_test(
+    provider_name: &str,
+    requested_port: Option<u16>,
+    default_port: u16,
+    port_mode: PortMode,
+    ephemeral_fallback_opt_in: bool,
+) -> Result<LoopbackServer> {
     let desired_port = requested_port.unwrap_or(default_port);
     match bind_server(desired_port) {
         Ok(server) => Ok(server),
         Err(err)
             if requested_port.is_none()
-                && matches!(port_mode, PortMode::EphemeralFallback)
+                && should_fallback_to_ephemeral(port_mode, ephemeral_fallback_opt_in)
                 && err.kind() == ErrorKind::AddrInUse =>
         {
             bind_server(0).with_context(|| {
@@ -124,9 +142,52 @@ fn bind_with_settings(
             provider_name,
             desired_port,
             requested_port.is_some(),
+            port_mode,
             err,
         )),
     }
+}
+
+fn should_fallback_to_ephemeral(port_mode: PortMode, ephemeral_fallback_opt_in: bool) -> bool {
+    match port_mode {
+        PortMode::FixedOnly => false,
+        PortMode::OptInEphemeralFallback => ephemeral_fallback_opt_in,
+    }
+}
+
+fn ephemeral_fallback_opt_in_from_env() -> Result<bool> {
+    match env::var(CALLBACK_ALLOW_EPHEMERAL_PORT_ENV) {
+        Ok(raw) => parse_bool_env(CALLBACK_ALLOW_EPHEMERAL_PORT_ENV, &raw),
+        Err(env::VarError::NotPresent) => Ok(false),
+        Err(env::VarError::NotUnicode(_)) => {
+            bail!(
+                "{} must be valid UTF-8 if set",
+                CALLBACK_ALLOW_EPHEMERAL_PORT_ENV
+            )
+        }
+    }
+}
+
+fn parse_bool_env(var_name: &str, raw: &str) -> Result<bool> {
+    let trimmed = raw.trim();
+    if trimmed.eq_ignore_ascii_case("1")
+        || trimmed.eq_ignore_ascii_case("true")
+        || trimmed.eq_ignore_ascii_case("yes")
+        || trimmed.eq_ignore_ascii_case("on")
+    {
+        return Ok(true);
+    }
+    if trimmed.eq_ignore_ascii_case("0")
+        || trimmed.eq_ignore_ascii_case("false")
+        || trimmed.eq_ignore_ascii_case("no")
+        || trimmed.eq_ignore_ascii_case("off")
+    {
+        return Ok(false);
+    }
+    bail!(
+        "{} must be one of: 1, true, yes, on, 0, false, no, off",
+        var_name
+    )
 }
 
 fn bind_server(port: u16) -> std::io::Result<LoopbackServer> {
@@ -145,6 +206,7 @@ fn format_bind_error(
     provider_name: &str,
     port: u16,
     from_env: bool,
+    port_mode: PortMode,
     err: std::io::Error,
 ) -> anyhow::Error {
     if from_env {
@@ -155,6 +217,16 @@ fn format_bind_error(
             port,
             err,
             CALLBACK_PORT_ENV
+        )
+    } else if matches!(port_mode, PortMode::OptInEphemeralFallback) {
+        anyhow!(
+            "Failed to start the {} OAuth callback listener on {}:{}: {}.\nFree that port, rerun with {}=<registered-port> for this session, or set {}=1 only if your Google OAuth client accepts arbitrary loopback redirect ports.",
+            provider_name,
+            CALLBACK_HOST,
+            port,
+            err,
+            CALLBACK_PORT_ENV,
+            CALLBACK_ALLOW_EPHEMERAL_PORT_ENV
         )
     } else {
         anyhow!(
@@ -188,8 +260,14 @@ mod tests {
     fn bind_falls_back_to_ephemeral_port_when_default_is_busy() {
         let busy_port = reserve_free_port();
         let hold = TcpListener::bind((CALLBACK_HOST, busy_port)).unwrap();
-        let server =
-            bind_with_settings("Google", None, busy_port, PortMode::EphemeralFallback).unwrap();
+        let server = bind_with_settings_for_test(
+            "Google",
+            None,
+            busy_port,
+            PortMode::OptInEphemeralFallback,
+            true,
+        )
+        .unwrap();
         assert_ne!(server.port, busy_port);
         assert!(
             server
@@ -203,12 +281,63 @@ mod tests {
     fn bind_fixed_mode_returns_actionable_busy_port_error() {
         let busy_port = reserve_free_port();
         let hold = TcpListener::bind((CALLBACK_HOST, busy_port)).unwrap();
-        let result = bind_with_settings("LinkedIn", None, busy_port, PortMode::FixedOnly);
+        let result =
+            bind_with_settings_for_test("LinkedIn", None, busy_port, PortMode::FixedOnly, false);
         assert!(result.is_err());
         let err = result.err().unwrap().to_string();
         assert!(err.contains("LinkedIn"));
         assert!(err.contains(CALLBACK_PORT_ENV));
         drop(hold);
+    }
+
+    #[test]
+    fn bind_google_mode_requires_opt_in_before_ephemeral_fallback() {
+        let busy_port = reserve_free_port();
+        let hold = TcpListener::bind((CALLBACK_HOST, busy_port)).unwrap();
+        let result = bind_with_settings_for_test(
+            "Gmail",
+            None,
+            busy_port,
+            PortMode::OptInEphemeralFallback,
+            false,
+        );
+        assert!(result.is_err());
+        let err = result.err().unwrap().to_string();
+        assert!(err.contains(CALLBACK_PORT_ENV));
+        assert!(err.contains(CALLBACK_ALLOW_EPHEMERAL_PORT_ENV));
+        drop(hold);
+    }
+
+    #[test]
+    fn bind_google_mode_falls_back_when_opted_in() {
+        let busy_port = reserve_free_port();
+        let hold = TcpListener::bind((CALLBACK_HOST, busy_port)).unwrap();
+        let server = bind_with_settings_for_test(
+            "Gmail",
+            None,
+            busy_port,
+            PortMode::OptInEphemeralFallback,
+            true,
+        )
+        .unwrap();
+        assert_ne!(server.port, busy_port);
+        drop(hold);
+    }
+
+    #[test]
+    fn parse_bool_env_accepts_common_true_false_values() {
+        assert!(parse_bool_env("TEST_BOOL", "1").unwrap());
+        assert!(parse_bool_env("TEST_BOOL", "true").unwrap());
+        assert!(!parse_bool_env("TEST_BOOL", "0").unwrap());
+        assert!(!parse_bool_env("TEST_BOOL", "off").unwrap());
+    }
+
+    #[test]
+    fn parse_bool_env_rejects_unknown_value() {
+        let err = parse_bool_env("TEST_BOOL", "maybe")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("TEST_BOOL"));
     }
 
     fn reserve_free_port() -> u16 {

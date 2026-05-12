@@ -143,7 +143,7 @@ pub fn run_auth(account: Option<&str>) -> Result<()> {
 fn run_auth_flow() -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
-    let callback = LoopbackServer::bind("Google Calendar", PortMode::EphemeralFallback)?;
+    let callback = LoopbackServer::bind("Google Calendar", PortMode::OptInEphemeralFallback)?;
     let redirect_uri = callback.redirect_uri().to_string();
 
     let url = format!(

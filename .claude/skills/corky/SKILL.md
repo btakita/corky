@@ -16,43 +16,19 @@ Manage email, calendar, documents, and communications from the command line.
 ## Commands
 
 ### Email
-Use these for inbox and draft work:
-```text
-corky unanswered
-corky draft new --to EMAIL "Subject"
-corky draft validate
-corky sync
-corky contact add --from SLUG
-corky contact info NAME
-```
+Use `corky unanswered` for threads awaiting reply, `corky sync` for IMAP sync, `corky draft new --to EMAIL "Subject"` and `corky draft validate` for draft work, and `corky contact add --from SLUG` / `corky contact info NAME` for contact context.
 
 ### Calendar
-```text
-corky cal auth
-corky cal list [--limit N] [--query Q]
-corky cal create <SUMMARY> <START> <END> [--description] [--location]
-corky cal check <START> <END>
-corky cal delete <QUERY> [--all] [--dry-run]
-```
+Use `corky cal auth` for OAuth, `corky cal list [--limit N] [--query Q]` for upcoming events, `corky cal create <SUMMARY> <START> <END>` for event creation, `corky cal check <START> <END>` for availability, and `corky cal delete <QUERY> [--all] [--dry-run]` for deletion.
 
 ### Documents
-```text
-corky doc build <FILE> [--format pdf|docx] [--template NAME]
-```
+Use `corky doc build <FILE> [--format pdf|docx] [--template NAME]` to convert markdown, `corky sheets pull <SHEET> <TAB> <CSV>` to sync a Google Sheet tab to CSV, and `corky sheets push <SHEET> <TAB> <CSV>` to clear/create a tab and sync CSV into it.
 
 ### Filters
-```text
-corky filter check
-corky filter push
-corky filter auth
-```
+Use `corky filter check` for read-only drift detection, `corky filter push` for manual Gmail filter updates, and `corky filter auth` for filter OAuth.
 
 ### System
-```text
-corky watch
-corky skill install
-corky audit-docs
-```
+Use `corky watch` for polling/filter drift, `corky skill install` for Claude Code skills, and `corky audit-docs` for instruction audits.
 
 ## Related Skills
 

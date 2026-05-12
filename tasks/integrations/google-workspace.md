@@ -9,6 +9,7 @@ Already implemented:
 - `corky doc write <doc> <file>` — Google Docs write (clear + insert)
 - `corky doc upload <file>` — Google Drive upload (multipart)
 - `corky doc sheet <sheet>` — Google Sheets read (→ markdown table or CSV)
+- `corky sheets pull <sheet> <tab> <csv>` / `corky sheets push <sheet> <tab> <csv>` — tab-level CSV sync
 - `corky cal auth/create/list/delete/check` — Google Calendar full CRUD
 - Gmail API sync (`sync/gmail_api_sync.rs`)
 - Gmail send scope + draft creation (`GMAIL_SEND_SCOPE`)

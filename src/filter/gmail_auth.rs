@@ -33,7 +33,7 @@ pub const DEFAULT_GCP_CLIENT_SECRET: &str = match option_env!("CORKY_DEFAULT_GCP
 /// OAuth2 scopes for Gmail filter management.
 /// - gmail.settings.basic: read/write filter settings
 /// - gmail.labels: list labels (needed for name→ID resolution in push)
-const GMAIL_FILTER_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels";
+pub const GMAIL_FILTER_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.labels";
 
 /// OAuth2 scopes for Gmail API sync (read-only message access).
 pub const GMAIL_SYNC_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
@@ -67,12 +67,14 @@ const GMAIL_SCOPE: &str = GMAIL_FILTER_SCOPE;
 ///
 /// A read-write scope (e.g. `spreadsheets`) subsumes its `.readonly` variant.
 fn scope_covered(token_scopes: &[String], requested: &str) -> bool {
+    let token_scopes: Vec<&str> = token_scopes
+        .iter()
+        .flat_map(|scope| scope.split_whitespace())
+        .collect();
     for req in requested.split_whitespace() {
-        let covered = token_scopes.iter().any(|s| s == req)
+        let covered = token_scopes.contains(&req)
             || (req.ends_with(".readonly")
-                && token_scopes
-                    .iter()
-                    .any(|s| s == req.trim_end_matches(".readonly")));
+                && token_scopes.contains(&req.trim_end_matches(".readonly")));
         if !covered {
             return false;
         }
@@ -187,6 +189,14 @@ fn token_key(account: Option<&str>) -> String {
     }
 }
 
+fn token_key_for_user(account: Option<&str>, login_hint: Option<&str>) -> String {
+    if let Some(hint) = login_hint {
+        format!("gmail:{}", hint)
+    } else {
+        token_key(account)
+    }
+}
+
 /// Token store key for a Gmail account with a scope suffix.
 /// Used to avoid collisions between tokens with different scopes (e.g., sync vs send).
 fn scoped_token_key(account: Option<&str>, scope_suffix: &str) -> String {
@@ -214,11 +224,7 @@ pub fn get_access_token_for_user(
     scope: &str,
     login_hint: Option<&str>,
 ) -> Result<String> {
-    let key = if let Some(hint) = login_hint {
-        format!("gmail:{}", hint)
-    } else {
-        token_key(account)
-    };
+    let key = token_key_for_user(account, login_hint);
     let mut store = TokenStore::load()?;
 
     // Check for existing valid token with sufficient scope
@@ -236,7 +242,7 @@ pub fn get_access_token_for_user(
         && scope_covered(&token.scopes, scope)
     {
         println!("Access token expired, refreshing...");
-        match refresh_access_token(refresh) {
+        match refresh_access_token(refresh, &token.scopes) {
             Ok(new_token) => {
                 let access = new_token.access_token.clone();
                 store.upsert(key, new_token);
@@ -275,7 +281,7 @@ pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) ->
         && let Some(ref refresh) = token.refresh_token
     {
         println!("Send token expired, refreshing...");
-        match refresh_access_token(refresh) {
+        match refresh_access_token(refresh, &token.scopes) {
             Ok(new_token) => {
                 let access = new_token.access_token.clone();
                 store.upsert(key, new_token);
@@ -318,7 +324,7 @@ pub fn get_access_token_noninteractive(account: Option<&str>) -> Result<String> 
 
     if let Some(token) = store.tokens.get(&key).cloned()
         && let Some(ref refresh) = token.refresh_token
-        && let Ok(new_token) = refresh_access_token(refresh)
+        && let Ok(new_token) = refresh_access_token(refresh, &token.scopes)
     {
         let access = new_token.access_token.clone();
         store.upsert(key, new_token);
@@ -331,8 +337,21 @@ pub fn get_access_token_noninteractive(account: Option<&str>) -> Result<String> 
 
 /// Run explicit Gmail OAuth2 authentication (stores token).
 pub fn run_auth(account: Option<&str>) -> Result<()> {
-    let key = token_key(account);
-    let token = run_auth_flow()?;
+    let login_hint = account.filter(|value| value.contains('@'));
+    run_auth_with_scope(account, GMAIL_SCOPE, login_hint)
+}
+
+/// Run explicit Gmail OAuth2 authentication for a requested scope.
+///
+/// When `login_hint` is provided, the token is stored under `gmail:<email>`
+/// so manual auth matches the automatic Gmail API sync/docs/sheets lookup path.
+pub fn run_auth_with_scope(
+    account: Option<&str>,
+    scope: &str,
+    login_hint: Option<&str>,
+) -> Result<()> {
+    let key = token_key_for_user(account, login_hint);
+    let token = run_auth_flow_with_scope(scope, login_hint)?;
     let mut store = TokenStore::load()?;
     store.upsert(key.clone(), token);
     store.save()?;
@@ -340,16 +359,26 @@ pub fn run_auth(account: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Run the full Gmail OAuth2 authorization code flow.
-fn run_auth_flow() -> Result<StoredToken> {
-    run_auth_flow_with_scope(GMAIL_SCOPE, None)
+/// Run explicit Gmail compose authentication.
+///
+/// Compose tokens stay under `gmail:<account>:send` because draft push/send
+/// resolves by configured account name while using `login_hint` only for the
+/// browser account picker.
+pub fn run_send_auth(account: Option<&str>, login_hint: Option<&str>) -> Result<()> {
+    let key = scoped_token_key(account, "send");
+    let token = run_auth_flow_with_scope(GMAIL_SEND_SCOPE, login_hint)?;
+    let mut store = TokenStore::load()?;
+    store.upsert(key.clone(), token);
+    store.save()?;
+    println!("Gmail send token stored as '{}'", key);
+    Ok(())
 }
 
 /// Run the full Gmail OAuth2 authorization code flow with specific scopes.
 fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
-    let callback = LoopbackServer::bind("Gmail", PortMode::EphemeralFallback)?;
+    let callback = LoopbackServer::bind("Gmail", PortMode::OptInEphemeralFallback)?;
     let redirect_uri = callback.redirect_uri().to_string();
 
     let mut url = format!(
@@ -432,7 +461,7 @@ fn exchange_code(
 }
 
 /// Refresh an expired access token using the refresh token.
-fn refresh_access_token(refresh_token: &str) -> Result<StoredToken> {
+fn refresh_access_token(refresh_token: &str, existing_scopes: &[String]) -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let body_str = format!(
         "grant_type=refresh_token&refresh_token={}&client_id={}&client_secret={}",
@@ -454,7 +483,16 @@ fn refresh_access_token(refresh_token: &str) -> Result<StoredToken> {
     };
 
     let body: serde_json::Value = resp.into_json()?;
-    let mut token = parse_token_response(&body, GMAIL_SCOPE)?;
+    parse_refresh_token_response(&body, refresh_token, existing_scopes)
+}
+
+fn parse_refresh_token_response(
+    body: &serde_json::Value,
+    refresh_token: &str,
+    existing_scopes: &[String],
+) -> Result<StoredToken> {
+    let fallback_scope = existing_scopes.join(" ");
+    let mut token = parse_token_response(body, &fallback_scope)?;
     // Refresh responses don't include a new refresh_token — keep the original
     token.refresh_token = Some(refresh_token.to_string());
     Ok(token)
@@ -468,12 +506,17 @@ fn parse_token_response(body: &serde_json::Value, scope: &str) -> Result<StoredT
         .to_string();
     let expires_in = body["expires_in"].as_i64().unwrap_or(3600);
     let refresh_token = body["refresh_token"].as_str().map(|s| s.to_string());
+    let scope_str = body["scope"].as_str().unwrap_or(scope);
+    let scopes = scope_str
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
 
     Ok(StoredToken {
         access_token,
         refresh_token,
         expires_at: Utc::now() + Duration::seconds(expires_in),
-        scopes: vec![scope.to_string()],
+        scopes,
         platform: "gmail".to_string(),
     })
 }
@@ -504,6 +547,14 @@ mod tests {
     }
 
     #[test]
+    fn test_token_key_for_user_prefers_login_hint() {
+        assert_eq!(
+            token_key_for_user(Some("work"), Some("person@example.com")),
+            "gmail:person@example.com"
+        );
+    }
+
+    #[test]
     fn test_parse_token_response() {
         let body = serde_json::json!({
             "access_token": "ya29.test",
@@ -515,8 +566,29 @@ mod tests {
         assert_eq!(token.access_token, "ya29.test");
         assert_eq!(token.refresh_token.as_deref(), Some("1//test"));
         assert_eq!(token.platform, "gmail");
-        assert!(token.scopes[0].contains("gmail.settings.basic"));
+        assert!(
+            token
+                .scopes
+                .contains(&"https://www.googleapis.com/auth/gmail.settings.basic".to_string())
+        );
+        assert!(
+            token
+                .scopes
+                .contains(&"https://www.googleapis.com/auth/gmail.labels".to_string())
+        );
         assert!(token.is_valid());
+    }
+
+    #[test]
+    fn test_parse_token_response_uses_returned_scope() {
+        let body = serde_json::json!({
+            "access_token": "ya29.test",
+            "expires_in": 3600,
+            "scope": GMAIL_SYNC_SCOPE,
+            "token_type": "Bearer"
+        });
+        let token = parse_token_response(&body, GMAIL_FILTER_SCOPE).unwrap();
+        assert_eq!(token.scopes, vec![GMAIL_SYNC_SCOPE.to_string()]);
     }
 
     #[test]
@@ -563,6 +635,26 @@ mod tests {
             &scopes,
             "https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.compose"
         ));
+    }
+
+    #[test]
+    fn test_scope_covered_token_scope_with_spaces() {
+        let scopes = vec![GMAIL_FILTER_SCOPE.to_string()];
+        assert!(scope_covered(&scopes, GMAIL_FILTER_SCOPE));
+    }
+
+    #[test]
+    fn test_parse_refresh_token_response_preserves_existing_scopes() {
+        let body = serde_json::json!({
+            "access_token": "ya29.refreshed",
+            "expires_in": 3600,
+            "token_type": "Bearer"
+        });
+        let existing_scopes = vec![GMAIL_SYNC_SCOPE.to_string()];
+        let token = parse_refresh_token_response(&body, "refresh-token", &existing_scopes).unwrap();
+        assert_eq!(token.access_token, "ya29.refreshed");
+        assert_eq!(token.refresh_token.as_deref(), Some("refresh-token"));
+        assert_eq!(token.scopes, existing_scopes);
     }
 
     #[test]

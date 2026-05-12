@@ -1,6 +1,6 @@
 [package]
 name = "corky"
-version = "0.28.0"
+version = "0.28.1"
 edition = "2024"
 description = "Sync email threads from IMAP to Markdown, draft replies, manage collaborators"
 license = "Apache-2.0"
@@ -50,6 +50,7 @@ ort = { version = "=2.0.0-rc.10", optional = true, features = ["ndarray"] }
 quick-xml = { version = "0.39.2", features = ["serialize"] }
 pulldown-cmark = "0.12"
 base64 = "0.22"
+form_urlencoded = "1"
 htmd = "0.5"
 jsonwebtoken = "9"
 

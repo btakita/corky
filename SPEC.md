@@ -437,6 +437,16 @@ Gmail OAuth setup. Requires `credentials.json` from Google Cloud Console.
 Runs a local server on port 3000 for the OAuth callback.
 Outputs the refresh token for `.env`.
 
+### 5.3.1 auth
+
+```
+corky auth [--email EMAIL] [--account NAME] [--scope filter|sync|send|drive|docs|sheets-readonly|sheets|chat|tasks]
+```
+
+Manual Google OAuth pre-authentication for integrations that otherwise trigger browser auth on first use. `--email` is passed as the OAuth `login_hint` so the consent screen opens on the intended Google account. For non-send Gmail-backed scopes, a provided email also becomes the token-store key (`gmail:<email>`), matching the lookup used by Gmail API sync and Docs/Sheets/Chat/Tasks commands. For `--scope send`, Corky stores the compose token under `gmail:<account>:send`; use the `.corky.toml` account name for `--account` and the Google address for `--email`.
+
+Default scope is `sync` (`gmail.readonly`). Google access tokens remain short-lived according to Google's token endpoint, but Corky stores refresh tokens and refreshes access tokens automatically while the authorization grant remains valid. Refresh persistence must preserve the token's original scopes so a refreshed sync/docs/sheets token is not downgraded to filter scope metadata.
+
 ### 5.4 list-folders
 
 ```
@@ -522,7 +532,7 @@ Hidden backward-compatible alias for `contact add`. The `--label` and `--account
 corky watch [--interval N]
 ```
 
-IMAP polling daemon. Syncs all accounts, then pushes to shared mailboxes.
+Mail polling daemon. Syncs all IMAP and Gmail API accounts, then pushes to shared mailboxes.
 Desktop notifications on new messages if `notify = true` in `.corky.toml`.
 Clean shutdown on SIGTERM/SIGINT.
 
@@ -778,7 +788,7 @@ Push local contacts to external platforms. Currently supports Google Contacts vi
 - `**LinkedIn:**` → URL
 
 **OAuth:** Reuses Gmail client credentials (`[gmail]` in `.corky.toml`), requests `https://www.googleapis.com/auth/contacts` scope. Tokens stored as `people:default`.
-Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so interactive auth is harder to miss.
+Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon) so interactive auth is harder to miss.
 
 ### 5.26 contact delete
 
@@ -794,8 +804,8 @@ Deletes one or more contacts from Google Contacts by resource name. Accepts full
 corky filter auth [--account NAME]
 ```
 
-Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). Default callback is `127.0.0.1:8484`; Google desktop-app flows fall back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
-Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`) so auto-triggered re-auth is visible.
+Gmail OAuth2 authorization for filter management. Binds the local callback listener before opening the browser, then stores the resulting token in the shared token store (keyed as `gmail:{account}` or `gmail:default`). If `--account` is an email address, Corky also passes it as the OAuth `login_hint` so manual auth can target that address directly. Default callback is `127.0.0.1:8484`; Google-backed flows stay on that fixed port unless you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
+Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon) so auto-triggered re-auth is visible.
 
 Required scopes: `gmail.settings.basic` (read/write filters), `gmail.labels` (list labels for name-to-ID resolution).
 
@@ -1259,7 +1269,7 @@ while not shutdown:
     for each account:
         sync_account(full=false)
     save_state()
-    count_new = compare uid snapshots before/after
+    count_new = compare IMAP last_uid and Gmail API last_history_id snapshots before/after
     if count_new > 0:
         sync_mailboxes()
         notify(count_new)
@@ -1274,7 +1284,8 @@ SIGTERM, SIGINT → clean shutdown (finish current poll, then exit). Both IMAP a
 ### 9.3 Notifications
 
 - macOS: `osascript -e 'display notification ...'`
-- Linux: `notify-send`
+- Linux: `notify-desktop`
+- Windows: `powershell` NotifyIcon balloon notification
 - Silently degrades if tool not installed.
 
 ### 9.4 Config
@@ -1397,6 +1408,7 @@ OAuth tokens stored at `{app_config_dir}/tokens.json` keyed by platform URN.
 - File permissions: 0600 (owner read/write only)
 - Writes are serialized with `tokens.json.lock`
 - Saves use temp-file replace plus merge-on-save so concurrent OAuth flows preserve unrelated token keys
+- TokenStore tracks the load baseline and dirty/deleted keys so a stale writer saving an unrelated token cannot restore a token another process cleared
 - Tokens have a 5-minute grace window: tokens expiring within 5 minutes are treated as expired
 - Token fields: access_token, refresh_token (optional), expires_at, scopes, platform
 
@@ -1409,12 +1421,13 @@ Authorization code flow (LinkedIn):
 3. Emit a best-effort desktop notification for the interactive OAuth step
 4. Open browser (`open` crate)
 5. Wait for callback (120s timeout)
-6. Verify state parameter (CSRF protection)
-7. Exchange code for token via POST
-8. Fetch user URN via `/v2/userinfo`
-9. Store token in tokens.json
+6. Parse callback query parameters with `application/x-www-form-urlencoded` decoding, including percent escapes and `+` spaces
+7. Verify state parameter (CSRF protection)
+8. Exchange code for token via POST
+9. Fetch user URN via `/v2/userinfo`
+10. Store token in tokens.json
 
-`CORKY_OAUTH_CALLBACK_PORT` pins the loopback port for a single session. Google desktop-app flows may fall back to an available port automatically if `8484` is already in use; fixed-redirect providers such as LinkedIn require either a free registered port or an explicit session override.
+`CORKY_OAUTH_CALLBACK_PORT` pins the loopback port for a single session. Google-backed flows default to the fixed `127.0.0.1:8484` redirect and only use an arbitrary loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Fixed-redirect providers such as LinkedIn require either a free registered port or an explicit session override.
 
 Client credentials resolution order per field:
 1. Inline value in `.corky.toml` (e.g. `client_id = "..."`)
@@ -1487,10 +1500,10 @@ corky linkedin comment <file> <body>             # Comment on a published post
 | T9 | Malformed tokens.json | Error with parse details |
 | **Auth Flow** | | |
 | A1 | Correct auth URL generation | Contains client_id, redirect_uri, scopes, state |
-| A2 | Valid callback parse | Extracts code + state |
+| A2 | Valid callback parse | Extracts URL-decoded code + state |
 | A3 | Callback missing code | Error message |
 | A4 | State mismatch (CSRF) | Error message |
-| A5 | Callback with error param | Error: user denied |
+| A5 | Callback with error param | Error: user denied with URL-decoded description |
 | **Publish Flow** | | |
 | PB1 | Draft not in "ready" status | Error: wrong status |
 | PB2 | Already published | Error: already published |
@@ -1600,6 +1613,8 @@ Run `corky watch` and it handles both IMAP sync and scheduled publishing.
 | `corky doc write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
 | `corky doc sheet <SHEET> [--range R] [--format table\|csv] [-o FILE] [--account EMAIL]` | Read a Google Sheet range |
 | `corky doc sheet-write <SHEET> <RANGE> <CSV> [--account EMAIL]` | Write CSV data to a Google Sheet range |
+| `corky sheets pull <SHEET> <TAB> <CSV> [--account EMAIL]` | Sync a whole Google Sheet tab down to a local CSV |
+| `corky sheets push <SHEET> <TAB> <CSV> [--account EMAIL]` | Sync a local CSV up to a whole Google Sheet tab |
 
 The `--account EMAIL` flag selects which Google account's OAuth token to use. When omitted, the default account is used. This enables multi-account workflows where different documents belong to different Google accounts.
 
@@ -1648,6 +1663,7 @@ Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `-
 
 ```
 corky doc sheet-write <SHEET_URL_OR_ID> <RANGE> <CSV_FILE> [--account EMAIL]
+corky sheets write <SHEET_URL_OR_ID> <RANGE> <CSV_FILE> [--account EMAIL]
 ```
 
 Writes the contents of a local CSV file to a Google Sheet range.
@@ -1665,6 +1681,35 @@ Writes the contents of a local CSV file to a Google Sheet range.
 | SW1 | Empty CSV file | Prints "No data in CSV file." and returns Ok |
 | SW2 | Auth error (401) | Error: "Sheets API: unauthorized. Re-run `corky filter auth`." |
 | SW3 | Quoted commas in CSV | Field preserved correctly (parser handles RFC 4180) |
+
+### 14.2.6 Google Sheets CSV Tab Sync
+
+```
+corky sheets pull <SHEET_URL_OR_ID> <TAB> <CSV_FILE> [--account EMAIL]
+corky sheets push <SHEET_URL_OR_ID> <TAB> <CSV_FILE> [--account EMAIL]
+```
+
+`pull` reads every value from the named tab and writes the result as CSV. `push` treats the named tab as a whole-file sync target: it creates the tab when missing, clears the existing tab values so stale cells cannot survive, and writes the local CSV from `A1`.
+
+Tabs with spaces or punctuation are emitted as quoted A1 notation internally (for example, `Project Plan` becomes `'Project Plan'!A1` for writes). CSV parsing handles quoted fields, escaped quotes, embedded newlines, empty fields, and CRLF or LF line endings.
+
+**API:**
+- pull: `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}`
+- push clear: `POST https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}:clear`
+- push write: `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}!A1?valueInputOption=USER_ENTERED`
+- missing tab creation: `POST https://sheets.googleapis.com/v4/spreadsheets/{id}:batchUpdate` with `addSheet`
+
+**OAuth scopes:** `SHEETS_READONLY_SCOPE` for `pull`; `SHEETS_SCOPE` for `push`.
+
+**Edge cases:**
+
+| ID | Scenario | Behavior |
+|----|----------|----------|
+| SS1 | Push to a missing tab | Create the tab before clearing/writing |
+| SS2 | Push a shorter CSV over old data | Clear the tab first so stale cells are removed |
+| SS3 | Empty CSV file | Prints "No data in CSV file." and returns Ok |
+| SS4 | Tab name contains spaces or punctuation | Quote and URL-encode the A1 range |
+| SS5 | Pull empty tab | Writes an empty CSV file |
 
 ### 14.3 Format Pipelines
 
@@ -1717,7 +1762,7 @@ Manage Google Calendar events via the Calendar API v3. Reuses Gmail OAuth creden
 
 ### 15.3 Auth
 
-`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and falls back to an available loopback port if `8484` is busy. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
+`corky cal auth` runs the OAuth2 browser flow to obtain a Calendar-scoped token. Reuses the same `client_id` / `client_secret` from `[gmail]` config. If a valid Gmail token already exists, the Calendar scope is added to the existing authorization. The `--account` flag selects which Gmail account to authorize (defaults to the first configured account). The loopback listener is bound before the browser launch, defaults to `127.0.0.1:8484`, and only falls back to an available loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session. Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon).
 
 ### 15.4 List
 
@@ -1805,8 +1850,8 @@ An optional `[gsc]` service-account key may still be configured for best-effort 
 **Token storage:** Shared token store key prefix `gsc:` (`gsc:default`, `gsc:<account>`).
 If `[gsc]` service-account auth is configured, corky only caches the minted access token in-process, never persists that SA cache to `tokens.json`, and scopes the cache by the resolved account/config fingerprint so switching `.corky.toml` roots or accounts cannot reuse the wrong SA token.
 
-**Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google desktop-app flows may fall back to an available loopback port if `8484` is already in use. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a port for the current session.
-**Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`) and Linux (`notify-send`).
+**Callback:** Loopback listener bound before browser launch. Default is `127.0.0.1:8484`; Google-backed flows only fall back to an available loopback port when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects. Set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session.
+**Desktop notification:** Before opening the browser flow, corky emits a best-effort desktop notification on macOS (`osascript`), Linux (`notify-desktop`), and Windows (`powershell` NotifyIcon).
 
 **Resolution order:**
 1. Valid stored `gsc:*` user token
@@ -2042,7 +2087,7 @@ Corky is fully self-hosted — it runs entirely on the user's machine with no ex
 1. **Built-in defaults** (zero config) — corky ships with public OAuth client credentials compiled in. Suitable for most users.
 2. **Self-hosted GCP project** — users create their own GCP project for full control over OAuth tokens, audit logs, and credential rotation. See `docs/guide/self-hosted-gmail.md`.
 
-Loopback browser auth stays machine-local: corky binds the callback listener before browser launch, defaults to `127.0.0.1:8484`, and supports `CORKY_OAUTH_CALLBACK_PORT` for a one-session port override.
+Loopback browser auth stays machine-local: corky binds the callback listener before browser launch, defaults to the fixed `127.0.0.1:8484` redirect, supports `CORKY_OAUTH_CALLBACK_PORT` for a one-session registered-port override, and only uses arbitrary loopback fallback when `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` is set for a client that supports wildcard loopback redirects.
 
 ### 18.2 Privacy Model
 
