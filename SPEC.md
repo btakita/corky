@@ -532,7 +532,7 @@ Hidden backward-compatible alias for `contact add`. The `--label` and `--account
 corky watch [--interval N]
 ```
 
-IMAP polling daemon. Syncs all accounts, then pushes to shared mailboxes.
+Mail polling daemon. Syncs all IMAP and Gmail API accounts, then pushes to shared mailboxes.
 Desktop notifications on new messages if `notify = true` in `.corky.toml`.
 Clean shutdown on SIGTERM/SIGINT.
 
@@ -1269,7 +1269,7 @@ while not shutdown:
     for each account:
         sync_account(full=false)
     save_state()
-    count_new = compare uid snapshots before/after
+    count_new = compare IMAP last_uid and Gmail API last_history_id snapshots before/after
     if count_new > 0:
         sync_mailboxes()
         notify(count_new)

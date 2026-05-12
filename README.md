@@ -50,7 +50,7 @@ If `[gsc]` service-account auth is configured, that Search Console token is only
 - **Scheduling** — schedule email and social drafts for timed publishing
 - **Topics** — organize conversations with shared topic context across mailboxes
 - **Transcription** — whisper-rs audio transcription with speaker diarization via pyannote-rs
-- **Watch daemon** — poll IMAP and run scheduled publishing with `corky watch`. Ctrl+C cleanly interrupts both IMAP and Gmail API syncs
+- **Watch daemon** — poll IMAP and Gmail API accounts, sync shared mailboxes, notify on new messages, and run scheduled publishing with `corky watch`. Ctrl+C cleanly interrupts both sync paths
 
 ## Usage
 

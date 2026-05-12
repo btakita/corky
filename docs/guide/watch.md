@@ -1,6 +1,6 @@
 # Watch Daemon
 
-Run as a daemon to poll IMAP, sync threads, and push to shared repos automatically.
+Run as a daemon to poll IMAP and Gmail API accounts, sync threads, and push to shared repos automatically.
 
 ## Usage
 

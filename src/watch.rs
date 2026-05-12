@@ -13,35 +13,77 @@ use crate::sync::gmail_api_sync;
 use crate::sync::imap_sync::sync_account;
 use crate::sync::types::SyncState;
 
-/// Snapshot {account: {label: last_uid}} from current sync state.
-fn snapshot_uids(state: &SyncState) -> HashMap<String, HashMap<String, u32>> {
-    let mut snap = HashMap::new();
+#[derive(Debug, Default, PartialEq, Eq)]
+struct SyncCursorSnapshot {
+    imap_uids: HashMap<String, HashMap<String, u32>>,
+    gmail_history_ids: HashMap<String, HashMap<String, u64>>,
+}
+
+/// Snapshot provider-specific sync cursors from current sync state.
+fn snapshot_cursors(state: &SyncState) -> SyncCursorSnapshot {
+    let mut snap = SyncCursorSnapshot::default();
     for (acct_name, acct_state) in &state.accounts {
-        let mut labels = HashMap::new();
-        for (label, ls) in &acct_state.labels {
-            labels.insert(label.clone(), ls.last_uid);
+        if !acct_state.labels.is_empty() {
+            let mut labels = HashMap::new();
+            for (label, ls) in &acct_state.labels {
+                labels.insert(label.clone(), ls.last_uid);
+            }
+            snap.imap_uids.insert(acct_name.clone(), labels);
         }
-        snap.insert(acct_name.clone(), labels);
+
+        if !acct_state.gmail_labels.is_empty() {
+            let mut labels = HashMap::new();
+            for (label, ls) in &acct_state.gmail_labels {
+                if let Some(last_history_id) = ls.last_history_id {
+                    labels.insert(label.clone(), last_history_id);
+                }
+            }
+            if !labels.is_empty() {
+                snap.gmail_history_ids.insert(acct_name.clone(), labels);
+            }
+        }
     }
     snap
 }
 
-/// Count labels where last_uid increased.
-fn count_new_messages(
+fn count_increased_u32(
     before: &HashMap<String, HashMap<String, u32>>,
     after: &HashMap<String, HashMap<String, u32>>,
 ) -> usize {
     let mut count = 0;
     for (acct_name, labels) in after {
         let before_acct = before.get(acct_name);
-        for (label, uid) in labels {
-            let before_uid = before_acct.and_then(|a| a.get(label)).copied().unwrap_or(0);
-            if *uid > before_uid {
+        for (label, cursor) in labels {
+            let before_cursor = before_acct.and_then(|a| a.get(label)).copied().unwrap_or(0);
+            if *cursor > before_cursor {
                 count += 1;
             }
         }
     }
     count
+}
+
+fn count_increased_u64(
+    before: &HashMap<String, HashMap<String, u64>>,
+    after: &HashMap<String, HashMap<String, u64>>,
+) -> usize {
+    let mut count = 0;
+    for (acct_name, labels) in after {
+        let before_acct = before.get(acct_name);
+        for (label, cursor) in labels {
+            let before_cursor = before_acct.and_then(|a| a.get(label)).copied().unwrap_or(0);
+            if *cursor > before_cursor {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// Count labels where IMAP last_uid or Gmail API last_history_id increased.
+fn count_new_messages(before: &SyncCursorSnapshot, after: &SyncCursorSnapshot) -> usize {
+    count_increased_u32(&before.imap_uids, &after.imap_uids)
+        + count_increased_u64(&before.gmail_history_ids, &after.gmail_history_ids)
 }
 
 fn load_state() -> SyncState {
@@ -152,7 +194,7 @@ fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
 
     let base_state = load_state();
     let mut state = base_state.clone();
-    let before = snapshot_uids(&state);
+    let before = snapshot_cursors(&state);
 
     for (acct_name, acct) in &accounts {
         println!("\n=== Account: {} ({}) ===", acct_name, acct.user);
@@ -201,7 +243,7 @@ fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
 
     save_state(&base_state, &state);
 
-    let after = snapshot_uids(&state);
+    let after = snapshot_cursors(&state);
     let new_count = count_new_messages(&before, &after);
 
     if new_count > 0 {
@@ -319,7 +361,7 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::types::{AccountSyncState, LabelState};
+    use crate::sync::types::{AccountSyncState, GmailLabelState, LabelState};
 
     type AccountSpec<'a> = Vec<(&'a str, Vec<(&'a str, u32, u32)>)>;
 
@@ -341,39 +383,66 @@ mod tests {
         state
     }
 
-    #[test]
-    fn snapshot_uids_empty_state() {
-        let state = SyncState::default();
-        let snap = snapshot_uids(&state);
-        assert!(snap.is_empty());
+    fn make_gmail_api_state(accounts: Vec<(&str, Vec<(&str, Option<u64>)>)>) -> SyncState {
+        let mut state = SyncState::default();
+        for (acct_name, labels) in accounts {
+            let mut acct = AccountSyncState::default();
+            for (label, last_history_id) in labels {
+                acct.gmail_labels
+                    .insert(label.to_string(), GmailLabelState { last_history_id });
+            }
+            state.accounts.insert(acct_name.to_string(), acct);
+        }
+        state
     }
 
     #[test]
-    fn snapshot_uids_captures_last_uid() {
+    fn snapshot_cursors_empty_state() {
+        let state = SyncState::default();
+        let snap = snapshot_cursors(&state);
+        assert!(snap.imap_uids.is_empty());
+        assert!(snap.gmail_history_ids.is_empty());
+    }
+
+    #[test]
+    fn snapshot_cursors_captures_last_uid() {
         let state = make_state(vec![
             ("gmail", vec![("INBOX", 1, 100), ("Sent", 1, 50)]),
             ("proton", vec![("INBOX", 2, 200)]),
         ]);
-        let snap = snapshot_uids(&state);
-        assert_eq!(snap.len(), 2);
-        assert_eq!(snap["gmail"]["INBOX"], 100);
-        assert_eq!(snap["gmail"]["Sent"], 50);
-        assert_eq!(snap["proton"]["INBOX"], 200);
+        let snap = snapshot_cursors(&state);
+        assert_eq!(snap.imap_uids.len(), 2);
+        assert_eq!(snap.imap_uids["gmail"]["INBOX"], 100);
+        assert_eq!(snap.imap_uids["gmail"]["Sent"], 50);
+        assert_eq!(snap.imap_uids["proton"]["INBOX"], 200);
+    }
+
+    #[test]
+    fn snapshot_cursors_captures_gmail_history_id() {
+        let state = make_gmail_api_state(vec![(
+            "gmail-api",
+            vec![("INBOX", Some(1234)), ("Sent", None)],
+        )]);
+        let snap = snapshot_cursors(&state);
+        assert!(snap.imap_uids.is_empty());
+        assert_eq!(snap.gmail_history_ids.len(), 1);
+        assert_eq!(snap.gmail_history_ids["gmail-api"]["INBOX"], 1234);
+        assert!(!snap.gmail_history_ids["gmail-api"].contains_key("Sent"));
     }
 
     #[test]
     fn count_new_messages_no_change() {
-        let snap = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
+        let snap = snapshot_cursors(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
         assert_eq!(count_new_messages(&snap, &snap), 0);
     }
 
     #[test]
     fn count_new_messages_one_label_increased() {
-        let before = snapshot_uids(&make_state(vec![(
+        let before = snapshot_cursors(&make_state(vec![(
             "gmail",
             vec![("INBOX", 1, 100), ("Sent", 1, 50)],
         )]));
-        let after = snapshot_uids(&make_state(vec![(
+        let after = snapshot_cursors(&make_state(vec![(
             "gmail",
             vec![("INBOX", 1, 105), ("Sent", 1, 50)],
         )]));
@@ -382,11 +451,11 @@ mod tests {
 
     #[test]
     fn count_new_messages_multiple_labels_increased() {
-        let before = snapshot_uids(&make_state(vec![
+        let before = snapshot_cursors(&make_state(vec![
             ("gmail", vec![("INBOX", 1, 100)]),
             ("proton", vec![("INBOX", 2, 200)]),
         ]));
-        let after = snapshot_uids(&make_state(vec![
+        let after = snapshot_cursors(&make_state(vec![
             ("gmail", vec![("INBOX", 1, 110)]),
             ("proton", vec![("INBOX", 2, 210)]),
         ]));
@@ -395,8 +464,8 @@ mod tests {
 
     #[test]
     fn count_new_messages_new_account_in_after() {
-        let before = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
-        let after = snapshot_uids(&make_state(vec![
+        let before = snapshot_cursors(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
+        let after = snapshot_cursors(&make_state(vec![
             ("gmail", vec![("INBOX", 1, 100)]),
             ("proton", vec![("INBOX", 2, 50)]),
         ]));
@@ -406,8 +475,8 @@ mod tests {
 
     #[test]
     fn count_new_messages_new_label_in_after() {
-        let before = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
-        let after = snapshot_uids(&make_state(vec![(
+        let before = snapshot_cursors(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
+        let after = snapshot_cursors(&make_state(vec![(
             "gmail",
             vec![("INBOX", 1, 100), ("Sent", 1, 30)],
         )]));
@@ -418,8 +487,47 @@ mod tests {
     #[test]
     fn count_new_messages_uid_decreased() {
         // UIDVALIDITY changed — uid went down. Should NOT count as new.
-        let before = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
-        let after = snapshot_uids(&make_state(vec![("gmail", vec![("INBOX", 2, 5)])]));
+        let before = snapshot_cursors(&make_state(vec![("gmail", vec![("INBOX", 1, 100)])]));
+        let after = snapshot_cursors(&make_state(vec![("gmail", vec![("INBOX", 2, 5)])]));
         assert_eq!(count_new_messages(&before, &after), 0);
+    }
+
+    #[test]
+    fn count_new_messages_gmail_history_id_increased() {
+        let before = snapshot_cursors(&make_gmail_api_state(vec![(
+            "gmail-api",
+            vec![("INBOX", Some(1000)), ("Sent", Some(500))],
+        )]));
+        let after = snapshot_cursors(&make_gmail_api_state(vec![(
+            "gmail-api",
+            vec![("INBOX", Some(1001)), ("Sent", Some(500))],
+        )]));
+        assert_eq!(count_new_messages(&before, &after), 1);
+    }
+
+    #[test]
+    fn count_new_messages_gmail_history_id_decreased() {
+        let before = snapshot_cursors(&make_gmail_api_state(vec![(
+            "gmail-api",
+            vec![("INBOX", Some(1000))],
+        )]));
+        let after = snapshot_cursors(&make_gmail_api_state(vec![(
+            "gmail-api",
+            vec![("INBOX", Some(999))],
+        )]));
+        assert_eq!(count_new_messages(&before, &after), 0);
+    }
+
+    #[test]
+    fn count_new_messages_gmail_history_id_new_label() {
+        let before = snapshot_cursors(&make_gmail_api_state(vec![(
+            "gmail-api",
+            vec![("INBOX", Some(1000))],
+        )]));
+        let after = snapshot_cursors(&make_gmail_api_state(vec![(
+            "gmail-api",
+            vec![("INBOX", Some(1000)), ("Updates", Some(42))],
+        )]));
+        assert_eq!(count_new_messages(&before, &after), 1);
     }
 }
