@@ -338,6 +338,8 @@ pub enum GoogleAuthScope {
     SheetsReadonly,
     /// Google Sheets read/write scope
     Sheets,
+    /// Broad Drive/Docs/Sheets document workflow scope bundle
+    Workspace,
     /// Google Chat message send scope
     Chat,
     /// Google Tasks scope
@@ -1029,7 +1031,7 @@ pub enum DocCommands {
     },
     /// Update a Google Doc or replace binary Drive file media
     Write {
-        /// Google Doc URL or document ID
+        /// Google Workspace/Drive URL or file ID
         doc: String,
 
         /// Path to the markdown file

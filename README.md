@@ -69,6 +69,7 @@ corky filter push --dry-run     # Preview filter changes
 corky filter pull               # Show current Gmail filters
 corky auth --email you@gmail.com --scope sync  # Pre-authenticate Gmail API sync
 corky auth --account my-gmail --email you@gmail.com --scope send  # Pre-authenticate Gmail compose
+corky auth --email you@gmail.com --scope workspace  # One-shot Drive/Docs/Sheets document auth
 corky auth --email you@gmail.com --scope drive-readonly  # Pre-authenticate Drive export/download
 corky filter auth               # Authenticate for Gmail filter API
 corky linkedin draft              # Create LinkedIn draft

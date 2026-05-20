@@ -243,6 +243,13 @@ fn test_cli_auth_accepts_drive_readonly_scope() {
 }
 
 #[test]
+fn test_cli_auth_accepts_workspace_scope() {
+    let mut cmd = corky_cmd();
+    cmd.args(["auth", "--scope", "workspace", "--help"]);
+    cmd.assert().success();
+}
+
+#[test]
 fn test_cli_docs_read_help() {
     let mut cmd = corky_cmd();
     cmd.args(["docs", "read", "--help"]);

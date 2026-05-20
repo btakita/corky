@@ -68,7 +68,8 @@ Corky has native support for all Google Workspace services. No external plugin r
 Authenticate once:
 
 ```bash
-corky filter auth   # Gmail, Drive, Docs, Sheets, Chat, Tasks (shared token flow)
+corky auth --email you@gmail.com --scope workspace  # Drive, Docs, Sheets document workflows
+corky filter auth   # Gmail filter management
 corky cal auth      # Google Calendar (separate token)
 ```
 

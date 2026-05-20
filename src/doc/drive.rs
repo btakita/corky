@@ -86,10 +86,6 @@ pub fn read(input: &str, format: &str, output: Option<&Path>, account: Option<&s
             ensure_doc_text_format(format)?;
             return gdocs::read(input, output, account);
         }
-        DriveHint::Unknown if !looks_like_drive_url(input) => {
-            ensure_doc_text_format(format)?;
-            return gdocs::read(input, output, account);
-        }
         DriveHint::Spreadsheet => {
             let normalized = normalized_format(format);
             let sheet_format = match normalized.as_str() {
@@ -196,9 +192,6 @@ pub fn write(input: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let file_ref = parse_drive_ref(input);
     match file_ref.hint {
         DriveHint::Document => {
-            return gdocs::write(input, file, account);
-        }
-        DriveHint::Unknown if !looks_like_drive_url(input) => {
             return gdocs::write(input, file, account);
         }
         DriveHint::Spreadsheet => {
@@ -468,12 +461,6 @@ fn query_param(input: &str, name: &str) -> Option<String> {
         }
     }
     None
-}
-
-fn looks_like_drive_url(input: &str) -> bool {
-    input.starts_with("https://docs.google.com/")
-        || input.starts_with("https://drive.google.com/")
-        || input.contains("drive.google.com/")
 }
 
 fn kind_for_mime(mime_type: &str) -> DriveKind {

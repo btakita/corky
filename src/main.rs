@@ -557,6 +557,11 @@ fn run_google_auth(
             corky::filter::gmail_auth::SHEETS_SCOPE,
             login_hint,
         ),
+        GoogleAuthScope::Workspace => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::GOOGLE_WORKSPACE_SCOPE,
+            login_hint,
+        ),
         GoogleAuthScope::Chat => corky::filter::gmail_auth::run_auth_with_scope(
             account,
             corky::filter::gmail_auth::CHAT_SCOPE,

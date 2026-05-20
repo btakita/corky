@@ -169,6 +169,7 @@ After Phases 2-5, revise corky skill/runbook files:
 | Docs read/write | `DOCS_SCOPE` | `documents` ✅ |
 | Sheets read | `SHEETS_READONLY_SCOPE` | `spreadsheets.readonly` ✅ |
 | Sheets write | `SHEETS_SCOPE` | `spreadsheets` (new) |
+| Workspace document pre-auth | `GOOGLE_WORKSPACE_SCOPE` | `drive.file` + `drive.readonly` + `documents` + `spreadsheets` |
 | Chat send | `CHAT_SCOPE` | `chat.messages` (new) |
 | Tasks | `TASKS_SCOPE` | `tasks` (new) |
 

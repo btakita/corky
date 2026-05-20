@@ -57,6 +57,13 @@ pub const SHEETS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/spreads
 /// OAuth2 scope for Google Sheets read/write.
 pub const SHEETS_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets";
 
+/// One-shot OAuth2 scope bundle for broad Google Workspace document workflows.
+///
+/// This lets users pre-authorize Drive upload, Drive metadata/export/download,
+/// Docs read/write, and Sheets read/write with one browser consent flow instead
+/// of discovering each document scope one command at a time.
+pub const GOOGLE_WORKSPACE_SCOPE: &str = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/spreadsheets";
+
 /// OAuth2 scope for Google Chat message sending.
 pub const CHAT_SCOPE: &str = "https://www.googleapis.com/auth/chat.messages";
 
@@ -734,6 +741,17 @@ mod tests {
     fn test_scope_covered_token_scope_with_spaces() {
         let scopes = vec![GMAIL_FILTER_SCOPE.to_string()];
         assert!(scope_covered(&scopes, GMAIL_FILTER_SCOPE));
+    }
+
+    #[test]
+    fn test_workspace_scope_covers_document_workflows() {
+        let scopes = vec![GOOGLE_WORKSPACE_SCOPE.to_string()];
+
+        assert!(scope_covered(&scopes, DRIVE_FILE_SCOPE));
+        assert!(scope_covered(&scopes, DRIVE_READONLY_SCOPE));
+        assert!(scope_covered(&scopes, DOCS_SCOPE));
+        assert!(scope_covered(&scopes, SHEETS_SCOPE));
+        assert!(scope_covered(&scopes, SHEETS_READONLY_SCOPE));
     }
 
     #[test]

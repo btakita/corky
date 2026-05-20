@@ -90,6 +90,7 @@ corky unanswered NAME                        # Specific mailbox only
 ## Google Workspace
 
 ```sh
+corky auth --email you@gmail.com --scope workspace         # One-shot Drive/Docs/Sheets document auth
 corky auth --email you@gmail.com --scope docs             # Pre-authenticate Google Docs
 corky auth --email you@gmail.com --scope drive-readonly   # Pre-authenticate Drive export/download
 corky auth --email you@gmail.com --scope sheets-readonly  # Pre-authenticate read-only Sheets
