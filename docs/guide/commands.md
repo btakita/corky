@@ -87,6 +87,19 @@ corky unanswered .                           # Root conversations only
 corky unanswered NAME                        # Specific mailbox only
 ```
 
+## Google Workspace
+
+```sh
+corky auth --email you@gmail.com --scope docs             # Pre-authenticate Google Docs
+corky auth --email you@gmail.com --scope sheets-readonly  # Pre-authenticate read-only Sheets
+corky docs read DOC_URL [-o FILE]                         # Read Google Doc text
+corky docs write DOC_URL FILE                             # Replace Google Doc text from markdown
+corky sheets read SHEET_URL --range A1:D10 --format csv   # Read Google Sheet range
+corky sheets write SHEET_URL RANGE CSV                    # Write CSV to Google Sheet range
+corky sheets pull SHEET_URL TAB CSV                       # Sync a tab down to CSV
+corky sheets push SHEET_URL TAB CSV                       # Clear/create tab, then sync local CSV
+```
+
 ## Drafts
 
 ```sh

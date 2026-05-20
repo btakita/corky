@@ -78,8 +78,12 @@ corky youtube playlist add PL VID   # Add video to playlist
 corky youtube playlist create TITLE # Create a playlist
 corky youtube playlist list         # List your playlists
 corky doc upload FILE --account a@gmail.com  # Google Drive upload (account-targeted OAuth)
+corky docs read DOC_URL                    # Read Google Doc text
+corky docs write DOC_URL FILE              # Replace Google Doc text from markdown
 corky doc sheet SHEET_URL                   # Read Google Sheet as markdown table
 corky doc sheet-write SHEET_URL RANGE CSV  # Write CSV to Google Sheet range
+corky sheets read SHEET_URL --range A1:D10 # Read Google Sheet range
+corky sheets write SHEET_URL RANGE CSV     # Write CSV to Google Sheet range
 corky sheets pull SHEET_URL TAB CSV        # Sync a Google Sheet tab to local CSV
 corky sheets push SHEET_URL TAB CSV        # Clear/create tab, then sync local CSV
 corky chat send SPACE_ID "message"          # Send Google Chat message

@@ -1611,8 +1611,12 @@ Run `corky watch` and it handles both IMAP sync and scheduled publishing.
 | `corky doc upload <FILE> [--share] [--account EMAIL]` | Upload a file to Google Drive |
 | `corky doc read <DOC> [-o FILE] [--account EMAIL]` | Read a Google Doc as markdown |
 | `corky doc write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
+| `corky docs read <DOC> [-o FILE] [--account EMAIL]` | Read a Google Doc as markdown |
+| `corky docs write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
 | `corky doc sheet <SHEET> [--range R] [--format table\|csv] [-o FILE] [--account EMAIL]` | Read a Google Sheet range |
 | `corky doc sheet-write <SHEET> <RANGE> <CSV> [--account EMAIL]` | Write CSV data to a Google Sheet range |
+| `corky sheets read <SHEET> [--range R] [--format table\|csv] [-o FILE] [--account EMAIL]` | Read a Google Sheet range |
+| `corky sheets write <SHEET> <RANGE> <CSV> [--account EMAIL]` | Write CSV data to a Google Sheet range |
 | `corky sheets pull <SHEET> <TAB> <CSV> [--account EMAIL]` | Sync a whole Google Sheet tab down to a local CSV |
 | `corky sheets push <SHEET> <TAB> <CSV> [--account EMAIL]` | Sync a local CSV up to a whole Google Sheet tab |
 
@@ -1639,17 +1643,27 @@ Uploads a local file to Google Drive. The MIME type is inferred from the file ex
 
 ```
 corky doc read <DOC_URL_OR_ID> [-o FILE] [--account EMAIL]
+corky docs read <DOC_URL_OR_ID> [-o FILE] [--account EMAIL]
 ```
 
-Exports a Google Doc as markdown (via HTML export). Output goes to stdout by default or to `-o FILE`.
+Reads a Google Doc through the Docs API and extracts paragraph/table text as markdown-ish plain text. Output goes to stdout by default or to `-o FILE`.
+
+**API:** `GET https://docs.googleapis.com/v1/documents/{documentId}`
+
+**OAuth scope:** `DOCS_SCOPE` (`documents`, read/write). Reads must not rely on Drive `files.export`, which requires a Drive scope and would make the documented Docs-only auth path fail.
 
 ### 14.2.3 Google Docs Write
 
 ```
 corky doc write <DOC_URL_OR_ID> <FILE> [--account EMAIL]
+corky docs write <DOC_URL_OR_ID> <FILE> [--account EMAIL]
 ```
 
 Replaces the content of a Google Doc with the contents of a local markdown file.
+
+**API:** `POST https://docs.googleapis.com/v1/documents/{documentId}:batchUpdate`
+
+**OAuth scope:** `DOCS_SCOPE` (`documents`, read/write).
 
 ### 14.2.4 Google Sheets Read
 
@@ -1658,6 +1672,8 @@ corky doc sheet <SHEET_URL_OR_ID> [--range RANGE] [--format table|csv] [-o FILE]
 ```
 
 Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `--range` specifies the cell range (e.g. `A1:D10`, `Sheet1!A1:C5`). Without `--range`, reads all data from the first sheet.
+
+**OAuth scope:** `SHEETS_READONLY_SCOPE` (`spreadsheets.readonly`) for read-only access. A token with `SHEETS_SCOPE` (`spreadsheets`) also covers reads.
 
 ### 14.2.5 Google Sheets Write
 

@@ -4,7 +4,6 @@ use std::path::Path;
 use crate::filter::gmail_auth;
 
 const DOCS_API: &str = "https://docs.googleapis.com/v1/documents";
-const DOCS_EXPORT_URL: &str = "https://www.googleapis.com/drive/v3/files";
 
 /// Extract a Google Docs document ID from a URL or raw ID.
 pub fn parse_doc_id(input: &str) -> &str {
@@ -16,21 +15,17 @@ pub fn parse_doc_id(input: &str) -> &str {
     input
 }
 
-/// Read a Google Doc and return its content as markdown (via HTML export).
+/// Read a Google Doc and return its text content as markdown-ish plain text.
 pub fn read(doc: &str, output: Option<&Path>, account: Option<&str>) -> Result<()> {
     let doc_id = parse_doc_id(doc);
     let token =
         gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DOCS_SCOPE, account)?;
 
-    // Export as HTML via Drive API (Docs API doesn't have a clean markdown export)
-    let url = format!("{}/{}/export?mimeType=text/html", DOCS_EXPORT_URL, doc_id);
-
     eprintln!("Fetching Google Doc {}...", doc_id);
+    let url = format!("{}/{}", DOCS_API, doc_id);
     let resp = api_get(&token, &url)?;
-    let html = resp.into_string()?;
-
-    // Convert HTML to plain text (strip tags)
-    let markdown = strip_html_to_text(&html);
+    let doc_json: serde_json::Value = resp.into_json()?;
+    let markdown = document_to_text(&doc_json);
 
     if let Some(path) = output {
         std::fs::write(path, &markdown)?;
@@ -110,42 +105,41 @@ pub fn write(doc: &str, file: &Path, account: Option<&str>) -> Result<()> {
     }
 }
 
-/// Basic HTML tag stripping. Converts <br>, <p>, <div> to newlines.
-fn strip_html_to_text(html: &str) -> String {
-    let mut text = html.to_string();
-    // Block-level elements → newlines
-    for tag in &[
-        "<br>", "<br/>", "<br />", "</p>", "</div>", "</li>", "</tr>", "</h1>", "</h2>", "</h3>",
-        "</h4>", "</h5>", "</h6>",
-    ] {
-        text = text.replace(tag, "\n");
+fn document_to_text(document: &serde_json::Value) -> String {
+    let mut out = String::new();
+    if let Some(content) = document["body"]["content"].as_array() {
+        append_structural_elements(content, &mut out);
     }
-    // List items
-    text = text.replace("<li>", "- ");
-    // Strip remaining tags
-    let mut result = String::new();
-    let mut in_tag = false;
-    for ch in text.chars() {
-        if ch == '<' {
-            in_tag = true;
-        } else if ch == '>' {
-            in_tag = false;
-        } else if !in_tag {
-            result.push(ch);
+    out.trim().to_string()
+}
+
+fn append_structural_elements(elements: &[serde_json::Value], out: &mut String) {
+    for element in elements {
+        if let Some(paragraph_elements) = element["paragraph"]["elements"].as_array() {
+            for paragraph_element in paragraph_elements {
+                if let Some(text) = paragraph_element["textRun"]["content"].as_str() {
+                    out.push_str(text);
+                }
+            }
+        }
+
+        if let Some(rows) = element["table"]["tableRows"].as_array() {
+            for row in rows {
+                if let Some(cells) = row["tableCells"].as_array() {
+                    let mut rendered_cells = Vec::new();
+                    for cell in cells {
+                        let mut cell_text = String::new();
+                        if let Some(cell_content) = cell["content"].as_array() {
+                            append_structural_elements(cell_content, &mut cell_text);
+                        }
+                        rendered_cells.push(cell_text.trim().replace('\n', " "));
+                    }
+                    out.push_str(&rendered_cells.join("\t"));
+                    out.push('\n');
+                }
+            }
         }
     }
-    // Decode common HTML entities
-    result = result.replace("&amp;", "&");
-    result = result.replace("&lt;", "<");
-    result = result.replace("&gt;", ">");
-    result = result.replace("&quot;", "\"");
-    result = result.replace("&#39;", "'");
-    result = result.replace("&nbsp;", " ");
-    // Collapse multiple blank lines
-    while result.contains("\n\n\n") {
-        result = result.replace("\n\n\n", "\n\n");
-    }
-    result.trim().to_string()
 }
 
 fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
@@ -162,5 +156,94 @@ fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
             bail!("Google API error (HTTP {}): {}", status, body);
         }
         Err(e) => Err(e.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_doc_id_accepts_raw_id() {
+        assert_eq!(parse_doc_id("doc-id"), "doc-id");
+    }
+
+    #[test]
+    fn parse_doc_id_extracts_url_id() {
+        assert_eq!(
+            parse_doc_id("https://docs.google.com/document/d/doc-id/edit"),
+            "doc-id"
+        );
+    }
+
+    #[test]
+    fn document_to_text_extracts_paragraph_text() {
+        let doc = serde_json::json!({
+            "body": {
+                "content": [
+                    {
+                        "paragraph": {
+                            "elements": [
+                                { "textRun": { "content": "Hello " } },
+                                { "textRun": { "content": "Docs\n" } }
+                            ]
+                        }
+                    },
+                    {
+                        "paragraph": {
+                            "elements": [
+                                { "textRun": { "content": "Second paragraph\n" } }
+                            ]
+                        }
+                    }
+                ]
+            }
+        });
+
+        assert_eq!(document_to_text(&doc), "Hello Docs\nSecond paragraph");
+    }
+
+    #[test]
+    fn document_to_text_extracts_table_cell_text() {
+        let doc = serde_json::json!({
+            "body": {
+                "content": [
+                    {
+                        "table": {
+                            "tableRows": [
+                                {
+                                    "tableCells": [
+                                        {
+                                            "content": [
+                                                {
+                                                    "paragraph": {
+                                                        "elements": [
+                                                            { "textRun": { "content": "Name\n" } }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "content": [
+                                                {
+                                                    "paragraph": {
+                                                        "elements": [
+                                                            { "textRun": { "content": "Score\n" } }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        });
+
+        assert_eq!(document_to_text(&doc), "Name\tScore");
     }
 }

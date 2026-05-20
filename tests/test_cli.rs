@@ -196,6 +196,31 @@ fn test_cli_doc_sheet_write_help() {
 }
 
 #[test]
+fn test_cli_docs_read_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["docs", "read", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("doc"));
+}
+
+#[test]
+fn test_cli_docs_write_requires_args() {
+    let mut cmd = corky_cmd();
+    cmd.args(["docs", "write"]);
+    cmd.assert().failure();
+}
+
+#[test]
+fn test_cli_sheets_read_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["sheets", "read", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("range"));
+}
+
+#[test]
 fn test_cli_sheets_pull_requires_args() {
     let mut cmd = corky_cmd();
     cmd.args(["sheets", "pull"]);

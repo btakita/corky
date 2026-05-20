@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Corky — Correspondence Kit**
-**Last updated:** 2026-03-18
+**Last updated:** 2026-05-20
 
 ## What Corky Does
 
@@ -20,21 +20,30 @@ Specifically:
 
 ## Google API Usage
 
-Corky requests the following Gmail API scopes:
+Corky requests Google API scopes only for features you run. Common scopes include:
 
 - `gmail.readonly` — Reading email messages and metadata, listing labels and mailboxes
-- `gmail.send` — Sending emails (saved as drafts for your review first)
+- `gmail.compose` — Creating Gmail drafts and sending approved messages
 - `gmail.settings.basic` — Managing Gmail filters and labels
+- `gmail.labels` — Resolving Gmail label names while managing filters
+- `documents` — Reading and writing Google Docs when you run Docs commands
+- `spreadsheets.readonly` / `spreadsheets` — Reading and writing Google Sheets when you run Sheets commands
+- `drive.file` — Uploading files to Google Drive when you run Drive upload commands
 
 Corky may also request:
 
+- `calendar` — Managing Google Calendar events
+- `contacts` — Pushing local contacts to Google Contacts
+- `chat.messages` — Sending Google Chat messages
+- `tasks` — Managing Google Tasks
+- `webmasters.readonly` — Reading Google Search Console data
 - `youtube.readonly` — Reading YouTube channel data and video metadata
+- `youtube.upload` / `youtube.force-ssl` — Uploading and managing YouTube videos and playlists
 
 Corky does **not** request permission to:
 
 - Delete emails
-- Access contacts or calendar data
-- Modify YouTube content
+- Access unrelated Google services outside the scopes requested for the command you run
 
 ## Data Storage
 

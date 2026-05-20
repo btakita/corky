@@ -22,7 +22,7 @@ Use `corky unanswered` for threads awaiting reply, `corky sync` for IMAP sync, `
 Use `corky cal auth` for OAuth, `corky cal list [--limit N] [--query Q]` for upcoming events, `corky cal create <SUMMARY> <START> <END>` for event creation, `corky cal check <START> <END>` for availability, and `corky cal delete <QUERY> [--all] [--dry-run]` for deletion.
 
 ### Documents
-Use `corky doc build <FILE> [--format pdf|docx] [--template NAME]` to convert markdown, `corky sheets pull <SHEET> <TAB> <CSV>` to sync a Google Sheet tab to CSV, and `corky sheets push <SHEET> <TAB> <CSV>` to clear/create a tab and sync CSV into it.
+Use `corky doc build <FILE> [--format pdf|docx] [--template NAME]` to convert markdown, `corky docs read <DOC> [-o FILE]` and `corky docs write <DOC> <FILE>` for Google Docs text sync, `corky sheets read <SHEET> [--range RANGE] [--format table|csv]` for Google Sheets reads, `corky sheets pull <SHEET> <TAB> <CSV>` to sync a Google Sheet tab to CSV, and `corky sheets push <SHEET> <TAB> <CSV>` to clear/create a tab and sync CSV into it.
 
 ### Filters
 Use `corky filter check` for read-only drift detection, `corky filter push` for manual Gmail filter updates, and `corky filter auth` for filter OAuth.
