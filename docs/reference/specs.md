@@ -739,7 +739,7 @@ SIGTERM, SIGINT → clean shutdown (finish current poll, then exit).
 ### 9.3 Notifications
 
 - macOS: `osascript -e 'display notification ...'`
-- Linux: `notify-desktop`
+- Linux: `notify-desktop`, falling back to `notify-send`
 - Windows: `powershell` NotifyIcon balloon notification
 - Silently degrades if tool not installed.
 

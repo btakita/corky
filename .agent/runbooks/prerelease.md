@@ -12,7 +12,7 @@ Steps to run before publishing a release.
    - For `corky draft send` changes, confirm docs mention the dedicated `gmail.compose` send token key and the rerun-`corky draft send` 401 remediation path
    - For shared token/sync-state changes, confirm docs mention lock files, atomic replace, and merge-on-save behavior
    - For `[gsc]` service-account changes, confirm docs mention that the in-process SA token cache is scoped by the resolved account/config fingerprint
-   - For Google Sheets tab sync changes, confirm docs mention `corky sheets pull` / `corky sheets push`, tab creation, and clear-before-write semantics
+   - For Google Sheets tab sync changes, confirm docs mention `corky sheets pull` / `corky sheets push`, tab creation, clear-before-write semantics, and `corky sheets delete-tab` when cleanup is supported
 5. No secrets in the diff or release notes
 6. No machine-local paths in released files
 7. For Gmail connector-facing changes, verify `corky doctor gmail --json`, `corky sync refetch --json`, and draft JSON surfaces still match the documented contract
@@ -32,4 +32,4 @@ Steps to run before publishing a release.
 - Push a version tag: `git tag v<version> && git push origin v<version>`
 - CI creates the release with cross-platform binaries
 
-<!-- Refreshed for Google Sheets tab-level CSV sync commands. -->
+<!-- Refreshed for Sheets tab cleanup and OAuth notification fallback. -->

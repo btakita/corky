@@ -39,7 +39,7 @@ See `voice.md` (committed) for tone, style, and formatting guidelines.
 
 ## Environment Setup
 
-Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is the fixed `127.0.0.1:8484` redirect; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session, or `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` only when your Google OAuth client supports wildcard loopback redirects. Interactive OAuth prompts should raise a best-effort desktop notification through `notify-desktop` on Linux, `osascript` on macOS, and PowerShell NotifyIcon on Windows.
+Google-backed OAuth flows now bind the loopback callback listener before opening the browser. Default callback is the fixed `127.0.0.1:8484` redirect; set `CORKY_OAUTH_CALLBACK_PORT` to pin a different registered port for the current session, or `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` only when your Google OAuth client supports wildcard loopback redirects. Interactive OAuth prompts should raise a best-effort desktop notification through `notify-desktop` on Linux, falling back to `notify-send` when `notify-desktop` is unavailable; macOS uses `osascript`, and Windows uses PowerShell NotifyIcon.
 
 **New user (quick install):**
 ```sh
@@ -77,7 +77,7 @@ corky cal auth      # Google Calendar (separate token)
 - Gmail draft → `corky draft push`
 - Google Docs → `corky docs read <url>` / `corky docs write <url> <file>`
 - Google Drive → `corky doc upload`
-- Google Sheets → `corky sheets read <url>` / `corky sheets write <url> <range> <file>` / `corky sheets pull <url> <tab> <csv>` / `corky sheets push <url> <tab> <csv>` (push clears or creates the tab before writing)
+- Google Sheets → `corky sheets read <url>` / `corky sheets write <url> <range> <file>` / `corky sheets pull <url> <tab> <csv>` / `corky sheets push <url> <tab> <csv>` / `corky sheets delete-tab <url> <tab>` (push clears or creates the tab before writing)
 - Google Chat → `corky chat send <space> <message>`
 - Google Tasks → `corky tasks list/add/done`
 - Google Calendar → `corky cal list/create/delete/check`

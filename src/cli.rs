@@ -1134,6 +1134,18 @@ pub enum SheetsCommands {
         #[arg(long)]
         account: Option<String>,
     },
+    /// Delete a Google Sheet tab
+    DeleteTab {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Sheet tab name to delete
+        tab: String,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

@@ -132,6 +132,22 @@ pub fn push_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> R
     Ok(())
 }
 
+/// Delete a Google Sheet tab by title.
+pub fn delete_tab(sheet: &str, tab: &str, account: Option<&str>) -> Result<()> {
+    let sheet_id = parse_sheet_id(sheet);
+    let token =
+        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::SHEETS_SCOPE, account)?;
+
+    let tab_sheet_id = tab_sheet_id(sheet_id, tab, &token)?
+        .ok_or_else(|| anyhow::anyhow!("Sheet tab '{tab}' was not found."))?;
+
+    eprintln!("Deleting tab {tab}...");
+    delete_sheet(sheet_id, tab_sheet_id, &token)?;
+    println!("Deleted tab {tab}.");
+
+    Ok(())
+}
+
 fn fetch_rows(sheet_id: &str, range: Option<&str>, token: &str) -> Result<Vec<Vec<String>>> {
     let selected_range = match range {
         Some(range) => range.to_string(),
@@ -269,12 +285,59 @@ fn ensure_tab_exists(sheet_id: &str, tab: &str, token: &str) -> Result<()> {
     }
 }
 
+fn delete_sheet(sheet_id: &str, tab_sheet_id: i64, token: &str) -> Result<()> {
+    let url = format!("{}/{}:batchUpdate", SHEETS_WRITE_API, sheet_id);
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .send_json(delete_sheet_request(tab_sheet_id));
+
+    match resp {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(401, _)) => {
+            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Sheets API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn delete_sheet_request(tab_sheet_id: i64) -> serde_json::Value {
+    serde_json::json!({
+        "requests": [
+            {
+                "deleteSheet": {
+                    "sheetId": tab_sheet_id
+                }
+            }
+        ]
+    })
+}
+
 fn tab_exists(sheet_id: &str, tab: &str, token: &str) -> Result<bool> {
     let meta_url = format!("{}/{}?fields=sheets.properties.title", SHEETS_API, sheet_id);
     let meta_resp = api_get(token, &meta_url)?;
     let meta: serde_json::Value = meta_resp.into_json()?;
 
-    Ok(meta["sheets"]
+    Ok(tab_title_exists(&meta, tab))
+}
+
+fn tab_sheet_id(sheet_id: &str, tab: &str, token: &str) -> Result<Option<i64>> {
+    let meta_url = format!(
+        "{}/{}?fields=sheets.properties(sheetId,title)",
+        SHEETS_API, sheet_id
+    );
+    let meta_resp = api_get(token, &meta_url)?;
+    let meta: serde_json::Value = meta_resp.into_json()?;
+
+    Ok(tab_sheet_id_from_metadata(&meta, tab))
+}
+
+fn tab_title_exists(meta: &serde_json::Value, tab: &str) -> bool {
+    meta["sheets"]
         .as_array()
         .map(|sheets| {
             sheets.iter().any(|sheet| {
@@ -284,7 +347,14 @@ fn tab_exists(sheet_id: &str, tab: &str, token: &str) -> Result<bool> {
                     .unwrap_or(false)
             })
         })
-        .unwrap_or(false))
+        .unwrap_or(false)
+}
+
+fn tab_sheet_id_from_metadata(meta: &serde_json::Value, tab: &str) -> Option<i64> {
+    meta["sheets"].as_array()?.iter().find_map(|sheet| {
+        let properties = &sheet["properties"];
+        (properties["title"].as_str()? == tab).then(|| properties["sheetId"].as_i64())?
+    })
 }
 
 fn read_csv_values(file: &Path) -> Result<Vec<Vec<String>>> {
@@ -535,6 +605,49 @@ mod tests {
     #[test]
     fn test_tab_range_escapes_single_quotes() {
         assert_eq!(tab_range("Bob's Plan"), "'Bob''s Plan'");
+    }
+
+    #[test]
+    fn test_tab_title_exists_matches_metadata() {
+        let meta = serde_json::json!({
+            "sheets": [
+                { "properties": { "title": "Sheet1" } },
+                { "properties": { "title": "Temporary Test" } }
+            ]
+        });
+        assert!(tab_title_exists(&meta, "Temporary Test"));
+        assert!(!tab_title_exists(&meta, "Missing"));
+    }
+
+    #[test]
+    fn test_tab_sheet_id_from_metadata() {
+        let meta = serde_json::json!({
+            "sheets": [
+                { "properties": { "sheetId": 0, "title": "Sheet1" } },
+                { "properties": { "sheetId": 42, "title": "Temporary Test" } }
+            ]
+        });
+        assert_eq!(
+            tab_sheet_id_from_metadata(&meta, "Temporary Test"),
+            Some(42)
+        );
+        assert_eq!(tab_sheet_id_from_metadata(&meta, "Missing"), None);
+    }
+
+    #[test]
+    fn test_delete_sheet_request() {
+        assert_eq!(
+            delete_sheet_request(42),
+            serde_json::json!({
+                "requests": [
+                    {
+                        "deleteSheet": {
+                            "sheetId": 42
+                        }
+                    }
+                ]
+            })
+        );
     }
 }
 

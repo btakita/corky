@@ -237,6 +237,15 @@ fn test_cli_sheets_push_help() {
 }
 
 #[test]
+fn test_cli_sheets_delete_tab_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["sheets", "delete-tab", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("tab"));
+}
+
+#[test]
 fn test_cli_chat_send_requires_args() {
     let mut cmd = corky_cmd();
     cmd.args(["chat", "send"]);

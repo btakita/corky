@@ -98,6 +98,7 @@ corky sheets read SHEET_URL --range A1:D10 --format csv   # Read Google Sheet ra
 corky sheets write SHEET_URL RANGE CSV                    # Write CSV to Google Sheet range
 corky sheets pull SHEET_URL TAB CSV                       # Sync a tab down to CSV
 corky sheets push SHEET_URL TAB CSV                       # Clear/create tab, then sync local CSV
+corky sheets delete-tab SHEET_URL TAB                     # Delete a Google Sheet tab
 ```
 
 ## Drafts

@@ -36,7 +36,7 @@ corky sync
 
 See the [getting started guide](https://btakita.github.io/corky/getting-started/quick-start.html) for full setup instructions.
 
-When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google-backed flows default to `127.0.0.1:8484`, honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override, and only fall back to another loopback port when you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Browser-auth prompts also raise a best-effort desktop notification via `notify-desktop` on Linux, `osascript` on macOS, and PowerShell NotifyIcon on Windows.
+When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google-backed flows default to `127.0.0.1:8484`, honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override, and only fall back to another loopback port when you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Browser-auth prompts also raise a best-effort desktop notification via `notify-desktop` on Linux, falling back to `notify-send` when `notify-desktop` is unavailable; macOS uses `osascript`, and Windows uses PowerShell NotifyIcon.
 If `[gsc]` service-account auth is configured, that Search Console token is only cached in-process and is scoped by the resolved account/config fingerprint, so changing mailbox roots or configs does not reuse the wrong SA token.
 
 ## Key features
@@ -86,6 +86,7 @@ corky sheets read SHEET_URL --range A1:D10 # Read Google Sheet range
 corky sheets write SHEET_URL RANGE CSV     # Write CSV to Google Sheet range
 corky sheets pull SHEET_URL TAB CSV        # Sync a Google Sheet tab to local CSV
 corky sheets push SHEET_URL TAB CSV        # Clear/create tab, then sync local CSV
+corky sheets delete-tab SHEET_URL TAB      # Delete a Google Sheet tab
 corky chat send SPACE_ID "message"          # Send Google Chat message
 corky tasks list                            # List pending Google Tasks
 corky tasks add "Task title" --due 2026-04-20  # Add a task

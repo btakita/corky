@@ -423,6 +423,11 @@ fn main() -> Result<()> {
                 file,
                 account,
             } => corky::doc::sheets::push_tab(&sheet, &tab, &file, account.as_deref()),
+            SheetsCommands::DeleteTab {
+                sheet,
+                tab,
+                account,
+            } => corky::doc::sheets::delete_tab(&sheet, &tab, account.as_deref()),
         },
         Commands::Transcribe {
             file,

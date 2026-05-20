@@ -20,8 +20,9 @@ pub fn notify(title: &str, body: &str) {
     }
     #[cfg(target_os = "linux")]
     {
-        let (program, args) = linux_notify_command(title, body);
-        let _ = std::process::Command::new(program).args(args).output();
+        if let Some((program, args)) = linux_notify_command(title, body) {
+            let _ = std::process::Command::new(program).args(args).output();
+        }
     }
     #[cfg(target_os = "windows")]
     {
@@ -50,8 +51,44 @@ fn escape_osascript(input: &str) -> String {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_notify_command(title: &str, body: &str) -> (&'static str, Vec<String>) {
-    ("notify-desktop", vec![title.to_string(), body.to_string()])
+fn linux_notify_command(title: &str, body: &str) -> Option<(&'static str, Vec<String>)> {
+    linux_notify_command_with(title, body, command_exists)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_notify_command_with(
+    title: &str,
+    body: &str,
+    mut is_available: impl FnMut(&str) -> bool,
+) -> Option<(&'static str, Vec<String>)> {
+    if is_available("notify-desktop") {
+        Some(("notify-desktop", vec![title.to_string(), body.to_string()]))
+    } else if is_available("notify-send") {
+        Some(("notify-send", vec![title.to_string(), body.to_string()]))
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn command_exists(program: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+
+    std::env::split_paths(&path).any(|dir| {
+        let candidate = dir.join(program);
+        match std::fs::metadata(candidate) {
+            Ok(metadata) if metadata.is_file() => is_executable(&metadata),
+            _ => false,
+        }
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn is_executable(metadata: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    metadata.permissions().mode() & 0o111 != 0
 }
 
 #[cfg(target_os = "windows")]
@@ -98,9 +135,28 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn linux_oauth_notifications_use_notify_desktop() {
-        let (program, args) = super::linux_notify_command("Title", "Body");
+    fn linux_oauth_notifications_prefer_notify_desktop() {
+        let (program, args) = super::linux_notify_command_with("Title", "Body", |program| {
+            program == "notify-desktop"
+        })
+        .unwrap();
         assert_eq!(program, "notify-desktop");
         assert_eq!(args, vec!["Title".to_string(), "Body".to_string()]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_oauth_notifications_fall_back_to_notify_send() {
+        let (program, args) =
+            super::linux_notify_command_with("Title", "Body", |program| program == "notify-send")
+                .unwrap();
+        assert_eq!(program, "notify-send");
+        assert_eq!(args, vec!["Title".to_string(), "Body".to_string()]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_oauth_notifications_skip_when_no_command_exists() {
+        assert!(super::linux_notify_command_with("Title", "Body", |_| false).is_none());
     }
 }
