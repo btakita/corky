@@ -2150,3 +2150,32 @@ Loopback browser auth stays machine-local: corky binds the callback listener bef
 - Does NOT request: Gmail delete, contacts write, or admin permissions
 - Users can revoke access anytime via Google security settings
 - Full privacy policy: `docs/reference/privacy-policy.md`
+
+---
+
+## 21. Release Publishing
+
+Corky publishes Rust crates through crates.io and Python wheels/source archives
+through PyPI.
+
+### 21.1 PyPI Trusted Publishing
+
+PyPI publication is performed by the GitHub Actions workflow
+`.github/workflows/pypi.yml`, not by a local `maturin publish` token. The PyPI
+project is expected to trust:
+
+| Field | Value |
+|-------|-------|
+| Owner | `btakita` |
+| Repository | `corky` |
+| Workflow | `.github/workflows/pypi.yml` |
+| Environment | `pypi` |
+
+The workflow must grant `id-token: write`, run the publish job in GitHub
+environment `pypi`, and use `pypa/gh-action-pypi-publish` without a PyPI API
+token or password. The publish step sets `skip-existing: true` so rerunning the
+workflow can fill in missing wheels without failing on artifacts that were
+already uploaded.
+
+After release publication, the latest PyPI version and latest crates.io version
+must match the version in `Cargo.toml` and `pyproject.toml`.

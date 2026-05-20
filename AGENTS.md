@@ -192,9 +192,14 @@ Steps 1–2 are automated (CI-runnable). Step 3 requires Claude Code. Skip grace
 3. Branch → PR → squash merge to main
 4. Tag: `git tag v<version> && git push origin v<version>`
 5. `cargo publish` (crates.io)
-6. `maturin publish` (PyPI)
+6. Run the `PyPI` GitHub Actions workflow (PyPI trusted publishing via environment `pypi`)
 7. `gh release create v<version> --generate-notes` with prebuilt binary (GitHub Release)
 8. Install binary: `cargo install --path .`
+
+The PyPI project must have a trusted publisher for repository `btakita/corky`,
+workflow `.github/workflows/pypi.yml`, environment `pypi`. The workflow uses
+GitHub OIDC (`id-token: write`) and `pypa/gh-action-pypi-publish`; do not add a
+PyPI API token secret unless trusted publishing is intentionally retired.
 
 Publish order when instruction-files changes: instruction-files → agent-doc → corky.
 

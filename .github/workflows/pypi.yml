@@ -70,7 +70,9 @@ jobs:
   publish:
     needs: [build, sdist]
     runs-on: ubuntu-latest
-    environment: pypi
+    environment:
+      name: pypi
+      url: https://pypi.org/p/corky
 
     steps:
       - uses: actions/download-artifact@v4
@@ -82,3 +84,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
+          skip-existing: true
