@@ -45,6 +45,9 @@ pub const GMAIL_SEND_SCOPE: &str = "https://www.googleapis.com/auth/gmail.compos
 /// OAuth2 scope for Google Drive file upload (restricted to files created by this app).
 pub const DRIVE_FILE_SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
 
+/// OAuth2 scope for Google Drive read/export/download metadata access.
+pub const DRIVE_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
+
 /// OAuth2 scope for Google Docs read/write.
 pub const DOCS_SCOPE: &str = "https://www.googleapis.com/auth/documents";
 
@@ -237,6 +240,7 @@ pub fn get_access_token_for_user(
 
     // Try refresh if we have a refresh token AND stored scopes are sufficient
     // (refresh preserves original scopes, so refreshing won't help if scopes are wrong)
+    let mut refresh_failed = false;
     if let Some(token) = store.tokens.get(&key).cloned()
         && let Some(ref refresh) = token.refresh_token
         && scope_covered(&token.scopes, scope)
@@ -251,12 +255,21 @@ pub fn get_access_token_for_user(
             }
             Err(e) => {
                 eprintln!("Token refresh failed: {}. Re-authenticating...", e);
+                refresh_failed = true;
             }
         }
     }
 
-    // Full auth flow with specified scope
-    let token = run_auth_flow_with_scope(scope, login_hint)?;
+    // Full/incremental auth flow with specified scope. If Google omits a new
+    // refresh token during incremental auth, keep the refresh grant we already
+    // have instead of downgrading the cache to access-token-only.
+    let previous = store.tokens.get(&key).cloned();
+    let token = run_auth_flow_with_scope(
+        scope,
+        login_hint,
+        prompt_consent_for(previous.as_ref(), refresh_failed),
+    )?;
+    let token = merge_cached_grant(token, previous.as_ref());
     let access = token.access_token.clone();
     store.upsert(key, token);
     store.save()?;
@@ -277,6 +290,7 @@ pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) ->
     }
 
     // Try refresh if we have a refresh token
+    let mut refresh_failed = false;
     if let Some(token) = store.tokens.get(&key).cloned()
         && let Some(ref refresh) = token.refresh_token
     {
@@ -290,12 +304,19 @@ pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) ->
             }
             Err(e) => {
                 eprintln!("Token refresh failed: {}. Re-authenticating...", e);
+                refresh_failed = true;
             }
         }
     }
 
-    // Full auth flow with send scope
-    let token = run_auth_flow_with_scope(GMAIL_SEND_SCOPE, login_hint)?;
+    // Full/incremental auth flow with send scope.
+    let previous = store.tokens.get(&key).cloned();
+    let token = run_auth_flow_with_scope(
+        GMAIL_SEND_SCOPE,
+        login_hint,
+        prompt_consent_for(previous.as_ref(), refresh_failed),
+    )?;
+    let token = merge_cached_grant(token, previous.as_ref());
     let access = token.access_token.clone();
     store.upsert(key, token);
     store.save()?;
@@ -351,8 +372,14 @@ pub fn run_auth_with_scope(
     login_hint: Option<&str>,
 ) -> Result<()> {
     let key = token_key_for_user(account, login_hint);
-    let token = run_auth_flow_with_scope(scope, login_hint)?;
     let mut store = TokenStore::load()?;
+    let previous = store.tokens.get(&key).cloned();
+    let token = run_auth_flow_with_scope(
+        scope,
+        login_hint,
+        prompt_consent_for(previous.as_ref(), true),
+    )?;
+    let token = merge_cached_grant(token, previous.as_ref());
     store.upsert(key.clone(), token);
     store.save()?;
     println!("Gmail token stored as '{}'", key);
@@ -366,8 +393,14 @@ pub fn run_auth_with_scope(
 /// browser account picker.
 pub fn run_send_auth(account: Option<&str>, login_hint: Option<&str>) -> Result<()> {
     let key = scoped_token_key(account, "send");
-    let token = run_auth_flow_with_scope(GMAIL_SEND_SCOPE, login_hint)?;
     let mut store = TokenStore::load()?;
+    let previous = store.tokens.get(&key).cloned();
+    let token = run_auth_flow_with_scope(
+        GMAIL_SEND_SCOPE,
+        login_hint,
+        prompt_consent_for(previous.as_ref(), true),
+    )?;
+    let token = merge_cached_grant(token, previous.as_ref());
     store.upsert(key.clone(), token);
     store.save()?;
     println!("Gmail send token stored as '{}'", key);
@@ -375,31 +408,23 @@ pub fn run_send_auth(account: Option<&str>, login_hint: Option<&str>) -> Result<
 }
 
 /// Run the full Gmail OAuth2 authorization code flow with specific scopes.
-fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<StoredToken> {
+fn run_auth_flow_with_scope(
+    scope: &str,
+    login_hint: Option<&str>,
+    prompt_consent: bool,
+) -> Result<StoredToken> {
     let creds = resolve_credentials()?;
     let state = generate_state();
     let callback = LoopbackServer::bind("Gmail", PortMode::OptInEphemeralFallback)?;
     let redirect_uri = callback.redirect_uri().to_string();
-
-    let mut url = format!(
-        "https://accounts.google.com/o/oauth2/v2/auth\
-         ?response_type=code\
-         &client_id={}\
-         &redirect_uri={}\
-         &state={}\
-         &scope={}\
-         &access_type=offline\
-         &prompt=consent",
-        urlencode(&creds.client_id),
-        urlencode(&redirect_uri),
-        urlencode(&state),
-        urlencode(scope),
+    let url = build_auth_url(
+        &creds.client_id,
+        &redirect_uri,
+        &state,
+        scope,
+        login_hint,
+        prompt_consent,
     );
-
-    // Add login_hint to pre-select the correct Google account
-    if let Some(hint) = login_hint {
-        url.push_str(&format!("&login_hint={}", urlencode(hint)));
-    }
 
     notify_oauth("Gmail");
     println!("Opening browser for Gmail authorization...");
@@ -427,6 +452,74 @@ fn run_auth_flow_with_scope(scope: &str, login_hint: Option<&str>) -> Result<Sto
     // Exchange code for token
     println!("Exchanging authorization code...");
     exchange_code(&creds, &code, &redirect_uri, scope)
+}
+
+fn build_auth_url(
+    client_id: &str,
+    redirect_uri: &str,
+    state: &str,
+    scope: &str,
+    login_hint: Option<&str>,
+    prompt_consent: bool,
+) -> String {
+    let mut url = format!(
+        "https://accounts.google.com/o/oauth2/v2/auth\
+         ?response_type=code\
+         &client_id={}\
+         &redirect_uri={}\
+         &state={}\
+         &scope={}\
+         &access_type=offline\
+         &include_granted_scopes=true",
+        urlencode(client_id),
+        urlencode(redirect_uri),
+        urlencode(state),
+        urlencode(scope),
+    );
+
+    if prompt_consent {
+        url.push_str("&prompt=consent");
+    }
+
+    // Add login_hint to pre-select the correct Google account
+    if let Some(hint) = login_hint {
+        url.push_str(&format!("&login_hint={}", urlencode(hint)));
+    }
+
+    url
+}
+
+fn prompt_consent_for(previous: Option<&StoredToken>, force_consent: bool) -> bool {
+    if force_consent {
+        return true;
+    }
+    previous
+        .and_then(|token| token.refresh_token.as_ref())
+        .is_none()
+}
+
+fn merge_cached_grant(mut token: StoredToken, previous: Option<&StoredToken>) -> StoredToken {
+    if let Some(previous) = previous {
+        if token.refresh_token.is_none() {
+            token.refresh_token = previous.refresh_token.clone();
+        }
+        if previous.refresh_token.is_some() {
+            token.scopes = merge_scopes(&token.scopes, &previous.scopes);
+        }
+    }
+    token
+}
+
+fn merge_scopes(primary: &[String], secondary: &[String]) -> Vec<String> {
+    let mut scopes = Vec::new();
+    for scope in primary.iter().chain(secondary) {
+        for part in scope.split_whitespace() {
+            if !scopes.iter().any(|existing| existing == part) {
+                scopes.push(part.to_string());
+            }
+        }
+    }
+    scopes
 }
 
 /// Exchange an authorization code for access + refresh tokens.
@@ -641,6 +734,100 @@ mod tests {
     fn test_scope_covered_token_scope_with_spaces() {
         let scopes = vec![GMAIL_FILTER_SCOPE.to_string()];
         assert!(scope_covered(&scopes, GMAIL_FILTER_SCOPE));
+    }
+
+    #[test]
+    fn test_build_auth_url_uses_incremental_auth_without_prompt_by_default() {
+        let url = build_auth_url(
+            "client id",
+            "http://127.0.0.1:8484/callback",
+            "state",
+            SHEETS_SCOPE,
+            Some("person@example.com"),
+            false,
+        );
+
+        assert!(url.contains("include_granted_scopes=true"));
+        assert!(url.contains("access_type=offline"));
+        assert!(url.contains("login_hint=person%40example.com"));
+        assert!(!url.contains("prompt=consent"));
+    }
+
+    #[test]
+    fn test_build_auth_url_can_force_consent_when_refresh_grant_is_missing() {
+        let url = build_auth_url(
+            "client",
+            "http://127.0.0.1:8484/callback",
+            "state",
+            SHEETS_SCOPE,
+            None,
+            true,
+        );
+
+        assert!(url.contains("prompt=consent"));
+    }
+
+    #[test]
+    fn test_prompt_consent_for_existing_refresh_token() {
+        let token = StoredToken {
+            access_token: "access".to_string(),
+            refresh_token: Some("refresh".to_string()),
+            expires_at: Utc::now() + Duration::hours(1),
+            scopes: vec![SHEETS_SCOPE.to_string()],
+            platform: "gmail".to_string(),
+        };
+
+        assert!(!prompt_consent_for(Some(&token), false));
+        assert!(prompt_consent_for(Some(&token), true));
+        assert!(prompt_consent_for(None, false));
+    }
+
+    #[test]
+    fn test_merge_cached_grant_preserves_refresh_token_and_scope_union() {
+        let previous = StoredToken {
+            access_token: "old-access".to_string(),
+            refresh_token: Some("old-refresh".to_string()),
+            expires_at: Utc::now() + Duration::hours(1),
+            scopes: vec![GMAIL_FILTER_SCOPE.to_string()],
+            platform: "gmail".to_string(),
+        };
+        let new_token = StoredToken {
+            access_token: "new-access".to_string(),
+            refresh_token: None,
+            expires_at: Utc::now() + Duration::hours(1),
+            scopes: vec![SHEETS_SCOPE.to_string()],
+            platform: "gmail".to_string(),
+        };
+
+        let merged = merge_cached_grant(new_token, Some(&previous));
+
+        assert_eq!(merged.access_token, "new-access");
+        assert_eq!(merged.refresh_token.as_deref(), Some("old-refresh"));
+        assert!(scope_covered(&merged.scopes, GMAIL_FILTER_SCOPE));
+        assert!(scope_covered(&merged.scopes, SHEETS_SCOPE));
+    }
+
+    #[test]
+    fn test_merge_cached_grant_without_refresh_uses_returned_scopes_only() {
+        let previous = StoredToken {
+            access_token: "old-access".to_string(),
+            refresh_token: None,
+            expires_at: Utc::now() + Duration::hours(1),
+            scopes: vec![GMAIL_FILTER_SCOPE.to_string()],
+            platform: "gmail".to_string(),
+        };
+        let new_token = StoredToken {
+            access_token: "new-access".to_string(),
+            refresh_token: Some("new-refresh".to_string()),
+            expires_at: Utc::now() + Duration::hours(1),
+            scopes: vec![SHEETS_SCOPE.to_string()],
+            platform: "gmail".to_string(),
+        };
+
+        let merged = merge_cached_grant(new_token, Some(&previous));
+
+        assert_eq!(merged.refresh_token.as_deref(), Some("new-refresh"));
+        assert_eq!(merged.scopes, vec![SHEETS_SCOPE.to_string()]);
     }
 
     #[test]

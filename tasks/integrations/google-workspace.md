@@ -8,6 +8,7 @@ Already implemented:
 - `corky doc read <doc>` — Google Docs read (HTML export → markdown)
 - `corky doc write <doc> <file>` — Google Docs write (clear + insert)
 - `corky doc upload <file>` — Google Drive upload (multipart)
+- `corky doc info/export <file>` — Drive MIME detection plus Google Docs/Sheets/Slides/Drawings export and binary download
 - `corky doc sheet <sheet>` — Google Sheets read (→ markdown table or CSV)
 - `corky sheets pull <sheet> <tab> <csv>` / `corky sheets push <sheet> <tab> <csv>` — tab-level CSV sync
 - `corky cal auth/create/list/delete/check` — Google Calendar full CRUD
@@ -176,13 +177,14 @@ After Phases 2-5, revise corky skill/runbook files:
 | Service | Coverage |
 |---------|---------|
 | Gmail | sync + send + attachments |
-| Drive | upload (list/download: future) |
+| Drive | upload + metadata/export/download for document files |
 | Calendar | full CRUD |
-| Docs | read + write |
+| Docs | read + write + Drive export |
 | Sheets | read + write |
+| Slides | text/PPTX/PDF export via Drive |
+| Drawings | PNG/SVG/PDF export via Drive |
+| Forms | detected; content export unsupported by Drive |
 | Chat | send |
 | Tasks | list + add + done |
-| Slides | out of scope |
-| Forms | out of scope |
 | Meet | out of scope |
 | Keep | out of scope |

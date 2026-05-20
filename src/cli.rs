@@ -330,6 +330,8 @@ pub enum GoogleAuthScope {
     Send,
     /// Google Drive file upload scope
     Drive,
+    /// Google Drive read/export/download scope
+    DriveReadonly,
     /// Google Docs read/write scope
     Docs,
     /// Google Sheets read-only scope
@@ -946,7 +948,7 @@ pub enum FilterCommands {
 pub enum DocCommands {
     /// Build a PDF or DOCX from a markdown file
     Build {
-        /// Path to the markdown file
+        /// Path to the replacement file
         file: PathBuf,
 
         /// Output format: pdf (default) or docx
@@ -970,14 +972,52 @@ pub enum DocCommands {
         #[arg(long)]
         share: bool,
 
+        /// Convert supported Office/text/CSV uploads into Google Docs/Sheets/Slides
+        #[arg(long)]
+        convert: bool,
+
         /// Google account email (login hint for OAuth)
         #[arg(long)]
         account: Option<String>,
     },
-    /// Read a Google Doc and export as markdown
+    /// Show Google Drive metadata and Corky's detected document kind
+    Info {
+        /// Google Workspace/Drive URL or file ID
+        file: String,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Export or download a Google Workspace/Drive file
+    Export {
+        /// Google Workspace/Drive URL or file ID
+        file: String,
+
+        /// Export format: auto, txt, md, csv, pdf, docx, xlsx, pptx, png, svg
+        #[arg(long, default_value = "auto", value_parser = [
+            "auto", "txt", "text", "md", "markdown", "csv", "pdf", "docx", "xlsx", "pptx", "png", "svg"
+        ])]
+        format: String,
+
+        /// Output file
+        #[arg(long, short)]
+        output: PathBuf,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Read a Google Workspace file as text/table output when supported
     Read {
-        /// Google Doc URL or document ID
+        /// Google Workspace/Drive URL or document ID
         doc: String,
+
+        /// Output format for readable sources: auto, text, markdown, table, csv
+        #[arg(long, default_value = "auto", value_parser = [
+            "auto", "text", "txt", "markdown", "md", "table", "csv"
+        ])]
+        format: String,
 
         /// Output file (default: stdout)
         #[arg(long, short)]
@@ -987,7 +1027,7 @@ pub enum DocCommands {
         #[arg(long)]
         account: Option<String>,
     },
-    /// Update a Google Doc from a markdown file
+    /// Update a Google Doc or replace binary Drive file media
     Write {
         /// Google Doc URL or document ID
         doc: String,

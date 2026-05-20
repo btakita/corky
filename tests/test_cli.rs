@@ -196,6 +196,53 @@ fn test_cli_doc_sheet_write_help() {
 }
 
 #[test]
+fn test_cli_doc_info_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["doc", "info", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Drive metadata"));
+}
+
+#[test]
+fn test_cli_doc_export_requires_output() {
+    let mut cmd = corky_cmd();
+    cmd.args([
+        "doc",
+        "export",
+        "https://drive.google.com/file/d/file-id/view",
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("--output"));
+}
+
+#[test]
+fn test_cli_doc_read_accepts_format() {
+    let mut cmd = corky_cmd();
+    cmd.args(["doc", "read", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("--format"));
+}
+
+#[test]
+fn test_cli_doc_upload_convert_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["doc", "upload", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("--convert"));
+}
+
+#[test]
+fn test_cli_auth_accepts_drive_readonly_scope() {
+    let mut cmd = corky_cmd();
+    cmd.args(["auth", "--scope", "drive-readonly", "--help"]);
+    cmd.assert().success();
+}
+
+#[test]
 fn test_cli_docs_read_help() {
     let mut cmd = corky_cmd();
     cmd.args(["docs", "read", "--help"]);

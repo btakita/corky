@@ -36,7 +36,7 @@ corky sync
 
 See the [getting started guide](https://btakita.github.io/corky/getting-started/quick-start.html) for full setup instructions.
 
-When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google-backed flows default to `127.0.0.1:8484`, honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override, and only fall back to another loopback port when you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Browser-auth prompts also raise a best-effort desktop notification via `notify-desktop` on Linux, falling back to `notify-send` when `notify-desktop` is unavailable; macOS uses `osascript`, and Windows uses PowerShell NotifyIcon.
+When corky needs browser OAuth, it binds the local callback listener before opening the browser. Google-backed flows default to `127.0.0.1:8484`, honor `CORKY_OAUTH_CALLBACK_PORT` for a one-session override, and only fall back to another loopback port when you explicitly set `CORKY_OAUTH_ALLOW_EPHEMERAL_PORT=1` for a client that supports wildcard loopback redirects. Google auth uses incremental authorization so newly needed Drive/Docs/Sheets/Chat/Tasks scopes extend the cached grant instead of replacing it; Corky preserves cached refresh tokens when Google does not return a new one. Browser-auth prompts also raise a best-effort desktop notification via `notify-desktop` on Linux, falling back to `notify-send` when `notify-desktop` is unavailable; macOS uses `osascript`, and Windows uses PowerShell NotifyIcon.
 If `[gsc]` service-account auth is configured, that Search Console token is only cached in-process and is scoped by the resolved account/config fingerprint, so changing mailbox roots or configs does not reuse the wrong SA token.
 
 ## Key features
@@ -46,7 +46,7 @@ If `[gsc]` service-account auth is configured, that Search Console token is only
 - **AI-native** — files, CLI, and git work the same for humans and agents
 - **Multi-account** — Gmail, Protonmail Bridge, generic IMAP, all in one directory
 - **Social posting** — draft and publish to LinkedIn and YouTube via OAuth
-- **Google Workspace** — Gmail send with attachments, Docs/Sheets read-write, Chat, Tasks
+- **Google Workspace** — Gmail send with attachments, Drive-aware Docs/Sheets/Slides exports, Chat, Tasks
 - **Scheduling** — schedule email and social drafts for timed publishing
 - **Topics** — organize conversations with shared topic context across mailboxes
 - **Transcription** — whisper-rs audio transcription with speaker diarization via pyannote-rs
@@ -69,6 +69,7 @@ corky filter push --dry-run     # Preview filter changes
 corky filter pull               # Show current Gmail filters
 corky auth --email you@gmail.com --scope sync  # Pre-authenticate Gmail API sync
 corky auth --account my-gmail --email you@gmail.com --scope send  # Pre-authenticate Gmail compose
+corky auth --email you@gmail.com --scope drive-readonly  # Pre-authenticate Drive export/download
 corky filter auth               # Authenticate for Gmail filter API
 corky linkedin draft              # Create LinkedIn draft
 corky linkedin publish FILE      # Publish to LinkedIn
@@ -78,8 +79,12 @@ corky youtube playlist add PL VID   # Add video to playlist
 corky youtube playlist create TITLE # Create a playlist
 corky youtube playlist list         # List your playlists
 corky doc upload FILE --account a@gmail.com  # Google Drive upload (account-targeted OAuth)
-corky docs read DOC_URL                    # Read Google Doc text
-corky docs write DOC_URL FILE              # Replace Google Doc text from markdown
+corky doc upload FILE --convert             # Convert Office/CSV uploads into Google Docs/Sheets/Slides
+corky doc info DRIVE_URL                    # Show Drive MIME type and Corky's detected kind
+corky doc export DRIVE_URL -o FILE          # Export Google files or download binary Drive files
+corky doc read DRIVE_URL                    # Read Docs/Sheets/Slides text/table output when supported
+corky docs read DOC_URL                     # Read Google Doc text
+corky docs write DOC_URL FILE               # Replace Google Doc text from markdown
 corky doc sheet SHEET_URL                   # Read Google Sheet as markdown table
 corky doc sheet-write SHEET_URL RANGE CSV  # Write CSV to Google Sheet range
 corky sheets read SHEET_URL --range A1:D10 # Read Google Sheet range
@@ -173,7 +178,7 @@ sync_days = 30           # optional, default 3650
 corky sync account my-gmail
 ```
 
-This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs; corky now writes that shared token store with a lock + atomic replace so concurrent auth flows do not clobber unrelated entries.
+This opens your browser for OAuth authorization. Authorize with the correct Google account. The token is cached at `~/.config/corky/tokens.json` for future syncs; corky writes that shared token store with a lock + atomic replace so concurrent auth flows do not clobber unrelated entries. When another Google command needs an additional scope, Corky uses incremental auth and preserves the cached refresh grant so later runs can refresh silently.
 
 You can also authenticate before running sync: `corky auth --email you@gmail.com --scope sync` stores the Gmail read-only token under the same `gmail:<email>` key used by `gmail-api` sync. For Gmail API draft/send, use `corky auth --account my-gmail --email you@gmail.com --scope send` so the compose token is stored under `gmail:<account>:send`.
 

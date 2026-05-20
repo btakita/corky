@@ -91,7 +91,12 @@ corky unanswered NAME                        # Specific mailbox only
 
 ```sh
 corky auth --email you@gmail.com --scope docs             # Pre-authenticate Google Docs
+corky auth --email you@gmail.com --scope drive-readonly   # Pre-authenticate Drive export/download
 corky auth --email you@gmail.com --scope sheets-readonly  # Pre-authenticate read-only Sheets
+corky doc info DRIVE_URL                                  # Show Drive MIME type and detected kind
+corky doc export DRIVE_URL -o FILE                        # Export Google files or download binary files
+corky doc read DRIVE_URL                                  # Read Docs/Sheets/Slides text/table output
+corky doc upload FILE --convert                           # Convert Office/CSV uploads to Google files
 corky docs read DOC_URL [-o FILE]                         # Read Google Doc text
 corky docs write DOC_URL FILE                             # Replace Google Doc text from markdown
 corky sheets read SHEET_URL --range A1:D10 --format csv   # Read Google Sheet range

@@ -440,12 +440,12 @@ Outputs the refresh token for `.env`.
 ### 5.3.1 auth
 
 ```
-corky auth [--email EMAIL] [--account NAME] [--scope filter|sync|send|drive|docs|sheets-readonly|sheets|chat|tasks]
+corky auth [--email EMAIL] [--account NAME] [--scope filter|sync|send|drive|drive-readonly|docs|sheets-readonly|sheets|chat|tasks]
 ```
 
-Manual Google OAuth pre-authentication for integrations that otherwise trigger browser auth on first use. `--email` is passed as the OAuth `login_hint` so the consent screen opens on the intended Google account. For non-send Gmail-backed scopes, a provided email also becomes the token-store key (`gmail:<email>`), matching the lookup used by Gmail API sync and Docs/Sheets/Chat/Tasks commands. For `--scope send`, Corky stores the compose token under `gmail:<account>:send`; use the `.corky.toml` account name for `--account` and the Google address for `--email`.
+Manual Google OAuth pre-authentication for integrations that otherwise trigger browser auth on first use. `--email` is passed as the OAuth `login_hint` so the consent screen opens on the intended Google account. For non-send Gmail-backed scopes, a provided email also becomes the token-store key (`gmail:<email>`), matching the lookup used by Gmail API sync and Docs/Sheets/Drive/Chat/Tasks commands. For `--scope send`, Corky stores the compose token under `gmail:<account>:send`; use the `.corky.toml` account name for `--account` and the Google address for `--email`.
 
-Default scope is `sync` (`gmail.readonly`). Google access tokens remain short-lived according to Google's token endpoint, but Corky stores refresh tokens and refreshes access tokens automatically while the authorization grant remains valid. Refresh persistence must preserve the token's original scopes so a refreshed sync/docs/sheets token is not downgraded to filter scope metadata.
+Default scope is `sync` (`gmail.readonly`). Google access tokens remain short-lived according to Google's token endpoint, but Corky stores refresh tokens and refreshes access tokens automatically while the authorization grant remains valid. Google auth URLs use incremental authorization (`include_granted_scopes=true`). Automatic command-triggered re-auth only forces `prompt=consent` when no cached refresh token exists or when refresh failed; when adding Drive/Docs/Sheets/Chat/Tasks scopes to an existing grant, Corky preserves the cached refresh token if Google omits a new one and keeps the union of cached and returned scopes. Refresh persistence must preserve the token's original scopes so a refreshed sync/docs/sheets token is not downgraded to filter scope metadata.
 
 ### 5.4 list-folders
 
@@ -1409,6 +1409,7 @@ OAuth tokens stored at `{app_config_dir}/tokens.json` keyed by platform URN.
 - Writes are serialized with `tokens.json.lock`
 - Saves use temp-file replace plus merge-on-save so concurrent OAuth flows preserve unrelated token keys
 - TokenStore tracks the load baseline and dirty/deleted keys so a stale writer saving an unrelated token cannot restore a token another process cleared
+- Google incremental auth merges returned scopes with cached scopes and preserves the existing refresh token when the token endpoint omits a replacement refresh token
 - Tokens have a 5-minute grace window: tokens expiring within 5 minutes are treated as expired
 - Token fields: access_token, refresh_token (optional), expires_at, scopes, platform
 
@@ -1608,8 +1609,10 @@ Run `corky watch` and it handles both IMAP sync and scheduled publishing.
 | Command | Description |
 |---------|-------------|
 | `corky doc build <FILE>` | Convert markdown to PDF or DOCX |
-| `corky doc upload <FILE> [--share] [--account EMAIL]` | Upload a file to Google Drive |
-| `corky doc read <DOC> [-o FILE] [--account EMAIL]` | Read a Google Doc as markdown |
+| `corky doc upload <FILE> [--share] [--convert] [--account EMAIL]` | Upload a file to Google Drive, optionally converting supported Office/text/CSV files into Google Workspace files |
+| `corky doc info <FILE> [--account EMAIL]` | Show Drive metadata, MIME type, and Corky's detected document kind |
+| `corky doc export <FILE> -o <OUTPUT> [--format auto\|txt\|md\|csv\|pdf\|docx\|xlsx\|pptx\|png\|svg] [--account EMAIL]` | Export Google Workspace files or download binary Drive files |
+| `corky doc read <DOC> [--format auto\|text\|markdown\|table\|csv] [-o FILE] [--account EMAIL]` | Read a supported Google Workspace file as text/table output |
 | `corky doc write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
 | `corky docs read <DOC> [-o FILE] [--account EMAIL]` | Read a Google Doc as markdown |
 | `corky docs write <DOC> <FILE> [--account EMAIL]` | Update a Google Doc from markdown |
@@ -1635,38 +1638,58 @@ corky doc build -o <OUTPUT> <FILE>          # Custom output path
 ### 14.2.1 Google Drive Upload
 
 ```
-corky doc upload <FILE> [--share] [--account EMAIL]
+corky doc upload <FILE> [--share] [--convert] [--account EMAIL]
 ```
 
-Uploads a local file to Google Drive. The MIME type is inferred from the file extension. When `--share` is set, the uploaded file is shared (link-based access). Prints the web link on success.
+Uploads a local file to Google Drive. The media MIME type is inferred from the file extension, including PDF, images, Markdown/text/HTML/CSV, and common Office/OpenDocument formats. When `--convert` is set, supported document/spreadsheet/presentation inputs are uploaded with a Google Workspace target MIME type so Drive converts them into Google Docs, Sheets, or Slides. When `--share` is set, the uploaded file is shared (link-based access). Prints the Drive `webViewLink` on success when present, otherwise the generic Drive file link.
 
-### 14.2.2 Google Docs Read
+### 14.2.2 Google Drive Metadata and Export
 
 ```
-corky doc read <DOC_URL_OR_ID> [-o FILE] [--account EMAIL]
+corky doc info <DRIVE_URL_OR_ID> [--account EMAIL]
+corky doc export <DRIVE_URL_OR_ID> -o <OUTPUT> [--format FORMAT] [--account EMAIL]
+```
+
+`doc info` resolves Drive metadata with `files.get`, prints the file ID, name, MIME type, detected kind, and web view link when available. It classifies:
+
+- Google Workspace native files: Docs, Sheets, Slides, Forms, Drawings
+- PDF
+- common Office/OpenDocument documents, spreadsheets, and presentations
+- text, images, and other binary files
+
+`doc export` uses Drive `files.export` for Google Docs/Sheets/Slides/Drawings and `files.get?alt=media` for binary Drive files such as PDF and Office documents. With `--format auto`, Corky infers the export target from the output extension, then falls back to DOCX for Docs, XLSX for Sheets, PPTX for Slides, and PNG for Drawings. Forms are detected but are not exportable through Drive; users should export the linked response Sheet or use the Forms UI.
+
+**OAuth scope:** `DRIVE_READONLY_SCOPE` (`drive.readonly`) for metadata, export, and download. Exact `corky docs read` / `corky sheets read` commands keep using their narrower Docs/Sheets scopes.
+
+### 14.2.3 Google Docs Read
+
+```
+corky doc read <DOC_URL_OR_ID> [--format text|markdown] [-o FILE] [--account EMAIL]
 corky docs read <DOC_URL_OR_ID> [-o FILE] [--account EMAIL]
 ```
 
-Reads a Google Doc through the Docs API and extracts paragraph/table text as markdown-ish plain text. Output goes to stdout by default or to `-o FILE`.
+Reads a Google Doc through the Docs API and extracts paragraph/table text as markdown-ish plain text. Output goes to stdout by default or to `-o FILE`. Exact Google Docs URLs and bare IDs use this narrow Docs API path. `corky doc read` also detects Sheets URLs and routes them to table/CSV reads, and detects Slides/Drive file URLs through Drive metadata when Drive read scope is required.
 
 **API:** `GET https://docs.googleapis.com/v1/documents/{documentId}`
 
 **OAuth scope:** `DOCS_SCOPE` (`documents`, read/write). Reads must not rely on Drive `files.export`, which requires a Drive scope and would make the documented Docs-only auth path fail.
 
-### 14.2.3 Google Docs Write
+### 14.2.4 Google Docs and Drive File Write
 
 ```
 corky doc write <DOC_URL_OR_ID> <FILE> [--account EMAIL]
 corky docs write <DOC_URL_OR_ID> <FILE> [--account EMAIL]
 ```
 
-Replaces the content of a Google Doc with the contents of a local markdown file.
+For Google Docs, replaces the content with the contents of a local markdown file through the Docs API. For Drive binary files such as PDF and Office files, `corky doc write <DRIVE_FILE_URL> <FILE>` replaces the file media through Drive upload. Google Sheets must use `corky sheets write` or `corky sheets push` because ranges/tabs are explicit. Slides, Forms, and Drawings are detected but write support is not implemented.
 
-**API:** `POST https://docs.googleapis.com/v1/documents/{documentId}:batchUpdate`
+**APIs:**
+- Docs: `POST https://docs.googleapis.com/v1/documents/{documentId}:batchUpdate`
+- Binary Drive files: `PATCH https://www.googleapis.com/upload/drive/v3/files/{fileId}?uploadType=media`
 
-**OAuth scope:** `DOCS_SCOPE` (`documents`, read/write).
+**OAuth scopes:** `DOCS_SCOPE` (`documents`, read/write) for Google Docs; `DRIVE_READONLY_SCOPE` for metadata detection plus `DRIVE_FILE_SCOPE` for binary file media replacement.
 
-### 14.2.4 Google Sheets Read
+### 14.2.5 Google Sheets Read
 
 ```
 corky doc sheet <SHEET_URL_OR_ID> [--range RANGE] [--format table|csv] [-o FILE] [--account EMAIL]
@@ -1676,7 +1699,7 @@ Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `-
 
 **OAuth scope:** `SHEETS_READONLY_SCOPE` (`spreadsheets.readonly`) for read-only access. A token with `SHEETS_SCOPE` (`spreadsheets`) also covers reads.
 
-### 14.2.5 Google Sheets Write
+### 14.2.6 Google Sheets Write
 
 ```
 corky doc sheet-write <SHEET_URL_OR_ID> <RANGE> <CSV_FILE> [--account EMAIL]
@@ -1699,7 +1722,7 @@ Writes the contents of a local CSV file to a Google Sheet range.
 | SW2 | Auth error (401) | Error: "Sheets API: unauthorized. Re-run `corky filter auth`." |
 | SW3 | Quoted commas in CSV | Field preserved correctly (parser handles RFC 4180) |
 
-### 14.2.6 Google Sheets CSV Tab Sync
+### 14.2.7 Google Sheets CSV Tab Sync
 
 ```
 corky sheets pull <SHEET_URL_OR_ID> <TAB> <CSV_FILE> [--account EMAIL]
@@ -1764,6 +1787,11 @@ Before conversion, `check_tool()` verifies that required tools (`pandoc`, `weasy
 | D7 | No frontmatter | Default template "proposal" |
 | D8 | pandoc fails | Temp HTML cleaned up, error reported |
 | D9 | weasyprint fails | Temp HTML cleaned up, error reported |
+| D10 | Google Forms source | Detected by MIME type and rejected with guidance to use linked response Sheet/UI |
+| D11 | Google Drawings read | Rejected as image-only; use `doc export -o drawing.png` |
+| D12 | Binary Drive file read | Rejected for stdout text read; use `doc export -o FILE` |
+| D13 | `doc export --format auto` | Output extension selects export MIME before type default |
+| D14 | `doc upload --convert` unsupported extension | Uploads without conversion using the inferred media MIME type |
 
 ## 15. Google Calendar
 
@@ -2116,7 +2144,7 @@ Loopback browser auth stays machine-local: corky binds the callback listener bef
 - Email content stays on the local machine
 - OAuth tokens stored locally (`~/.config/corky/`)
 - No analytics, telemetry, or tracking
-- Google API scopes requested (all optional, per feature): `gmail.readonly`, `gmail.compose`, `gmail.settings.basic`, `drive.file`, `documents`, `spreadsheets`, `spreadsheets.readonly`, `chat.messages`, `tasks`, `calendar`, optionally `youtube.*`
+- Google API scopes requested (all optional, per feature): `gmail.readonly`, `gmail.compose`, `gmail.settings.basic`, `drive.file`, `drive.readonly`, `documents`, `spreadsheets`, `spreadsheets.readonly`, `chat.messages`, `tasks`, `calendar`, optionally `youtube.*`
 - Does NOT request: Gmail delete, contacts write, or admin permissions
 - Users can revoke access anytime via Google security settings
 - Full privacy policy: `docs/reference/privacy-policy.md`

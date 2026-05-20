@@ -29,6 +29,7 @@ Corky requests Google API scopes only for features you run. Common scopes includ
 - `documents` — Reading and writing Google Docs when you run Docs commands
 - `spreadsheets.readonly` / `spreadsheets` — Reading and writing Google Sheets when you run Sheets commands
 - `drive.file` — Uploading files to Google Drive when you run Drive upload commands
+- `drive.readonly` — Reading Drive metadata and exporting/downloading Drive files when you run `doc info`, `doc read` for non-Docs/Sheets URLs, or `doc export`
 
 Corky may also request:
 

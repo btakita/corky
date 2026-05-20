@@ -347,19 +347,30 @@ fn main() -> Result<()> {
             DocCommands::Upload {
                 file,
                 share,
+                convert,
                 account,
             } => {
-                let link = corky::doc::upload::run(&file, share, account.as_deref())?;
+                let link = corky::doc::upload::run(&file, share, convert, account.as_deref())?;
                 println!("{}", link);
                 Ok(())
             }
-            DocCommands::Read {
-                doc,
+            DocCommands::Info { file, account } => {
+                corky::doc::drive::info(&file, account.as_deref())
+            }
+            DocCommands::Export {
+                file,
+                format,
                 output,
                 account,
-            } => corky::doc::gdocs::read(&doc, output.as_deref(), account.as_deref()),
+            } => corky::doc::drive::export(&file, &format, &output, account.as_deref()),
+            DocCommands::Read {
+                doc,
+                format,
+                output,
+                account,
+            } => corky::doc::drive::read(&doc, &format, output.as_deref(), account.as_deref()),
             DocCommands::Write { doc, file, account } => {
-                corky::doc::gdocs::write(&doc, &file, account.as_deref())
+                corky::doc::drive::write(&doc, &file, account.as_deref())
             }
             DocCommands::Sheet {
                 sheet,
@@ -524,6 +535,11 @@ fn run_google_auth(
         GoogleAuthScope::Drive => corky::filter::gmail_auth::run_auth_with_scope(
             account,
             corky::filter::gmail_auth::DRIVE_FILE_SCOPE,
+            login_hint,
+        ),
+        GoogleAuthScope::DriveReadonly => corky::filter::gmail_auth::run_auth_with_scope(
+            account,
+            corky::filter::gmail_auth::DRIVE_READONLY_SCOPE,
             login_hint,
         ),
         GoogleAuthScope::Docs => corky::filter::gmail_auth::run_auth_with_scope(
