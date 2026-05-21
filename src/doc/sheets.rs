@@ -25,11 +25,7 @@ pub fn read(
     account: Option<&str>,
 ) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::SHEETS_READONLY_SCOPE,
-        account,
-    )?;
+    let token = get_sheets_token(account)?;
 
     eprintln!("Fetching sheet data...");
     let rows = fetch_rows(sheet_id, range, &token)?;
@@ -59,8 +55,7 @@ pub fn read(
 /// Requires `SHEETS_SCOPE` (read/write), not readonly.
 pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
-    let token =
-        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::SHEETS_SCOPE, account)?;
+    let token = get_sheets_token(account)?;
 
     let values = read_csv_values(file)?;
 
@@ -79,11 +74,7 @@ pub fn write(sheet: &str, range: &str, file: &Path, account: Option<&str>) -> Re
 /// Pull a whole Google Sheet tab into a local CSV file.
 pub fn pull_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
-    let token = gmail_auth::get_access_token_for_user(
-        Some("default"),
-        gmail_auth::SHEETS_READONLY_SCOPE,
-        account,
-    )?;
+    let token = get_sheets_token(account)?;
     let range = tab_range(tab);
 
     eprintln!("Fetching tab {tab}...");
@@ -105,8 +96,7 @@ pub fn pull_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> R
 /// missing, then cleared before values are written from A1.
 pub fn push_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
-    let token =
-        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::SHEETS_SCOPE, account)?;
+    let token = get_sheets_token(account)?;
     let values = read_csv_values(file)?;
 
     if values.is_empty() {
@@ -135,8 +125,7 @@ pub fn push_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> R
 /// Delete a Google Sheet tab by title.
 pub fn delete_tab(sheet: &str, tab: &str, account: Option<&str>) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
-    let token =
-        gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::SHEETS_SCOPE, account)?;
+    let token = get_sheets_token(account)?;
 
     let tab_sheet_id = tab_sheet_id(sheet_id, tab, &token)?
         .ok_or_else(|| anyhow::anyhow!("Sheet tab '{tab}' was not found."))?;
@@ -146,6 +135,14 @@ pub fn delete_tab(sheet: &str, tab: &str, account: Option<&str>) -> Result<()> {
     println!("Deleted tab {tab}.");
 
     Ok(())
+}
+
+fn get_sheets_token(account: Option<&str>) -> Result<String> {
+    gmail_auth::get_access_token_for_user(Some("default"), sheets_command_scope(), account)
+}
+
+fn sheets_command_scope() -> &'static str {
+    gmail_auth::SHEETS_SCOPE
 }
 
 fn fetch_rows(sheet_id: &str, range: Option<&str>, token: &str) -> Result<Vec<Vec<String>>> {
@@ -518,6 +515,12 @@ mod tests {
             parse_sheet_id("https://docs.google.com/spreadsheets/d/abc123/edit"),
             "abc123"
         );
+    }
+
+    #[test]
+    fn test_sheets_commands_request_read_write_scope() {
+        assert_eq!(sheets_command_scope(), gmail_auth::SHEETS_SCOPE);
+        assert_ne!(sheets_command_scope(), gmail_auth::SHEETS_READONLY_SCOPE);
     }
 
     #[test]

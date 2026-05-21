@@ -106,6 +106,8 @@ corky transcribe FILE --diarize  # With speaker diarization
 corky --help                    # All commands
 ```
 
+Sheets commands request the read/write `spreadsheets` OAuth scope even for read and pull operations, so a token first created by reading can be reused by later write, push, or delete-tab commands.
+
 ### Transcription & speaker diarization
 
 Transcribe audio files with optional speaker diarization. Supports WAV, MP3, FLAC, OGG, M4A, AMR, and more.

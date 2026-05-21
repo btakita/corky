@@ -277,6 +277,7 @@ pub fn get_access_token_for_user(
         prompt_consent_for(previous.as_ref(), refresh_failed),
     )?;
     let token = merge_cached_grant(token, previous.as_ref());
+    ensure_scope_covered(&token.scopes, scope)?;
     let access = token.access_token.clone();
     store.upsert(key, token);
     store.save()?;
@@ -293,13 +294,17 @@ pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) ->
 
     // Check for existing valid token
     if let Some(token) = store.get_valid(&key) {
-        return Ok(token.access_token.clone());
+        if scope_covered(&token.scopes, GMAIL_SEND_SCOPE) {
+            return Ok(token.access_token.clone());
+        }
+        eprintln!("Cached send token has insufficient scope. Re-authenticating...");
     }
 
     // Try refresh if we have a refresh token
     let mut refresh_failed = false;
     if let Some(token) = store.tokens.get(&key).cloned()
         && let Some(ref refresh) = token.refresh_token
+        && scope_covered(&token.scopes, GMAIL_SEND_SCOPE)
     {
         println!("Send token expired, refreshing...");
         match refresh_access_token(refresh, &token.scopes) {
@@ -324,6 +329,7 @@ pub fn get_send_access_token(account: Option<&str>, login_hint: Option<&str>) ->
         prompt_consent_for(previous.as_ref(), refresh_failed),
     )?;
     let token = merge_cached_grant(token, previous.as_ref());
+    ensure_scope_covered(&token.scopes, GMAIL_SEND_SCOPE)?;
     let access = token.access_token.clone();
     store.upsert(key, token);
     store.save()?;
@@ -387,6 +393,7 @@ pub fn run_auth_with_scope(
         prompt_consent_for(previous.as_ref(), true),
     )?;
     let token = merge_cached_grant(token, previous.as_ref());
+    ensure_scope_covered(&token.scopes, scope)?;
     store.upsert(key.clone(), token);
     store.save()?;
     println!("Gmail token stored as '{}'", key);
@@ -408,6 +415,7 @@ pub fn run_send_auth(account: Option<&str>, login_hint: Option<&str>) -> Result<
         prompt_consent_for(previous.as_ref(), true),
     )?;
     let token = merge_cached_grant(token, previous.as_ref());
+    ensure_scope_covered(&token.scopes, GMAIL_SEND_SCOPE)?;
     store.upsert(key.clone(), token);
     store.save()?;
     println!("Gmail send token stored as '{}'", key);
@@ -527,6 +535,21 @@ fn merge_scopes(primary: &[String], secondary: &[String]) -> Vec<String> {
         }
     }
     scopes
+}
+
+fn ensure_scope_covered(token_scopes: &[String], requested: &str) -> Result<()> {
+    if scope_covered(token_scopes, requested) {
+        return Ok(());
+    }
+
+    let granted = if token_scopes.is_empty() {
+        "(none)".to_string()
+    } else {
+        token_scopes.join(" ")
+    };
+    bail!(
+        "Google OAuth token is missing required scope(s): {requested}. Granted scope(s): {granted}. Re-run the command and approve the requested Google permissions, or run `corky auth --scope workspace` for document workflows."
+    )
 }
 
 /// Exchange an authorization code for access + refresh tokens.
@@ -719,6 +742,16 @@ mod tests {
     fn test_scope_covered_readonly_does_not_subsume_rw() {
         let scopes = vec![SHEETS_READONLY_SCOPE.to_string()];
         assert!(!scope_covered(&scopes, SHEETS_SCOPE));
+    }
+
+    #[test]
+    fn test_ensure_scope_covered_rejects_readonly_for_sheets_write() {
+        let scopes = vec![SHEETS_READONLY_SCOPE.to_string()];
+        let err = ensure_scope_covered(&scopes, SHEETS_SCOPE).unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains(SHEETS_SCOPE));
+        assert!(message.contains("corky auth --scope workspace"));
     }
 
     #[test]

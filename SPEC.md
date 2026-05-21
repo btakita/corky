@@ -1701,7 +1701,7 @@ corky doc sheet <SHEET_URL_OR_ID> [--range RANGE] [--format table|csv] [-o FILE]
 
 Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `--range` specifies the cell range (e.g. `A1:D10`, `Sheet1!A1:C5`). Without `--range`, reads all data from the first sheet.
 
-**OAuth scope:** `SHEETS_READONLY_SCOPE` (`spreadsheets.readonly`) for read-only access. A token with `SHEETS_SCOPE` (`spreadsheets`) also covers reads.
+**OAuth scope:** `SHEETS_SCOPE` (`spreadsheets`, read/write). Sheets read and pull commands request the read/write scope up front so the shared `gmail:<account>` token cache is write-capable when the same workflow later runs `corky sheets write`, `push`, or `delete-tab`. A manually cached `SHEETS_READONLY_SCOPE` token is insufficient for `corky sheets *` commands and will be upgraded through the normal incremental OAuth flow.
 
 ### 14.2.6 Google Sheets Write
 
@@ -1716,9 +1716,11 @@ Writes the contents of a local CSV file to a Google Sheet range.
 
 **CSV parsing:** Handles quoted fields (commas inside quotes), `""` escape for literal quotes, and empty fields. Each CSV line becomes one row; columns map to cells.
 
-**OAuth scope:** `SHEETS_SCOPE` (`spreadsheets`, read/write) — distinct from `SHEETS_READONLY_SCOPE` used by `doc sheet`.
+**OAuth scope:** `SHEETS_SCOPE` (`spreadsheets`, read/write). This matches the read path so a token first minted by `corky doc sheet` or `corky sheets read` can be reused for later writes without a mid-operation scope failure.
 
 `corky auth --email EMAIL --scope workspace` stores a single cached Gmail-backed token covering Drive upload, Drive metadata/export/download, Docs read/write, and Sheets read/write. Use it before broad document CRUD or live test runs to avoid separate first-use browser prompts for each Workspace document scope.
+
+After any Google OAuth flow, Corky verifies the returned token actually covers the requested scope before it calls the Sheets API. If Google returns only a prior read-only grant, the command fails before mutation with an error asking the user to approve the requested permission or pre-authorize `corky auth --scope workspace`.
 
 **Edge cases:**
 
@@ -1748,7 +1750,7 @@ Tabs with spaces or punctuation are emitted as quoted A1 notation internally (fo
 - delete-tab metadata lookup: `GET https://sheets.googleapis.com/v4/spreadsheets/{id}?fields=sheets.properties(sheetId,title)`
 - delete-tab remove: `POST https://sheets.googleapis.com/v4/spreadsheets/{id}:batchUpdate` with `deleteSheet`
 
-**OAuth scopes:** `SHEETS_READONLY_SCOPE` for `pull`; `SHEETS_SCOPE` for `push` and `delete-tab`.
+**OAuth scope:** `SHEETS_SCOPE` for `pull`, `push`, and `delete-tab`; `pull` uses the broader scope for the same shared-cache reason as `read`.
 
 **Edge cases:**
 
