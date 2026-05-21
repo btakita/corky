@@ -348,9 +348,16 @@ fn main() -> Result<()> {
                 file,
                 share,
                 convert,
+                folder,
                 account,
             } => {
-                let link = corky::doc::upload::run(&file, share, convert, account.as_deref())?;
+                let link = corky::doc::upload::run(
+                    &file,
+                    share,
+                    convert,
+                    folder.as_deref(),
+                    account.as_deref(),
+                )?;
                 println!("{}", link);
                 Ok(())
             }

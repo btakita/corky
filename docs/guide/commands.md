@@ -98,6 +98,7 @@ corky doc info DRIVE_URL                                  # Show Drive MIME type
 corky doc export DRIVE_URL -o FILE                        # Export Google files or download binary files
 corky doc read DRIVE_URL                                  # Read Docs/Sheets/Slides text/table output
 corky doc upload FILE --convert                           # Convert Office/CSV uploads to Google files
+corky doc upload FILE --folder DRIVE_FOLDER_ID            # Upload into a specific Drive folder
 corky docs read DOC_URL [-o FILE]                         # Read Google Doc text
 corky docs write DOC_URL FILE                             # Replace Google Doc text from markdown
 corky sheets read SHEET_URL --range A1:D10 --format csv   # Read Google Sheet range

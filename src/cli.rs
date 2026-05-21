@@ -978,6 +978,10 @@ pub enum DocCommands {
         #[arg(long)]
         convert: bool,
 
+        /// Drive folder ID or folder URL to upload into
+        #[arg(long)]
+        folder: Option<String>,
+
         /// Google account email (login hint for OAuth)
         #[arg(long)]
         account: Option<String>,

@@ -232,7 +232,8 @@ fn test_cli_doc_upload_convert_help() {
     cmd.args(["doc", "upload", "--help"]);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("--convert"));
+        .stdout(predicate::str::contains("--convert"))
+        .stdout(predicate::str::contains("--folder"));
 }
 
 #[test]

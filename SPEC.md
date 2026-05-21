@@ -1609,7 +1609,7 @@ Run `corky watch` and it handles both IMAP sync and scheduled publishing.
 | Command | Description |
 |---------|-------------|
 | `corky doc build <FILE>` | Convert markdown to PDF or DOCX |
-| `corky doc upload <FILE> [--share] [--convert] [--account EMAIL]` | Upload a file to Google Drive, optionally converting supported Office/text/CSV files into Google Workspace files |
+| `corky doc upload <FILE> [--share] [--convert] [--folder FOLDER] [--account EMAIL]` | Upload a file to Google Drive, optionally converting supported Office/text/CSV files into Google Workspace files or targeting a Drive folder |
 | `corky doc info <FILE> [--account EMAIL]` | Show Drive metadata, MIME type, and Corky's detected document kind |
 | `corky doc export <FILE> -o <OUTPUT> [--format auto\|txt\|md\|csv\|pdf\|docx\|xlsx\|pptx\|png\|svg] [--account EMAIL]` | Export Google Workspace files or download binary Drive files |
 | `corky doc read <DOC> [--format auto\|text\|markdown\|table\|csv] [-o FILE] [--account EMAIL]` | Read a supported Google Workspace file as text/table output |
@@ -1638,10 +1638,14 @@ corky doc build -o <OUTPUT> <FILE>          # Custom output path
 ### 14.2.1 Google Drive Upload
 
 ```
-corky doc upload <FILE> [--share] [--convert] [--account EMAIL]
+corky doc upload <FILE> [--share] [--convert] [--folder FOLDER] [--account EMAIL]
 ```
 
-Uploads a local file to Google Drive. The media MIME type is inferred from the file extension, including PDF, images, Markdown/text/HTML/CSV, and common Office/OpenDocument formats. When `--convert` is set, supported document/spreadsheet/presentation inputs are uploaded with a Google Workspace target MIME type so Drive converts them into Google Docs, Sheets, or Slides. When `--share` is set, the uploaded file is shared (link-based access). Prints the Drive `webViewLink` on success when present, otherwise the generic Drive file link.
+Uploads a local file to Google Drive. The media MIME type is inferred from the file extension, including PDF, images, Markdown/text/HTML/CSV, and common Office/OpenDocument formats. When `--convert` is set, supported document/spreadsheet/presentation inputs are uploaded with a Google Workspace target MIME type so Drive converts them into Google Docs, Sheets, or Slides. When `--folder` is set, Corky accepts either a Drive folder ID or `https://drive.google.com/drive/folders/...` URL and sends it as the Drive `parents` metadata field. When `--share` is set, the uploaded file is shared (link-based access). Prints the Drive `webViewLink` on success when present, otherwise the generic Drive file link.
+
+**API:** `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,mimeType,webViewLink&supportsAllDrives=true`
+
+**OAuth scope:** `DRIVE_FILE_SCOPE` (`drive.file`). The `--account EMAIL` flag is used as the OAuth login hint and token-store key so uploads go to the intended Google account.
 
 ### 14.2.2 Google Drive Metadata and Export
 
@@ -1794,6 +1798,7 @@ Before conversion, `check_tool()` verifies that required tools (`pandoc`, `weasy
 | D12 | Binary Drive file read | Rejected for stdout text read; use `doc export -o FILE` |
 | D13 | `doc export --format auto` | Output extension selects export MIME before type default |
 | D14 | `doc upload --convert` unsupported extension | Uploads without conversion using the inferred media MIME type |
+| D15 | `doc upload --folder` with folder URL | Extracts the folder ID and sends it as Drive `parents` metadata |
 
 ## 15. Google Calendar
 

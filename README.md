@@ -81,6 +81,7 @@ corky youtube playlist create TITLE # Create a playlist
 corky youtube playlist list         # List your playlists
 corky doc upload FILE --account a@gmail.com  # Google Drive upload (account-targeted OAuth)
 corky doc upload FILE --convert             # Convert Office/CSV uploads into Google Docs/Sheets/Slides
+corky doc upload FILE --folder DRIVE_FOLDER_ID  # Upload into a specific Drive folder
 corky doc info DRIVE_URL                    # Show Drive MIME type and Corky's detected kind
 corky doc export DRIVE_URL -o FILE          # Export Google files or download binary Drive files
 corky doc read DRIVE_URL                    # Read Docs/Sheets/Slides text/table output when supported

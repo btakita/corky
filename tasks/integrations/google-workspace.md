@@ -7,7 +7,7 @@ Extend corky to cover Google Workspace natively in Rust. No external `gws` plugi
 Already implemented:
 - `corky doc read <doc>` — Google Docs read (HTML export → markdown)
 - `corky doc write <doc> <file>` — Google Docs write (clear + insert)
-- `corky doc upload <file>` — Google Drive upload (multipart)
+- `corky doc upload <file> [--folder FOLDER]` — Google Drive upload (multipart), optionally into a specific Drive folder
 - `corky doc info/export <file>` — Drive MIME detection plus Google Docs/Sheets/Slides/Drawings export and binary download
 - `corky doc sheet <sheet>` — Google Sheets read (→ markdown table or CSV)
 - `corky sheets pull <sheet> <tab> <csv>` / `corky sheets push <sheet> <tab> <csv>` — tab-level CSV sync
