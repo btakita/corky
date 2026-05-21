@@ -2179,3 +2179,20 @@ already uploaded.
 
 After release publication, the latest PyPI version and latest crates.io version
 must match the version in `Cargo.toml` and `pyproject.toml`.
+
+### 21.2 Release Status Reconciliation
+
+Release status notes track registry parity separately from workflow health:
+
+- **crates.io complete**: the crates.io `max_version` / `max_stable_version`
+  matches the crate version in `Cargo.toml`.
+- **PyPI artifacts available**: the PyPI project version matches the version in
+  `pyproject.toml` and contains the expected source archive and wheels.
+- **PyPI trusted publishing healthy**: the latest `.github/workflows/pypi.yml`
+  publish run succeeds through GitHub OIDC trusted publishing.
+
+Do not close a PyPI trusted-publishing blocker solely because PyPI artifacts
+exist. If the workflow still fails with a publisher trust error, keep that
+workflow failure as the remaining PyPI publish blocker until the PyPI project
+trusted publisher matches owner `btakita`, repository `corky`, workflow
+`.github/workflows/pypi.yml`, and environment `pypi`.

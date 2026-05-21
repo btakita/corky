@@ -3,6 +3,7 @@
 use serde_yaml::{Mapping, Value};
 
 const PYPI_WORKFLOW: &str = include_str!("../.github/workflows/pypi.yml");
+const SPEC: &str = include_str!("../SPEC.md");
 
 fn mapping<'a>(value: &'a Value, context: &str) -> &'a Mapping {
     value
@@ -89,5 +90,23 @@ fn pypi_workflow_uses_trusted_publishing() {
     assert!(
         !publish_with.contains_key(key("password")),
         "trusted publishing should not use a PyPI API token"
+    );
+}
+
+#[test]
+fn release_status_spec_separates_registry_parity_from_workflow_health() {
+    assert!(
+        SPEC.contains("Release status notes track registry parity separately from workflow health"),
+        "SPEC should distinguish uploaded registry artifacts from workflow health"
+    );
+    assert!(
+        SPEC.contains("crates.io complete"),
+        "SPEC should define when the crates.io publish item can be marked complete"
+    );
+    assert!(SPEC.contains("Do not close a PyPI trusted-publishing blocker"));
+    assert!(SPEC.contains("solely because PyPI artifacts"));
+    assert!(
+        SPEC.contains("workflow failure as the remaining PyPI publish blocker"),
+        "SPEC should keep a failing trusted-publisher workflow as a blocker"
     );
 }
