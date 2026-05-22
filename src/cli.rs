@@ -435,10 +435,10 @@ pub enum SyncCommands {
     /// Run all imports from [[imports]] in .corky.toml
     Imports,
 
-    /// Re-fetch a single thread by Gmail thread ID (bypasses sync state)
+    /// Re-fetch a single Gmail thread by thread ID or Gmail web URL (bypasses sync state)
     Refetch {
-        /// Gmail thread ID (e.g. from **Thread ID** in conversation file)
-        thread_id: String,
+        /// Gmail thread ID, message ID, or Gmail web URL
+        thread_id_or_url: String,
 
         /// Emit machine-readable JSON
         #[arg(long)]

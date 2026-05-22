@@ -657,10 +657,15 @@ fn fetch_message(token: &str, message_id: &str) -> Result<Option<GmailMessage>> 
 
 // --- Thread API ---
 
+#[derive(Debug, Clone)]
+pub struct ThreadFetch {
+    pub thread_id: String,
+    pub messages: Vec<super::types::Message>,
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ThreadResponse {
-    #[allow(dead_code)]
     id: String,
     #[serde(default)]
     messages: Vec<GmailMessage>,
@@ -669,6 +674,25 @@ struct ThreadResponse {
 /// Fetch all messages in a thread by thread ID.
 /// Returns converted Message structs ready for merge.
 pub fn fetch_thread_messages(token: &str, thread_id: &str) -> Result<Vec<super::types::Message>> {
+    Ok(fetch_thread_by_thread_id(token, thread_id)?.messages)
+}
+
+/// Resolve a Gmail API thread ID or message ID to the full thread.
+pub fn fetch_thread_by_ref(token: &str, id: &str) -> Result<Option<ThreadFetch>> {
+    match fetch_thread_by_thread_id(token, id) {
+        Ok(thread) => return Ok(Some(thread)),
+        Err(e) if is_not_found_error(&e) => {}
+        Err(e) => return Err(e),
+    }
+
+    let Some(message) = fetch_message(token, id)? else {
+        return Ok(None);
+    };
+
+    fetch_thread_by_thread_id(token, &message.thread_id).map(Some)
+}
+
+fn fetch_thread_by_thread_id(token: &str, thread_id: &str) -> Result<ThreadFetch> {
     let url = format!("{}/threads/{}?format=full", GMAIL_API, thread_id);
     let resp = api_get(token, &url)?;
     let thread: ThreadResponse = resp.into_json().context("Failed to parse thread")?;
@@ -679,7 +703,20 @@ pub fn fetch_thread_messages(token: &str, thread_id: &str) -> Result<Vec<super::
         .map(|msg| gmail_to_message(msg, token))
         .collect();
 
-    Ok(messages)
+    let resolved_thread_id = messages
+        .first()
+        .map(|m| m.thread_id.clone())
+        .unwrap_or(thread.id);
+
+    Ok(ThreadFetch {
+        thread_id: resolved_thread_id,
+        messages,
+    })
+}
+
+fn is_not_found_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    msg.contains("HTTP 404") || msg.contains("HTTP 400") || msg.contains("not found")
 }
 
 #[cfg(test)]

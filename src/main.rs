@@ -76,13 +76,16 @@ fn main() -> Result<()> {
                 corky::sync::sms_import::run(&path, &label, &out_dir, &account)
             }
             Some(SyncCommands::Imports) => corky::sync::imports::run_from_config(),
-            Some(SyncCommands::Refetch { thread_id, json }) => {
+            Some(SyncCommands::Refetch {
+                thread_id_or_url,
+                json,
+            }) => {
                 if json {
-                    let report = corky::sync::refetch_report(&thread_id)?;
+                    let report = corky::sync::refetch_report(&thread_id_or_url)?;
                     println!("{}", serde_json::to_string_pretty(&report)?);
                     Ok(())
                 } else {
-                    corky::sync::refetch(&thread_id)
+                    corky::sync::refetch(&thread_id_or_url)
                 }
             }
         },

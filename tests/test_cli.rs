@@ -237,6 +237,15 @@ fn test_cli_doc_upload_convert_help() {
 }
 
 #[test]
+fn test_cli_sync_refetch_help_mentions_gmail_url() {
+    let mut cmd = corky_cmd();
+    cmd.args(["sync", "refetch", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Gmail web URL"));
+}
+
+#[test]
 fn test_cli_auth_accepts_drive_readonly_scope() {
     let mut cmd = corky_cmd();
     cmd.args(["auth", "--scope", "drive-readonly", "--help"]);

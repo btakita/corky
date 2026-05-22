@@ -40,6 +40,119 @@ pub struct RefetchReport {
     pub attempted_accounts: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RefetchTarget {
+    original: String,
+    lookup_id: String,
+    search_query: Option<String>,
+    is_gmail_url: bool,
+}
+
+impl RefetchTarget {
+    fn parse(input: &str) -> Result<Self> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("refetch target cannot be empty");
+        }
+
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://") {
+            if !(lower.starts_with("https://mail.google.com/")
+                || lower.starts_with("http://mail.google.com/"))
+            {
+                anyhow::bail!("refetch URL must be a Gmail URL from mail.google.com");
+            }
+            return parse_gmail_web_url(trimmed);
+        }
+
+        Ok(Self {
+            original: trimmed.to_string(),
+            lookup_id: trimmed.to_string(),
+            search_query: None,
+            is_gmail_url: false,
+        })
+    }
+}
+
+fn parse_gmail_web_url(url: &str) -> Result<RefetchTarget> {
+    if let Some(id) = extract_gmail_query_id(url) {
+        return Ok(RefetchTarget {
+            original: url.to_string(),
+            lookup_id: id,
+            search_query: None,
+            is_gmail_url: true,
+        });
+    }
+
+    let Some((_, fragment)) = url.split_once('#') else {
+        anyhow::bail!("Gmail URL does not contain a message or thread id fragment");
+    };
+    let fragment_path = fragment.split('?').next().unwrap_or(fragment);
+    let segments: Vec<String> = fragment_path
+        .split('/')
+        .filter(|s| !s.trim().is_empty())
+        .map(decode_url_component)
+        .collect();
+
+    let Some(id) = segments.last().cloned() else {
+        anyhow::bail!("Gmail URL does not contain a message or thread id fragment");
+    };
+
+    let search_query =
+        if segments.first().map(|s| s.as_str()) == Some("search") && segments.len() >= 3 {
+            segments.get(1).cloned()
+        } else {
+            None
+        };
+
+    if is_gmail_view_name(&id) {
+        anyhow::bail!("Gmail URL does not include a selected message or thread id");
+    }
+
+    Ok(RefetchTarget {
+        original: url.to_string(),
+        lookup_id: id,
+        search_query,
+        is_gmail_url: true,
+    })
+}
+
+fn extract_gmail_query_id(url: &str) -> Option<String> {
+    let before_fragment = url.split('#').next().unwrap_or(url);
+    let query = before_fragment.split_once('?')?.1;
+    for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+        if matches!(key.as_ref(), "th" | "message_id" | "msg") && !value.trim().is_empty() {
+            return Some(value.into_owned());
+        }
+    }
+    None
+}
+
+fn decode_url_component(value: &str) -> String {
+    let pair = format!("x={value}");
+    form_urlencoded::parse(pair.as_bytes())
+        .next()
+        .map(|(_, decoded)| decoded.into_owned())
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn is_gmail_view_name(value: &str) -> bool {
+    matches!(
+        value,
+        "inbox"
+            | "starred"
+            | "snoozed"
+            | "sent"
+            | "drafts"
+            | "all"
+            | "spam"
+            | "trash"
+            | "search"
+            | "important"
+            | "category"
+    )
+}
+
 /// Load sync state from disk.
 pub fn load_state() -> Result<SyncState> {
     let sf = resolve::sync_state_file();
@@ -331,40 +444,40 @@ fn merge_contact_mailboxes(
     merged
 }
 
-/// Re-fetch a single thread by Gmail thread ID.
+/// Re-fetch a single Gmail thread by Gmail API ID or Gmail web URL.
 ///
 /// Finds the existing conversation file, fetches fresh message data via the
-/// Gmail Threads API, deletes the old file, and re-merges all messages.
-pub fn refetch(thread_id: &str) -> Result<()> {
-    refetch_internal(thread_id, false).map(|_| ())
+/// Gmail API, deletes the old file, and re-merges all messages.
+pub fn refetch(thread_id_or_url: &str) -> Result<()> {
+    refetch_internal(thread_id_or_url, false).map(|_| ())
 }
 
-pub fn refetch_report(thread_id: &str) -> Result<RefetchReport> {
-    refetch_internal(thread_id, true)
+pub fn refetch_report(thread_id_or_url: &str) -> Result<RefetchReport> {
+    refetch_internal(thread_id_or_url, true)
 }
 
-fn refetch_internal(thread_id: &str, quiet: bool) -> Result<RefetchReport> {
+fn refetch_internal(thread_id_or_url: &str, quiet: bool) -> Result<RefetchReport> {
+    let target = RefetchTarget::parse(thread_id_or_url)?;
     let conv_dir = resolve::conversations_dir();
     let mut attempted_accounts = Vec::new();
     let mut removed_files = Vec::new();
 
     // Find existing thread file
-    let thread_file = find_thread_file_by_id(&conv_dir, thread_id);
+    let thread_file = find_thread_file_by_id(&conv_dir, &target.lookup_id);
 
     // Parse existing file to get account and labels
     let (account_name, labels) = if let Some(ref path) = thread_file {
-        let text = std::fs::read_to_string(path)?;
-        let thread = markdown::parse_thread_markdown(&text);
-        match thread {
-            Some(t) => {
-                let acct = t.accounts.first().cloned().unwrap_or_default();
-                (acct, t.labels.clone())
-            }
-            None => (String::new(), vec![]),
-        }
+        read_thread_file_context(path)?
     } else {
         (String::new(), vec![])
     };
+
+    if target.is_gmail_url && !quiet {
+        println!("Looking up Gmail URL id: {}", target.lookup_id);
+        if let Some(ref query) = target.search_query {
+            println!("  Search context: {}", query);
+        }
+    }
 
     if account_name.is_empty() {
         // No existing file or no account — try all gmail-api accounts
@@ -375,20 +488,39 @@ fn refetch_internal(thread_id: &str, quiet: bool) -> Result<RefetchReport> {
                 if !quiet {
                     println!("Trying account: {}", name);
                 }
-                match try_refetch_from_account(name, &acct.user, thread_id, &conv_dir, &[], quiet) {
-                    Ok(Some(messages_fetched)) => {
+                match try_fetch_from_account(name, &acct.user, &target, quiet) {
+                    Ok(Some(fetch)) => {
+                        let resolved_thread_file =
+                            find_thread_file_by_id(&conv_dir, &fetch.thread_id);
+                        let labels = if let Some(ref path) = resolved_thread_file {
+                            let (_, labels) = read_thread_file_context(path)?;
+                            labels
+                        } else {
+                            vec![]
+                        };
+                        let existing_file = remove_existing_thread_files(
+                            &conv_dir,
+                            &fetch.thread_id,
+                            thread_file.as_deref(),
+                            &mut removed_files,
+                            quiet,
+                        )?;
+                        let messages_fetched =
+                            merge_fetched_thread(name, &labels, &fetch, &conv_dir)?;
+                        let routed_refresh_count =
+                            refresh_routed_dirs(name, &labels, &fetch, &mut removed_files, quiet)?;
                         manifest::generate_manifest(&conv_dir)?;
                         if !quiet {
                             println!("\nRefetch complete.");
                         }
                         return Ok(RefetchReport {
-                            thread_id: thread_id.to_string(),
+                            thread_id: fetch.thread_id,
                             account_name: Some(name.clone()),
-                            labels: vec![],
-                            existing_file: None,
+                            labels,
+                            existing_file,
                             removed_files,
                             messages_fetched,
-                            routed_refresh_count: 0,
+                            routed_refresh_count,
                             attempted_accounts,
                         });
                     }
@@ -401,7 +533,13 @@ fn refetch_internal(thread_id: &str, quiet: bool) -> Result<RefetchReport> {
                 }
             }
         }
-        anyhow::bail!("Thread {} not found in any Gmail account", thread_id);
+        if target.is_gmail_url {
+            anyhow::bail!(
+                "Gmail URL target {} not found in any Gmail API account",
+                target.lookup_id
+            );
+        }
+        anyhow::bail!("Thread {} not found in any Gmail account", target.lookup_id);
     }
 
     // Verify the account exists and is gmail-api
@@ -417,60 +555,43 @@ fn refetch_internal(thread_id: &str, quiet: bool) -> Result<RefetchReport> {
         );
     }
 
-    // Delete existing file so merge creates fresh content
-    if let Some(ref path) = thread_file {
-        std::fs::remove_file(path)?;
-        removed_files.push(path.display().to_string());
-        if !quiet {
-            println!(
-                "Removed: {}",
-                path.file_name().unwrap_or_default().to_string_lossy()
-            );
-        }
-    }
+    let fetch =
+        try_fetch_from_account(&account_name, &acct.user, &target, quiet)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Thread {} not found for account {}",
+                target.lookup_id,
+                account_name
+            )
+        })?;
 
-    let messages_fetched = try_refetch_from_account(
-        &account_name,
-        &acct.user,
-        thread_id,
+    let resolved_thread_file = find_thread_file_by_id(&conv_dir, &fetch.thread_id);
+    let labels = if let Some(ref path) = resolved_thread_file {
+        let (_, labels) = read_thread_file_context(path)?;
+        labels
+    } else {
+        labels
+    };
+
+    let existing_file = remove_existing_thread_files(
         &conv_dir,
-        &labels,
+        &fetch.thread_id,
+        thread_file.as_deref(),
+        &mut removed_files,
         quiet,
-    )?
-    .ok_or_else(|| {
-        anyhow::anyhow!(
-            "Thread {} not found for account {}",
-            thread_id,
-            account_name
-        )
-    })?;
-
-    // Also write to routed directories
-    let label_routes = imap_sync::build_label_routes(&account_name);
-    let mut routed_refresh_count = 0usize;
-    for l in &labels {
-        if let Some(extra_dirs) = label_routes.get(l) {
-            for extra_dir in extra_dirs {
-                // Delete existing in routed dir too
-                if let Some(routed_file) = find_thread_file_by_id(extra_dir, thread_id) {
-                    std::fs::remove_file(&routed_file)?;
-                    removed_files.push(routed_file.display().to_string());
-                }
-                refetch_merge_to_dir(&account_name, l, thread_id, extra_dir)?;
-                routed_refresh_count += 1;
-            }
-        }
-    }
+    )?;
+    let messages_fetched = merge_fetched_thread(&account_name, &labels, &fetch, &conv_dir)?;
+    let routed_refresh_count =
+        refresh_routed_dirs(&account_name, &labels, &fetch, &mut removed_files, quiet)?;
 
     manifest::generate_manifest(&conv_dir)?;
     if !quiet {
         println!("\nRefetch complete.");
     }
     Ok(RefetchReport {
-        thread_id: thread_id.to_string(),
+        thread_id: fetch.thread_id,
         account_name: Some(account_name),
         labels,
-        existing_file: thread_file.map(|p| p.display().to_string()),
+        existing_file,
         removed_files,
         messages_fetched,
         routed_refresh_count,
@@ -478,32 +599,23 @@ fn refetch_internal(thread_id: &str, quiet: bool) -> Result<RefetchReport> {
     })
 }
 
-fn try_refetch_from_account(
+fn try_fetch_from_account(
     account_name: &str,
     user: &str,
-    thread_id: &str,
-    out_dir: &std::path::Path,
-    labels: &[String],
+    target: &RefetchTarget,
     quiet: bool,
-) -> Result<Option<usize>> {
+) -> Result<Option<gmail_api_sync::ThreadFetch>> {
     use crate::filter::gmail_auth::{self, GMAIL_SYNC_SCOPE};
 
     let token =
         gmail_auth::get_access_token_for_user(Some(account_name), GMAIL_SYNC_SCOPE, Some(user))?;
-    let messages = match gmail_api_sync::fetch_thread_messages(&token, thread_id) {
-        Ok(msgs) => msgs,
-        Err(e) => {
-            let msg = format!("{}", e);
-            if msg.contains("404") {
-                return Ok(None);
-            }
-            return Err(e);
-        }
+    let Some(fetch) = gmail_api_sync::fetch_thread_by_ref(&token, &target.lookup_id)? else {
+        return Ok(None);
     };
 
-    if messages.is_empty() {
+    if fetch.messages.is_empty() {
         if !quiet {
-            println!("  Thread {} has no messages", thread_id);
+            println!("  Thread {} has no messages", fetch.thread_id);
         }
         return Ok(None);
     }
@@ -511,42 +623,112 @@ fn try_refetch_from_account(
     if !quiet {
         println!(
             "  Fetched {} messages for thread {}",
-            messages.len(),
-            thread_id
+            fetch.messages.len(),
+            fetch.thread_id
         );
+        if target.is_gmail_url && target.lookup_id != fetch.thread_id {
+            println!(
+                "  Resolved Gmail URL id {} -> {}",
+                target.lookup_id, fetch.thread_id
+            );
+        }
     }
 
-    let label = labels.first().map(|s| s.as_str()).unwrap_or("INBOX");
-    for message in &messages {
-        imap_sync::merge_message_to_file(out_dir, label, account_name, message, thread_id)?;
-    }
-
-    Ok(Some(messages.len()))
+    Ok(Some(fetch))
 }
 
-fn refetch_merge_to_dir(
+fn merge_fetched_thread(
     account_name: &str,
-    label: &str,
-    thread_id: &str,
+    labels: &[String],
+    fetch: &gmail_api_sync::ThreadFetch,
     out_dir: &std::path::Path,
-) -> Result<()> {
-    use crate::filter::gmail_auth::{self, GMAIL_SYNC_SCOPE};
+) -> Result<usize> {
+    let label = labels.first().map(|s| s.as_str()).unwrap_or("INBOX");
 
-    let accounts = load_accounts(None)?;
-    let acct = accounts
-        .get(account_name)
-        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found", account_name))?;
-    let token = gmail_auth::get_access_token_for_user(
-        Some(account_name),
-        GMAIL_SYNC_SCOPE,
-        Some(&acct.user),
-    )?;
-    let messages = gmail_api_sync::fetch_thread_messages(&token, thread_id)?;
-
-    for message in &messages {
-        imap_sync::merge_message_to_file(out_dir, label, account_name, message, thread_id)?;
+    for message in &fetch.messages {
+        imap_sync::merge_message_to_file(out_dir, label, account_name, message, &fetch.thread_id)?;
     }
 
+    Ok(fetch.messages.len())
+}
+
+fn refresh_routed_dirs(
+    account_name: &str,
+    labels: &[String],
+    fetch: &gmail_api_sync::ThreadFetch,
+    removed_files: &mut Vec<String>,
+    quiet: bool,
+) -> Result<usize> {
+    let label_routes = imap_sync::build_label_routes(account_name);
+    let mut routed_refresh_count = 0usize;
+    for label in labels {
+        if let Some(extra_dirs) = label_routes.get(label) {
+            for extra_dir in extra_dirs {
+                if let Some(routed_file) = find_thread_file_by_id(extra_dir, &fetch.thread_id) {
+                    remove_thread_file(&routed_file, removed_files, quiet)?;
+                }
+                merge_fetched_thread(account_name, std::slice::from_ref(label), fetch, extra_dir)?;
+                routed_refresh_count += 1;
+            }
+        }
+    }
+    Ok(routed_refresh_count)
+}
+
+fn read_thread_file_context(path: &std::path::Path) -> Result<(String, Vec<String>)> {
+    let text = std::fs::read_to_string(path)?;
+    let thread = markdown::parse_thread_markdown(&text);
+    match thread {
+        Some(t) => {
+            let acct = t.accounts.first().cloned().unwrap_or_default();
+            Ok((acct, t.labels.clone()))
+        }
+        None => Ok((String::new(), vec![])),
+    }
+}
+
+fn remove_existing_thread_files(
+    conv_dir: &std::path::Path,
+    resolved_thread_id: &str,
+    original_thread_file: Option<&std::path::Path>,
+    removed_files: &mut Vec<String>,
+    quiet: bool,
+) -> Result<Option<String>> {
+    let resolved_thread_file = find_thread_file_by_id(conv_dir, resolved_thread_id);
+    let existing_file = resolved_thread_file
+        .as_deref()
+        .or(original_thread_file)
+        .map(|path| path.display().to_string());
+
+    if let Some(path) = original_thread_file {
+        remove_thread_file(path, removed_files, quiet)?;
+    }
+    if let Some(path) = resolved_thread_file.as_deref()
+        && Some(path) != original_thread_file
+    {
+        remove_thread_file(path, removed_files, quiet)?;
+    }
+
+    Ok(existing_file)
+}
+
+fn remove_thread_file(
+    path: &std::path::Path,
+    removed_files: &mut Vec<String>,
+    quiet: bool,
+) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    std::fs::remove_file(path)?;
+    removed_files.push(path.display().to_string());
+    if !quiet {
+        println!(
+            "Removed: {}",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        );
+    }
     Ok(())
 }
 
@@ -599,6 +781,57 @@ fn cleanup_orphans(conversations_dir: &PathBuf, touched: &HashSet<PathBuf>) -> R
 mod tests {
     use super::*;
     use crate::sync::types::{AccountSyncState, ContactSyncState, GmailLabelState, LabelState};
+
+    #[test]
+    fn parse_refetch_target_keeps_raw_thread_id() {
+        let target = RefetchTarget::parse("19d479af292d8d99").unwrap();
+
+        assert_eq!(target.lookup_id, "19d479af292d8d99");
+        assert_eq!(target.search_query, None);
+        assert!(!target.is_gmail_url);
+    }
+
+    #[test]
+    fn parse_refetch_target_extracts_gmail_search_url_id() {
+        let target = RefetchTarget::parse(
+            "https://mail.google.com/mail/u/0/#search/philip/FMfcgzQgLsCwhwtlQXPkzpdLhKhzPdNv",
+        )
+        .unwrap();
+
+        assert_eq!(target.lookup_id, "FMfcgzQgLsCwhwtlQXPkzpdLhKhzPdNv");
+        assert_eq!(target.search_query, Some("philip".to_string()));
+        assert!(target.is_gmail_url);
+    }
+
+    #[test]
+    fn parse_refetch_target_extracts_gmail_inbox_url_id() {
+        let target =
+            RefetchTarget::parse("https://mail.google.com/mail/u/1/#inbox/18abc123def456").unwrap();
+
+        assert_eq!(target.lookup_id, "18abc123def456");
+        assert_eq!(target.search_query, None);
+        assert!(target.is_gmail_url);
+    }
+
+    #[test]
+    fn parse_refetch_target_extracts_query_thread_id() {
+        let target =
+            RefetchTarget::parse("https://mail.google.com/mail/u/0/?th=18abc123def456#inbox")
+                .unwrap();
+
+        assert_eq!(target.lookup_id, "18abc123def456");
+        assert!(target.is_gmail_url);
+    }
+
+    #[test]
+    fn parse_refetch_target_rejects_gmail_view_without_id() {
+        let err = RefetchTarget::parse("https://mail.google.com/mail/u/0/#inbox").unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("does not include a selected message or thread id")
+        );
+    }
 
     fn label(uidvalidity: u32, last_uid: u32) -> LabelState {
         LabelState {
