@@ -46,6 +46,13 @@ struct RefetchTarget {
     lookup_id: String,
     search_query: Option<String>,
     is_gmail_url: bool,
+    fetch_mode: RefetchFetchMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RefetchFetchMode {
+    Thread,
+    SelectedMessage,
 }
 
 impl RefetchTarget {
@@ -70,6 +77,7 @@ impl RefetchTarget {
             lookup_id: trimmed.to_string(),
             search_query: None,
             is_gmail_url: false,
+            fetch_mode: RefetchFetchMode::Thread,
         })
     }
 }
@@ -81,6 +89,7 @@ fn parse_gmail_web_url(url: &str) -> Result<RefetchTarget> {
             lookup_id: id,
             search_query: None,
             is_gmail_url: true,
+            fetch_mode: RefetchFetchMode::SelectedMessage,
         });
     }
 
@@ -114,6 +123,7 @@ fn parse_gmail_web_url(url: &str) -> Result<RefetchTarget> {
         lookup_id: id,
         search_query,
         is_gmail_url: true,
+        fetch_mode: RefetchFetchMode::SelectedMessage,
     })
 }
 
@@ -444,10 +454,10 @@ fn merge_contact_mailboxes(
     merged
 }
 
-/// Re-fetch a single Gmail thread by Gmail API ID or Gmail web URL.
+/// Re-fetch a Gmail thread by raw Gmail API ID, or a selected Gmail URL message.
 ///
 /// Finds the existing conversation file, fetches fresh message data via the
-/// Gmail API, deletes the old file, and re-merges all messages.
+/// Gmail API, deletes the old file, and re-merges the requested message set.
 pub fn refetch(thread_id_or_url: &str) -> Result<()> {
     refetch_internal(thread_id_or_url, false).map(|_| ())
 }
@@ -609,7 +619,13 @@ fn try_fetch_from_account(
 
     let token =
         gmail_auth::get_access_token_for_user(Some(account_name), GMAIL_SYNC_SCOPE, Some(user))?;
-    let Some(fetch) = gmail_api_sync::fetch_thread_by_ref(&token, &target.lookup_id)? else {
+    let fetch = match target.fetch_mode {
+        RefetchFetchMode::Thread => gmail_api_sync::fetch_thread_by_ref(&token, &target.lookup_id)?,
+        RefetchFetchMode::SelectedMessage => {
+            gmail_api_sync::fetch_selected_message_by_ref(&token, &target.lookup_id)?
+        }
+    };
+    let Some(fetch) = fetch else {
         return Ok(None);
     };
 
@@ -622,9 +638,13 @@ fn try_fetch_from_account(
 
     if !quiet {
         println!(
-            "  Fetched {} messages for thread {}",
+            "  Fetched {} {} for thread {}",
             fetch.messages.len(),
-            fetch.thread_id
+            match target.fetch_mode {
+                RefetchFetchMode::Thread => "messages",
+                RefetchFetchMode::SelectedMessage => "selected message",
+            },
+            fetch.thread_id,
         );
         if target.is_gmail_url && target.lookup_id != fetch.thread_id {
             println!(
@@ -789,6 +809,7 @@ mod tests {
         assert_eq!(target.lookup_id, "19d479af292d8d99");
         assert_eq!(target.search_query, None);
         assert!(!target.is_gmail_url);
+        assert_eq!(target.fetch_mode, RefetchFetchMode::Thread);
     }
 
     #[test]
@@ -801,6 +822,7 @@ mod tests {
         assert_eq!(target.lookup_id, "FMfcgzQgLsCwhwtlQXPkzpdLhKhzPdNv");
         assert_eq!(target.search_query, Some("philip".to_string()));
         assert!(target.is_gmail_url);
+        assert_eq!(target.fetch_mode, RefetchFetchMode::SelectedMessage);
     }
 
     #[test]
@@ -811,6 +833,7 @@ mod tests {
         assert_eq!(target.lookup_id, "18abc123def456");
         assert_eq!(target.search_query, None);
         assert!(target.is_gmail_url);
+        assert_eq!(target.fetch_mode, RefetchFetchMode::SelectedMessage);
     }
 
     #[test]
@@ -821,6 +844,7 @@ mod tests {
 
         assert_eq!(target.lookup_id, "18abc123def456");
         assert!(target.is_gmail_url);
+        assert_eq!(target.fetch_mode, RefetchFetchMode::SelectedMessage);
     }
 
     #[test]

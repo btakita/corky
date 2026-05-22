@@ -411,7 +411,7 @@ corky skill install
 corky sync                   # incremental IMAP sync (default)
 corky sync full              # full IMAP resync (ignore saved state)
 corky sync account NAME      # sync one account
-corky sync refetch TARGET    # re-fetch a Gmail thread by thread ID, message ID, or Gmail web URL
+corky sync refetch TARGET    # re-fetch a Gmail thread by raw ID, or one Gmail URL-selected message
 corky sync routes            # apply routing to existing conversations
 corky sync mailbox [NAME]    # push/pull shared mailboxes
 ```
@@ -420,7 +420,7 @@ Bare `corky sync` runs incremental IMAP sync for all configured accounts.
 Subcommands:
 - `full`: ignore saved state, re-fetch all messages within `sync_days`
 - `account NAME`: sync only the named account
-- `refetch TARGET`: re-fetch a single Gmail thread by Gmail API thread ID, Gmail API message ID, or Gmail web URL, bypassing sync state (see §6.8)
+- `refetch TARGET`: re-fetch a single Gmail thread by raw Gmail API thread/message ID, or exactly one selected message from a Gmail web URL, bypassing sync state (see §6.8)
 - `routes`: apply `[routing]` rules to existing `conversations/*.md` files,
   copying matching threads into mailbox `conversations/` directories
 - `mailbox [NAME]`: git push/pull shared mailbox repos (alias for `mailbox sync`)
@@ -1103,21 +1103,22 @@ sync_days = 30
 
 **Shutdown handling:** Checks `AtomicBool` shutdown signal per-message and every 5 pages of listing. Returns early with partial results if interrupted.
 
-**Single-thread refetch (`sync refetch TARGET [--json]`):**
-Re-fetches all messages in a single Gmail thread, bypassing `historyId` state. `TARGET` may be a Gmail API thread ID, a Gmail API message ID, or a Gmail web URL such as `https://mail.google.com/mail/u/0/#search/query/FMfc...`. Useful when a message was synced but body extraction failed (e.g., `attachmentId` or base64 padding issues fixed in a later release), or when a user has a Gmail UI link and wants the conversation converted into Corky's markdown format.
+**Targeted refetch (`sync refetch TARGET [--json]`):**
+Bypasses `historyId` state and re-fetches only the requested Gmail API object. Raw Gmail API thread IDs and message IDs keep the legacy behavior: Corky resolves them to the containing thread and re-fetches all messages in that one thread. Gmail web URLs such as `https://mail.google.com/mail/u/0/#search/query/FMfc...` are treated as precise lookup-tool inputs: Corky fetches exactly the selected message from the URL and converts only that email into conversation markdown.
 
-1. Parses Gmail web URLs from `mail.google.com`, extracting the selected message/thread token from `#inbox/...`, `#search/query/...`, or `th=` query parameters
-2. Scans `conversations/` for a file matching the `**Thread ID**` metadata
-3. Extracts account name and labels from the existing file
-4. Resolves the target via `GET /threads/{id}?format=full`, falling back to `GET /messages/{id}?format=full` and then the resolved thread ID
-5. Deletes the old file to allow fresh content merge
-6. Re-merges each message via `merge_message_to_file()` (creates fresh file)
-7. Also refreshes routed copies in mailbox directories
-8. If no existing file found, tries all `gmail-api` accounts
+1. Parses Gmail web URLs from `mail.google.com`, extracting the selected message token from `#inbox/...`, `#search/query/...`, `message_id=`, `msg=`, or `th=` URL locations
+2. Scans `conversations/` for a file matching the `**Thread ID**` metadata when the target is already a raw thread ID
+3. Extracts account name and labels from the existing file when available
+4. For raw IDs, resolves the target via `GET /threads/{id}?format=full`, falling back to `GET /messages/{id}?format=full` and then the resolved thread ID
+5. For Gmail web URLs, resolves the target via `GET /messages/{id}?format=full` and converts that message only; if the token resolves only to a multi-message thread, the command fails closed instead of importing the whole thread
+6. Deletes the old file for the resolved thread to allow fresh content merge
+7. Re-merges the fetched message set via `merge_message_to_file()` (creates fresh file)
+8. Also refreshes routed copies in mailbox directories
+9. If no existing file found, tries all `gmail-api` accounts without running `sync account` or mutating sync state
 
 No sync state is modified — `last_history_id` is untouched.
 
-`--json` emits the chosen account, labels, removed files, fetched message count, routed refresh count, and accounts attempted during fallback lookup.
+`--json` emits the chosen account, labels, removed files, fetched message count, routed refresh count, and accounts attempted during fallback lookup. Gmail web URL lookups report `messages_fetched: 1` when the selected message is found.
 
 **Merge and orphan cleanup:** Same as IMAP (§6.4, §6.5) — messages merge into thread files, full sync deletes untouched files.
 

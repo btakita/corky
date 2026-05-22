@@ -88,7 +88,7 @@ If `[gsc]` service-account auth is configured, corky only caches that Search Con
 
 **Connector / debug surfaces:**
 - `corky doctor gmail --json` reports credential source, token presence, scope coverage, and re-auth state.
-- `corky sync refetch THREAD_ID --json` re-fetches one Gmail thread without mutating sync history.
+- `corky sync refetch TARGET --json` re-fetches one Gmail thread for raw IDs, or one selected message for Gmail web URLs, without mutating sync history.
 - `corky draft push --json` and `corky draft send --json` emit machine-readable summaries for adapters.
 
 ## Sync Behavior

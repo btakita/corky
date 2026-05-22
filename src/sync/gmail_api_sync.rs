@@ -692,6 +692,41 @@ pub fn fetch_thread_by_ref(token: &str, id: &str) -> Result<Option<ThreadFetch>>
     fetch_thread_by_thread_id(token, &message.thread_id).map(Some)
 }
 
+/// Resolve a Gmail URL-selected message ID to exactly one converted message.
+///
+/// Gmail web URLs should act as a precise lookup tool: if the URL token names a
+/// message, fetch that message only. If it names a thread with more than one
+/// message, fail closed instead of silently importing the whole thread.
+pub fn fetch_selected_message_by_ref(token: &str, id: &str) -> Result<Option<ThreadFetch>> {
+    match fetch_message(token, id) {
+        Ok(Some(message)) => {
+            let thread_id = message.thread_id.clone();
+            let message = gmail_to_message(&message, token);
+            return Ok(Some(ThreadFetch {
+                thread_id,
+                messages: vec![message],
+            }));
+        }
+        Ok(None) => {}
+        Err(e) if is_not_found_error(&e) => {}
+        Err(e) => return Err(e),
+    }
+
+    match fetch_thread_by_thread_id(token, id) {
+        Ok(thread) if thread.messages.len() <= 1 => Ok(Some(thread)),
+        Ok(thread) => {
+            bail!(
+                "Gmail URL target {} resolved to thread {} with {} messages; URL refetch requires a selected message id. Pass the raw thread ID to refetch the whole thread.",
+                id,
+                thread.thread_id,
+                thread.messages.len()
+            );
+        }
+        Err(e) if is_not_found_error(&e) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 fn fetch_thread_by_thread_id(token: &str, thread_id: &str) -> Result<ThreadFetch> {
     let url = format!("{}/threads/{}?format=full", GMAIL_API, thread_id);
     let resp = api_get(token, &url)?;

@@ -242,7 +242,8 @@ fn test_cli_sync_refetch_help_mentions_gmail_url() {
     cmd.args(["sync", "refetch", "--help"]);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Gmail web URL"));
+        .stdout(predicate::str::contains("Gmail web URL"))
+        .stdout(predicate::str::contains("one selected message"));
 }
 
 #[test]

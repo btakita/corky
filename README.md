@@ -56,7 +56,7 @@ If `[gsc]` service-account auth is configured, that Search Console token is only
 
 ```sh
 corky sync                      # Incremental IMAP sync
-corky sync refetch THREAD_ID    # Re-fetch a single Gmail thread
+corky sync refetch TARGET       # Re-fetch a thread by raw ID, or one Gmail URL-selected message
 corky unanswered                # Threads awaiting a reply
 corky draft push FILE           # Save as email draft (thread_id in YAML for threading)
 corky draft send FILE           # Send via Gmail API (supports --attachment FILE)
@@ -205,13 +205,13 @@ Search Console's optional `[gsc]` service-account fallback is separate from that
 
 ```sh
 corky doctor gmail --json
-corky sync refetch THREAD_ID --json
+corky sync refetch TARGET --json
 corky draft push drafts/reply.md --json
 corky draft push drafts/reply.md --send --json
 corky draft send drafts/reply.md --attachment /tmp/file.pdf --json
 ```
 
-These commands keep the normal human-readable output by default. `--json` emits stable machine-readable summaries for auth state, single-thread refetches, draft creation, and sends.
+These commands keep the normal human-readable output by default. `--json` emits stable machine-readable summaries for auth state, targeted Gmail refetches, draft creation, and sends. Raw refetch IDs update one thread; Gmail web URLs update only the selected message from the URL.
 
 ## Development
 
