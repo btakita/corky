@@ -4099,5 +4099,9 @@ dependencies = [
 ]
 
 [[patch.unused]]
+name = "tagpath"
+version = "0.11.1"
+
+[[patch.unused]]
 name = "tmux-router"
 version = "0.3.10"
