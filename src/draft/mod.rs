@@ -601,7 +601,7 @@ fn bubble_credentials(
 }
 
 /// Resolve a media path: expand `~`, resolve relative paths against a base directory.
-fn resolve_media_path(path_str: &str, base_dir: &Path) -> String {
+pub(crate) fn resolve_media_path(path_str: &str, base_dir: &Path) -> String {
     if path_str.starts_with("~/") {
         crate::resolve::expand_tilde(path_str)
             .to_string_lossy()
@@ -646,8 +646,16 @@ fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult>
         .unwrap_or_default();
     let draft_thread_id = yaml_meta.as_ref().and_then(|m| m.thread_id.clone());
 
-    // Resolve image paths relative to the draft file directory
+    // Resolve attachment and image paths relative to the draft file directory.
+    // Both `attachments:` and `images:` follow the same convention: a bare or
+    // relative path is anchored to the draft file's directory, not the process
+    // cwd. Without this, a pushed draft with relative attachments fails to find
+    // them and the attachment never lands in the Gmail draft.
     let draft_dir = file.parent().unwrap_or(Path::new("."));
+    let resolved_attachments: Vec<String> = attachments
+        .iter()
+        .map(|p| resolve_media_path(p, draft_dir))
+        .collect();
     let resolved_images: Vec<String> = images
         .iter()
         .map(|p| resolve_media_path(p, draft_dir))
@@ -689,9 +697,9 @@ fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult>
         if let Some(reply_to) = meta.get("In-Reply-To") {
             println!("Reply:   {}", reply_to);
         }
-        if !attachments.is_empty() {
-            println!("Attach:  {} file(s)", attachments.len());
-            for a in &attachments {
+        if !resolved_attachments.is_empty() {
+            println!("Attach:  {} file(s)", resolved_attachments.len());
+            for a in &resolved_attachments {
                 println!("         {}", a);
             }
         }
@@ -725,7 +733,7 @@ fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult>
         &subject,
         &body,
         &acct.user,
-        &attachments,
+        &resolved_attachments,
         &resolved_images,
     )?;
 
@@ -787,7 +795,7 @@ fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult>
         status_after,
         in_reply_to,
         thread_id: draft_thread_id,
-        attachment_paths: attachments,
+        attachment_paths: resolved_attachments,
         image_paths: resolved_images,
     })
 }
@@ -1100,5 +1108,87 @@ mod tests {
         let meta = parse_draft_yaml(content).unwrap();
         assert_eq!(meta.thread_id, None);
         assert_eq!(meta.in_reply_to, None);
+    }
+
+    /// Regression for #h465: a pushed gmail-api draft must carry its attachments.
+    ///
+    /// Mirrors the resolution + composition the `corky draft push` gmail-api path
+    /// performs (`run_internal` → `resolve_media_path` → `compose_email` →
+    /// `Message::formatted`). The draft references its attachment by a path
+    /// relative to the draft file (the same convention `images:` uses) while the
+    /// process cwd is elsewhere, so it exercises the resolution that previously
+    /// only applied to images. The composed MIME must be `multipart/mixed` and
+    /// include the attachment's filename as a part.
+    #[test]
+    fn test_push_path_relative_attachment_lands_in_mixed_mime() {
+        let dir = tempfile::tempdir().unwrap();
+        let draft_dir = dir.path();
+
+        // Attachment sits next to the draft, referenced by bare filename.
+        let attach_name = "report.pdf";
+        std::fs::write(draft_dir.join(attach_name), b"%PDF-1.4 fake pdf").unwrap();
+
+        let draft_path = draft_dir.join("draft.md");
+        let draft_body = format!(
+            "---\nto: alice@example.com\nfrom: brian@example.com\nstatus: draft\nattachments:\n  - {}\n---\n\n# Test Subject\n\nHello, body.\n",
+            attach_name
+        );
+        std::fs::write(&draft_path, &draft_body).unwrap();
+
+        // Replicate the push path's attachment gathering + resolution.
+        let text = std::fs::read_to_string(&draft_path).unwrap();
+        let yaml_meta = parse_draft_yaml(&text).unwrap();
+        let resolved_attachments: Vec<String> = yaml_meta
+            .attachments
+            .iter()
+            .map(|p| resolve_media_path(p, draft_path.parent().unwrap()))
+            .collect();
+        assert_eq!(
+            resolved_attachments.len(),
+            1,
+            "attachment should resolve relative to the draft directory"
+        );
+
+        let (meta, subject, body) = parse_draft(&draft_path).unwrap();
+        let email = compose_email(
+            &meta,
+            &subject,
+            &body,
+            "brian@example.com",
+            &resolved_attachments,
+            &[],
+        )
+        .unwrap();
+        let bytes = email.formatted();
+        let formatted = String::from_utf8_lossy(&bytes);
+
+        assert!(
+            formatted.contains("multipart/mixed"),
+            "pushed gmail-api draft MIME must be multipart/mixed, got:\n{}",
+            &formatted[..formatted.len().min(400)]
+        );
+        assert!(
+            formatted.contains("Content-Disposition: attachment"),
+            "pushed draft must contain an attachment part"
+        );
+        assert!(
+            formatted.contains(attach_name),
+            "attachment filename '{}' must appear in the MIME parts",
+            attach_name
+        );
+    }
+
+    /// Regression for #h465: `corky draft send` resolves draft-declared
+    /// attachment paths relative to the draft directory (matching the push path).
+    #[test]
+    fn test_send_path_resolves_relative_attachment() {
+        let dir = tempfile::tempdir().unwrap();
+        let draft_dir = dir.path();
+        std::fs::write(draft_dir.join("a.txt"), b"data").unwrap();
+
+        // resolve_media_path is the shared anchor both paths now use.
+        let resolved = resolve_media_path("a.txt", draft_dir);
+        assert_eq!(resolved, draft_dir.join("a.txt").to_string_lossy());
+        assert!(Path::new(&resolved).exists());
     }
 }

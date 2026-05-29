@@ -472,7 +472,11 @@ After sending, updates Status field in the file to `sent`.
 **Attachments:** When `attachments` is present in YAML frontmatter, the email is sent as
 `multipart/mixed` with the text body and binary attachment parts. Content-type is auto-detected
 via `mime_guess` (falls back to `application/octet-stream`). File existence is validated at
-send time, not draft creation time.
+send time, not draft creation time. Attachment paths are resolved **relative to the draft
+file's directory** (the same convention as `images:`); bare or relative paths are anchored to the
+draft, not the process working directory. This applies to every transport — IMAP draft, SMTP
+send, Gmail API `drafts.create` push, and Gmail API `messages.send` — so a pushed gmail-api draft
+carries the same `multipart/mixed` attachment parts as a sent one.
 
 Account resolution for sending:
 1. `**Account**` field → match by name in `.corky.toml`

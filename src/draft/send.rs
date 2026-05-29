@@ -61,8 +61,17 @@ fn run_internal(
         )
     })?;
 
-    // Collect attachments: draft field + CLI extras
-    let mut attachment_paths: Vec<PathBuf> = meta.attachments.iter().map(PathBuf::from).collect();
+    // Collect attachments: draft field + CLI extras.
+    // Draft-declared attachment paths follow the same convention as `images:` —
+    // a bare/relative path is anchored to the draft file's directory, not the
+    // process cwd — so resolve them before reading. CLI extras are taken as-is
+    // (already resolved by the caller's shell).
+    let draft_dir = file.parent().unwrap_or_else(|| Path::new("."));
+    let mut attachment_paths: Vec<PathBuf> = meta
+        .attachments
+        .iter()
+        .map(|p| PathBuf::from(super::resolve_media_path(p, draft_dir)))
+        .collect();
     attachment_paths.extend_from_slice(extra_attachments);
     let attachment_strings: Vec<String> = attachment_paths
         .iter()
