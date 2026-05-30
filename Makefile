@@ -33,11 +33,11 @@ release-gpu:
 
 # Run tests
 test:
-	cargo test
+	cargo test --workspace
 
 # Lint
 clippy:
-	cargo clippy -- -D warnings
+	cargo clippy --workspace --all-targets -- -D warnings
 
 # clippy + test
 check: clippy test
@@ -92,7 +92,12 @@ wheel:
 
 # Publish to crates.io
 publish-crate:
-	cargo publish
+	cargo publish -p corky-core
+	cargo publish -p corky-transcribe
+	cargo publish -p corky-google
+	cargo publish -p corky-social
+	cargo publish -p corky-mail
+	cargo publish -p corky
 
 # Publish to PyPI
 publish-pypi:

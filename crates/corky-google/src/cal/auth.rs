@@ -60,7 +60,7 @@ fn resolve_credentials() -> Result<ClientCredentials> {
 }
 
 /// Percent-encode a string for URL query parameters.
-pub(crate) fn urlencode_pub(s: &str) -> String {
+pub fn urlencode_pub(s: &str) -> String {
     urlencode(s)
 }
 

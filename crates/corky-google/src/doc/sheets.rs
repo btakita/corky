@@ -500,6 +500,23 @@ fn encode_range(range: &str) -> String {
     encoded
 }
 
+fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
+    match ureq::get(url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .call()
+    {
+        Ok(r) => Ok(r),
+        Err(ureq::Error::Status(401, _)) => {
+            bail!("Sheets API: unauthorized (401). Token may be expired.");
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Sheets API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -651,22 +668,5 @@ mod tests {
                 ]
             })
         );
-    }
-}
-
-fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
-    match ureq::get(url)
-        .set("Authorization", &format!("Bearer {}", token))
-        .call()
-    {
-        Ok(r) => Ok(r),
-        Err(ureq::Error::Status(401, _)) => {
-            bail!("Sheets API: unauthorized (401). Token may be expired.");
-        }
-        Err(ureq::Error::Status(status, resp)) => {
-            let body = resp.into_string().unwrap_or_default();
-            bail!("Sheets API error (HTTP {}): {}", status, body);
-        }
-        Err(e) => Err(e.into()),
     }
 }

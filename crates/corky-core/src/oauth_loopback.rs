@@ -11,31 +11,31 @@ pub(crate) const CALLBACK_PORT_ENV: &str = "CORKY_OAUTH_CALLBACK_PORT";
 pub(crate) const CALLBACK_ALLOW_EPHEMERAL_PORT_ENV: &str = "CORKY_OAUTH_ALLOW_EPHEMERAL_PORT";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PortMode {
+pub enum PortMode {
     FixedOnly,
     OptInEphemeralFallback,
 }
 
-pub(crate) struct LoopbackServer {
+pub struct LoopbackServer {
     server: Server,
     redirect_uri: String,
     port: u16,
 }
 
-pub(crate) struct OAuthCallback {
+pub struct OAuthCallback {
     request: Request,
-    pub(crate) code: String,
-    pub(crate) state: String,
+    pub code: String,
+    pub state: String,
 }
 
 impl OAuthCallback {
-    pub(crate) fn respond_text(self, body: &str) {
+    pub fn respond_text(self, body: &str) {
         let _ = self.request.respond(Response::from_string(body));
     }
 }
 
 impl LoopbackServer {
-    pub(crate) fn bind(provider_name: &str, port_mode: PortMode) -> Result<Self> {
+    pub fn bind(provider_name: &str, port_mode: PortMode) -> Result<Self> {
         let requested_port = requested_port_from_env()?;
         let server = bind_with_settings(
             provider_name,
@@ -52,11 +52,11 @@ impl LoopbackServer {
         Ok(server)
     }
 
-    pub(crate) fn redirect_uri(&self) -> &str {
+    pub fn redirect_uri(&self) -> &str {
         &self.redirect_uri
     }
 
-    pub(crate) fn recv_callback(self, timeout_secs: u64) -> Result<OAuthCallback> {
+    pub fn recv_callback(self, timeout_secs: u64) -> Result<OAuthCallback> {
         let request = self
             .server
             .recv_timeout(std::time::Duration::from_secs(timeout_secs))
@@ -64,13 +64,40 @@ impl LoopbackServer {
             .ok_or_else(|| anyhow!("Timed out waiting for OAuth callback ({}s)", timeout_secs))?;
         let url = request.url().to_string();
         let query = url.split('?').nth(1).unwrap_or("");
-        let (code, state) = crate::social::auth::parse_callback(query)?;
+        let (code, state) = parse_oauth_callback(query)?;
         Ok(OAuthCallback {
             request,
             code,
             state,
         })
     }
+}
+
+fn parse_oauth_callback(query: &str) -> Result<(String, String)> {
+    let mut code = None;
+    let mut state = None;
+    let mut error = None;
+
+    for (key, val) in form_urlencoded::parse(query.as_bytes()) {
+        match key.as_ref() {
+            "code" => code = Some(val.into_owned()),
+            "state" => state = Some(val.into_owned()),
+            "error" => error = Some(val.into_owned()),
+            "error_description" if error.is_some() => {
+                error = Some(format!("{}: {}", error.unwrap(), val));
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(err) = error {
+        bail!("OAuth error: {}", err);
+    }
+
+    let code = code.ok_or_else(|| anyhow!("Callback missing 'code' parameter"))?;
+    let state = state.ok_or_else(|| anyhow!("Callback missing 'state' parameter"))?;
+
+    Ok((code, state))
 }
 
 fn requested_port_from_env() -> Result<Option<u16>> {

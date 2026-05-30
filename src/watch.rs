@@ -364,6 +364,7 @@ mod tests {
     use crate::sync::types::{AccountSyncState, GmailLabelState, LabelState};
 
     type AccountSpec<'a> = Vec<(&'a str, Vec<(&'a str, u32, u32)>)>;
+    type GmailApiAccountSpec<'a> = Vec<(&'a str, Vec<(&'a str, Option<u64>)>)>;
 
     fn make_state(accounts: AccountSpec<'_>) -> SyncState {
         let mut state = SyncState::default();
@@ -383,7 +384,7 @@ mod tests {
         state
     }
 
-    fn make_gmail_api_state(accounts: Vec<(&str, Vec<(&str, Option<u64>)>)>) -> SyncState {
+    fn make_gmail_api_state(accounts: GmailApiAccountSpec<'_>) -> SyncState {
         let mut state = SyncState::default();
         for (acct_name, labels) in accounts {
             let mut acct = AccountSyncState::default();

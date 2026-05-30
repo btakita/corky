@@ -2171,7 +2171,36 @@ Loopback browser auth stays machine-local: corky binds the callback listener bef
 Corky publishes Rust crates through crates.io and Python wheels/source archives
 through PyPI.
 
-### 21.1 PyPI Trusted Publishing
+### 21.1 Workspace Packaging
+
+The root `corky` package remains the published CLI package. The repository is a
+Cargo workspace so heavy and domain-specific implementation can build behind
+separate crate boundaries:
+
+| Crate | Responsibility |
+|-------|----------------|
+| `corky-core` | Shared config, account resolution, token/file stores, OAuth loopback, Gmail auth foundations |
+| `corky-transcribe` | Whisper transcription, audio decoding/resampling, diarization |
+| `corky-google` | Google Workspace, Calendar, Search Console, and Tasks commands |
+| `corky-mail` | Mail sync, drafts, contacts, filters, mailboxes, search, topics, skills, scheduling |
+| `corky-social` | Social profile, draft, auth, publish, LinkedIn, YouTube, and Chat commands |
+
+The internal workspace crates are publishable implementation crates because the
+published root `corky` CLI depends on them. They do not carry independent public
+API stability guarantees; release versions move together. Bump every workspace
+package version and `pyproject.toml` in the same release commit. The root
+feature flags preserve the existing install surface by forwarding `transcribe`,
+`transcribe-cuda`, `transcribe-metal`, and `diarize` to `corky-transcribe`.
+
+Python packaging builds from the root `Cargo.toml` via maturin and includes the
+`crates/` workspace sources in the source distribution. Crates.io publish order
+is:
+`corky-core -> corky-transcribe / corky-google / corky-social -> corky-mail -> corky`.
+Dry-run/package verification for a dependent crate requires its predecessor
+crate versions to exist in the crates.io index, because Cargo verifies published
+manifests through registry resolution rather than workspace path resolution.
+
+### 21.2 PyPI Trusted Publishing
 
 PyPI publication is performed by the GitHub Actions workflow
 `.github/workflows/pypi.yml`, not by a local `maturin publish` token. The PyPI
@@ -2193,7 +2222,7 @@ already uploaded.
 After release publication, the latest PyPI version and latest crates.io version
 must match the version in `Cargo.toml` and `pyproject.toml`.
 
-### 21.2 Release Status Reconciliation
+### 21.3 Release Status Reconciliation
 
 Release status notes track registry parity separately from workflow health:
 

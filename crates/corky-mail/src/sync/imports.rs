@@ -4,58 +4,14 @@
 //! appropriate handler (`sms_import`, `telegram_import`, `slack_import`).
 
 use anyhow::{Result, bail};
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::resolve;
+pub use corky_core::sync::imports::ImportConfig;
 
-/// A single `[[imports]]` entry in `.corky.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ImportConfig {
-    /// Import type: `sms`, `telegram`, or `slack`.
-    #[serde(rename = "type")]
-    pub import_type: String,
-    /// Path to the source file (XML, JSON, ZIP, or directory).
-    pub path: String,
-    /// Label for imported conversations.
-    #[serde(default = "default_label")]
-    pub label: String,
-    /// Account name for imported conversations.
-    #[serde(default = "default_account")]
-    pub account: String,
-}
-
-fn default_label() -> String {
-    String::new()
-}
-
-fn default_account() -> String {
-    String::new()
-}
-
-impl ImportConfig {
-    /// Resolve the label, falling back to the import type if empty.
-    fn resolved_label(&self) -> &str {
-        if self.label.is_empty() {
-            &self.import_type
-        } else {
-            &self.label
-        }
-    }
-
-    /// Resolve the account name, falling back to the import type if empty.
-    fn resolved_account(&self) -> &str {
-        if self.account.is_empty() {
-            &self.import_type
-        } else {
-            &self.account
-        }
-    }
-
-    /// Expand `~` in the path to the user's home directory.
-    fn resolved_path(&self) -> std::path::PathBuf {
-        resolve::expand_tilde(&self.path)
-    }
+/// Expand `~` in an import path to the user's home directory.
+pub fn resolved_path(import: &ImportConfig) -> std::path::PathBuf {
+    resolve::expand_tilde(&import.path)
 }
 
 /// Run all configured imports.
@@ -76,7 +32,7 @@ pub fn run(imports: &[ImportConfig], data_dir: &Path) -> Result<()> {
             import.path
         );
 
-        let path = import.resolved_path();
+        let path = resolved_path(import);
         if !path.exists() {
             eprintln!("  Warning: path not found: {}", path.display());
             continue;
@@ -114,6 +70,7 @@ pub fn run_from_config() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
 
     #[test]
     fn test_import_config_deserialize() {
@@ -165,7 +122,7 @@ account = "work"
             label: String::new(),
             account: String::new(),
         };
-        let resolved = cfg.resolved_path();
+        let resolved = resolved_path(&cfg);
         // Should not start with ~ after expansion
         assert!(!resolved.to_string_lossy().starts_with('~'));
         assert!(resolved.to_string_lossy().ends_with("Downloads/sms.xml"));

@@ -14,26 +14,31 @@ use std::path::Path;
 use agent_kit::detect::Environment;
 
 /// The corky SKILL.md content bundled at build time.
-const BUNDLED_SKILL: &str = include_str!("../SKILL.md");
+const BUNDLED_SKILL: &str = include_str!("../assets/SKILL.md");
 
 // Email skill + runbooks
-const EMAIL_SKILL: &str = include_str!("../skills/email/SKILL.md");
-const EMAIL_RUNBOOK_SEND: &str = include_str!("../skills/email/runbooks/email-send.md");
-const EMAIL_RUNBOOK_REVIEW: &str = include_str!("../skills/email/runbooks/review-inbox.md");
-const EMAIL_RUNBOOK_DRAFT: &str = include_str!("../skills/email/runbooks/draft-reply.md");
-const EMAIL_RUNBOOK_ENRICH: &str = include_str!("../skills/email/runbooks/enrich-contact.md");
+const EMAIL_SKILL: &str = include_str!("../assets/skills/email/SKILL.md");
+const EMAIL_RUNBOOK_SEND: &str = include_str!("../assets/skills/email/runbooks/email-send.md");
+const EMAIL_RUNBOOK_REVIEW: &str = include_str!("../assets/skills/email/runbooks/review-inbox.md");
+const EMAIL_RUNBOOK_DRAFT: &str = include_str!("../assets/skills/email/runbooks/draft-reply.md");
+const EMAIL_RUNBOOK_ENRICH: &str =
+    include_str!("../assets/skills/email/runbooks/enrich-contact.md");
 
 // Email runbooks (new)
-const EMAIL_RUNBOOK_GMAIL_CONFIG: &str = include_str!("../skills/email/runbooks/gmail-config.md");
-const EMAIL_RUNBOOK_BROWSER_PASTE: &str = include_str!("../skills/email/runbooks/browser-paste.md");
+const EMAIL_RUNBOOK_GMAIL_CONFIG: &str =
+    include_str!("../assets/skills/email/runbooks/gmail-config.md");
+const EMAIL_RUNBOOK_BROWSER_PASTE: &str =
+    include_str!("../assets/skills/email/runbooks/browser-paste.md");
 
 // LinkedIn skill + runbooks
-const LINKEDIN_SKILL: &str = include_str!("../skills/linkedin/SKILL.md");
-const LINKEDIN_RUNBOOK_POST: &str = include_str!("../skills/linkedin/runbooks/linkedin-post.md");
+const LINKEDIN_SKILL: &str = include_str!("../assets/skills/linkedin/SKILL.md");
+const LINKEDIN_RUNBOOK_POST: &str =
+    include_str!("../assets/skills/linkedin/runbooks/linkedin-post.md");
 
 // Corky runbooks
-const CORKY_RUNBOOK_IMPORTS: &str = include_str!("../skills/corky/runbooks/imports.md");
-const CORKY_RUNBOOK_TRANSCRIPTION: &str = include_str!("../skills/corky/runbooks/transcription.md");
+const CORKY_RUNBOOK_IMPORTS: &str = include_str!("../assets/skills/corky/runbooks/imports.md");
+const CORKY_RUNBOOK_TRANSCRIPTION: &str =
+    include_str!("../assets/skills/corky/runbooks/transcription.md");
 
 /// Current binary version (from Cargo.toml).
 const VERSION: &str = env!("CARGO_PKG_VERSION");

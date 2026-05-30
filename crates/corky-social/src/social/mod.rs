@@ -4,11 +4,18 @@ pub mod auth;
 pub mod chat;
 pub mod draft;
 pub mod linkedin;
-pub mod platform;
-pub mod profiles;
 pub mod publish;
-pub mod token_store;
 pub mod youtube;
+
+pub mod platform {
+    pub use corky_core::social::platform::*;
+}
+pub mod profiles {
+    pub use corky_core::social::profiles::*;
+}
+pub mod token_store {
+    pub use corky_core::social::token_store::*;
+}
 
 use anyhow::{Result, bail};
 use std::path::Path;

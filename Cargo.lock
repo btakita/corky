@@ -545,11 +545,15 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "corky-core",
+ "corky-google",
+ "corky-mail",
+ "corky-social",
+ "corky-transcribe",
  "directories",
  "filetime",
  "form_urlencoded",
  "glob",
- "hound",
  "htmd",
  "imap",
  "instruction-files",
@@ -563,18 +567,14 @@ dependencies = [
  "once_cell",
  "open",
  "openssl",
- "ort",
  "predicates",
  "pretty_assertions",
  "pulldown-cmark",
- "pyannote-rs",
  "quick-xml",
  "regex",
- "rubato",
  "serde",
  "serde_json",
  "serde_yaml",
- "symphonia",
  "tempfile",
  "thiserror",
  "tiny_http",
@@ -582,8 +582,123 @@ dependencies = [
  "toml",
  "toml_edit",
  "ureq 2.12.1",
- "whisper-rs",
  "zip",
+]
+
+[[package]]
+name = "corky-core"
+version = "0.28.2"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "directories",
+ "form_urlencoded",
+ "libc",
+ "once_cell",
+ "open",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tiny_http",
+ "toml",
+ "toml_edit",
+ "ureq 2.12.1",
+]
+
+[[package]]
+name = "corky-google"
+version = "0.28.2"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "corky-core",
+ "form_urlencoded",
+ "jsonwebtoken",
+ "mime_guess",
+ "mockito",
+ "open",
+ "pulldown-cmark",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ureq 2.12.1",
+]
+
+[[package]]
+name = "corky-mail"
+version = "0.28.2"
+dependencies = [
+ "agent-kit",
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "corky-core",
+ "corky-google",
+ "corky-social",
+ "filetime",
+ "form_urlencoded",
+ "glob",
+ "htmd",
+ "imap",
+ "instruction-files",
+ "lettre",
+ "libc",
+ "mailparse",
+ "mime_guess",
+ "native-tls",
+ "once_cell",
+ "open",
+ "pulldown-cmark",
+ "quick-xml",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "tokio",
+ "toml",
+ "toml_edit",
+ "ureq 2.12.1",
+ "zip",
+]
+
+[[package]]
+name = "corky-social"
+version = "0.28.2"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "corky-core",
+ "form_urlencoded",
+ "mime_guess",
+ "open",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "toml",
+ "toml_edit",
+ "ureq 2.12.1",
+]
+
+[[package]]
+name = "corky-transcribe"
+version = "0.28.2"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "corky-core",
+ "hound",
+ "ort",
+ "pyannote-rs",
+ "rubato",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "ureq 2.12.1",
+ "whisper-rs",
 ]
 
 [[package]]

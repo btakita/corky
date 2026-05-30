@@ -22,4 +22,6 @@ Documentation = "https://btakita.github.io/corky"
 
 [tool.maturin]
 bindings = "bin"
+manifest-path = "Cargo.toml"
+include = ["crates/**/*"]
 strip = true
