@@ -1,6 +1,6 @@
 [package]
 name = "corky"
-version = "0.28.2"
+version = "0.29.0"
 edition = "2024"
 description = "Sync email threads from IMAP to Markdown, draft replies, manage collaborators"
 license = "Apache-2.0"
@@ -58,11 +58,11 @@ base64 = "0.22"
 form_urlencoded = "1"
 htmd = "0.5"
 jsonwebtoken = "9"
-corky-core = { version = "0.28.2", path = "crates/corky-core" }
-corky-google = { version = "0.28.2", path = "crates/corky-google" }
-corky-mail = { version = "0.28.2", path = "crates/corky-mail" }
-corky-social = { version = "0.28.2", path = "crates/corky-social" }
-corky-transcribe = { version = "0.28.2", path = "crates/corky-transcribe", default-features = false, optional = true }
+corky-core = { version = "0.29.0", path = "crates/corky-core" }
+corky-google = { version = "0.29.0", path = "crates/corky-google" }
+corky-mail = { version = "0.29.0", path = "crates/corky-mail" }
+corky-social = { version = "0.29.0", path = "crates/corky-social" }
+corky-transcribe = { version = "0.29.0", path = "crates/corky-transcribe", default-features = false, optional = true }
 
 [features]
 default = ["transcribe", "diarize"]

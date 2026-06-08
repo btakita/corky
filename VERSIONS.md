@@ -4,6 +4,13 @@ Corky is alpha software. Expect breaking changes between minor versions.
 
 Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 
+## 0.29.0
+
+- **Workspace split**: corky is now a Cargo workspace — `corky-core`, `corky-google`, `corky-mail`, `corky-social`, and `corky-transcribe` are published as separate crates on crates.io, with the `corky` binary depending on them by version. This is the first release of the member crates.
+- **Google Workspace document handling**: Expanded Drive/Docs/Sheets support, including a finished Drive upload workflow and Docs API reads for Google Docs.
+- **Gmail URL refetch**: `corky sync refetch` now accepts a Gmail web URL and refetches the single selected message without mutating sync history.
+- **Sheets OAuth + write scope**: Sheets commands request write scope, and OAuth/test cleanup for Sheets is more reliable.
+
 ## 0.28.2
 
 - **Release CI fixes**: Cleaned up OAuth callback parsing for current stable Clippy and fixed Windows release builds by marking Unix-only atomic-write permissions as intentionally unused off Unix.
