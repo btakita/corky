@@ -10,6 +10,7 @@ Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 - **Google Workspace document handling**: Expanded Drive/Docs/Sheets support, including a finished Drive upload workflow and Docs API reads for Google Docs.
 - **Gmail URL refetch**: `corky sync refetch` now accepts a Gmail web URL and refetches the single selected message without mutating sync history.
 - **Sheets OAuth + write scope**: Sheets commands request write scope, and OAuth/test cleanup for Sheets is more reliable.
+- **Sheets create/share**: Added `corky sheets create` and `corky sheets share` for creating spreadsheets and sharing them by email through Drive permissions.
 
 ## 0.28.2
 

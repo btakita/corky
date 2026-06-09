@@ -286,6 +286,25 @@ fn test_cli_sheets_read_help() {
 }
 
 #[test]
+fn test_cli_sheets_create_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["sheets", "create", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("title"));
+}
+
+#[test]
+fn test_cli_sheets_share_help() {
+    let mut cmd = corky_cmd();
+    cmd.args(["sheets", "share", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("role"))
+        .stdout(predicate::str::contains("notify"));
+}
+
+#[test]
 fn test_cli_sheets_pull_requires_args() {
     let mut cmd = corky_cmd();
     cmd.args(["sheets", "pull"]);

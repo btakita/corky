@@ -3,9 +3,17 @@ use std::path::Path;
 
 use crate::filter::gmail_auth;
 
+const DRIVE_FILES_API: &str = "https://www.googleapis.com/drive/v3/files";
+
 const SHEETS_WRITE_API: &str = "https://sheets.googleapis.com/v4/spreadsheets";
 
 const SHEETS_API: &str = "https://sheets.googleapis.com/v4/spreadsheets";
+
+#[derive(Debug, Eq, PartialEq)]
+struct CreatedSpreadsheet {
+    id: String,
+    url: String,
+}
 
 /// Extract a Google Sheets spreadsheet ID from a URL or raw ID.
 pub fn parse_sheet_id(input: &str) -> &str {
@@ -14,6 +22,49 @@ pub fn parse_sheet_id(input: &str) -> &str {
         return rest.split('/').next().unwrap_or(rest);
     }
     input
+}
+
+/// Create a new Google spreadsheet and print its ID and URL.
+pub fn create(title: &str, account: Option<&str>) -> Result<()> {
+    if title.trim().is_empty() {
+        bail!("Spreadsheet title cannot be empty");
+    }
+
+    let token = get_sheets_token(account)?;
+
+    eprintln!("Creating spreadsheet {title}...");
+    let created = create_spreadsheet(title, &token)?;
+
+    println!("id: {}", created.id);
+    println!("url: {}", created.url);
+
+    Ok(())
+}
+
+/// Share a Google spreadsheet with a user email address.
+pub fn share(
+    sheet: &str,
+    email: &str,
+    role: &str,
+    notify: bool,
+    account: Option<&str>,
+) -> Result<()> {
+    let sheet_id = parse_sheet_id(sheet);
+    let role = normalize_share_role(role)?;
+    if email.trim().is_empty() {
+        bail!("Share email cannot be empty");
+    }
+
+    let token = get_drive_file_token(account)?;
+
+    eprintln!("Sharing spreadsheet {sheet_id} with {email} as {role}...");
+    create_drive_permission(sheet_id, email, role, notify, &token)?;
+    println!(
+        "Shared {} with {email} as {role}.",
+        spreadsheet_url(sheet_id)
+    );
+
+    Ok(())
 }
 
 /// Read a Google Sheet range and output as markdown table or CSV.
@@ -141,8 +192,121 @@ fn get_sheets_token(account: Option<&str>) -> Result<String> {
     gmail_auth::get_access_token_for_user(Some("default"), sheets_command_scope(), account)
 }
 
+fn get_drive_file_token(account: Option<&str>) -> Result<String> {
+    gmail_auth::get_access_token_for_user(Some("default"), gmail_auth::DRIVE_FILE_SCOPE, account)
+}
+
 fn sheets_command_scope() -> &'static str {
     gmail_auth::SHEETS_SCOPE
+}
+
+fn create_spreadsheet(title: &str, token: &str) -> Result<CreatedSpreadsheet> {
+    if title.trim().is_empty() {
+        bail!("Spreadsheet title cannot be empty");
+    }
+
+    let url = format!("{SHEETS_API}?fields=spreadsheetId,spreadsheetUrl,properties.title");
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("Content-Type", "application/json")
+        .send_json(create_spreadsheet_request(title));
+
+    match resp {
+        Ok(r) => {
+            let result: serde_json::Value = r.into_json()?;
+            let id = result["spreadsheetId"]
+                .as_str()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Sheets API response did not include spreadsheetId")
+                })?
+                .to_string();
+            let url = result["spreadsheetUrl"]
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| spreadsheet_url(&id));
+            Ok(CreatedSpreadsheet { id, url })
+        }
+        Err(ureq::Error::Status(401, _)) => {
+            bail!(
+                "Sheets API: unauthorized (401). Re-run `corky auth --scope sheets` or `corky auth --scope workspace`."
+            )
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Sheets API error (HTTP {}): {}", status, body);
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn create_spreadsheet_request(title: &str) -> serde_json::Value {
+    serde_json::json!({
+        "properties": {
+            "title": title
+        }
+    })
+}
+
+fn create_drive_permission(
+    sheet_id: &str,
+    email: &str,
+    role: &str,
+    notify: bool,
+    token: &str,
+) -> Result<()> {
+    if email.trim().is_empty() {
+        bail!("Share email cannot be empty");
+    }
+
+    let url = share_permission_url(sheet_id, notify);
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("Content-Type", "application/json")
+        .send_json(share_permission_request(email, role)?);
+
+    match resp {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(401, _)) => {
+            bail!(
+                "Drive API: unauthorized (401). Re-run `corky auth --scope drive` or `corky auth --scope workspace`."
+            )
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            bail!("Drive permissions error (HTTP {}): {}", status, body);
+        }
+        Err(e) => bail!("Drive permissions request failed: {}", e),
+    }
+}
+
+fn share_permission_request(email: &str, role: &str) -> Result<serde_json::Value> {
+    Ok(serde_json::json!({
+        "type": "user",
+        "role": normalize_share_role(role)?,
+        "emailAddress": email,
+    }))
+}
+
+fn normalize_share_role(role: &str) -> Result<&'static str> {
+    match role {
+        "reader" => Ok("reader"),
+        "writer" => Ok("writer"),
+        "commenter" => Ok("commenter"),
+        other => bail!("Unsupported share role: {other}. Use reader, writer, or commenter."),
+    }
+}
+
+fn share_permission_url(sheet_id: &str, notify: bool) -> String {
+    format!(
+        "{}/{}/permissions?supportsAllDrives=true&sendNotificationEmail={}",
+        DRIVE_FILES_API,
+        urlencode(sheet_id),
+        notify
+    )
+}
+
+fn spreadsheet_url(sheet_id: &str) -> String {
+    format!("https://docs.google.com/spreadsheets/d/{sheet_id}/edit")
 }
 
 fn fetch_rows(sheet_id: &str, range: Option<&str>, token: &str) -> Result<Vec<Vec<String>>> {
@@ -500,6 +664,10 @@ fn encode_range(range: &str) -> String {
     encoded
 }
 
+fn urlencode(value: &str) -> String {
+    form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
 fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
     match ureq::get(url)
         .set("Authorization", &format!("Bearer {}", token))
@@ -538,6 +706,58 @@ mod tests {
     fn test_sheets_commands_request_read_write_scope() {
         assert_eq!(sheets_command_scope(), gmail_auth::SHEETS_SCOPE);
         assert_ne!(sheets_command_scope(), gmail_auth::SHEETS_READONLY_SCOPE);
+    }
+
+    #[test]
+    fn test_create_spreadsheet_request() {
+        assert_eq!(
+            create_spreadsheet_request("MRH Leads"),
+            serde_json::json!({
+                "properties": {
+                    "title": "MRH Leads"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn test_share_permission_request() {
+        assert_eq!(
+            share_permission_request("ron@example.com", "writer").unwrap(),
+            serde_json::json!({
+                "type": "user",
+                "role": "writer",
+                "emailAddress": "ron@example.com"
+            })
+        );
+    }
+
+    #[test]
+    fn test_share_permission_request_rejects_invalid_role() {
+        let err = share_permission_request("ron@example.com", "owner")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Unsupported share role"));
+    }
+
+    #[test]
+    fn test_share_permission_url() {
+        assert_eq!(
+            share_permission_url("sheet/id", false),
+            "https://www.googleapis.com/drive/v3/files/sheet%2Fid/permissions?supportsAllDrives=true&sendNotificationEmail=false"
+        );
+        assert_eq!(
+            share_permission_url("sheet-id", true),
+            "https://www.googleapis.com/drive/v3/files/sheet-id/permissions?supportsAllDrives=true&sendNotificationEmail=true"
+        );
+    }
+
+    #[test]
+    fn test_spreadsheet_url() {
+        assert_eq!(
+            spreadsheet_url("abc123"),
+            "https://docs.google.com/spreadsheets/d/abc123/edit"
+        );
     }
 
     #[test]

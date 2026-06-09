@@ -101,6 +101,8 @@ corky doc upload FILE --convert                           # Convert Office/CSV u
 corky doc upload FILE --folder DRIVE_FOLDER_ID            # Upload into a specific Drive folder
 corky docs read DOC_URL [-o FILE]                         # Read Google Doc text
 corky docs write DOC_URL FILE                             # Replace Google Doc text from markdown
+corky sheets create "Spreadsheet Title"                   # Create a Google spreadsheet
+corky sheets share SHEET_URL EMAIL --role writer          # Share a spreadsheet
 corky sheets read SHEET_URL --range A1:D10 --format csv   # Read Google Sheet range
 corky sheets write SHEET_URL RANGE CSV                    # Write CSV to Google Sheet range
 corky sheets pull SHEET_URL TAB CSV                       # Sync a tab down to CSV

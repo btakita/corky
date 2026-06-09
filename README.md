@@ -89,6 +89,8 @@ corky docs read DOC_URL                     # Read Google Doc text
 corky docs write DOC_URL FILE               # Replace Google Doc text from markdown
 corky doc sheet SHEET_URL                   # Read Google Sheet as markdown table
 corky doc sheet-write SHEET_URL RANGE CSV  # Write CSV to Google Sheet range
+corky sheets create "Spreadsheet Title"    # Create a new Google Sheet
+corky sheets share SHEET_URL EMAIL         # Share a sheet with reader/writer/commenter role
 corky sheets read SHEET_URL --range A1:D10 # Read Google Sheet range
 corky sheets write SHEET_URL RANGE CSV     # Write CSV to Google Sheet range
 corky sheets pull SHEET_URL TAB CSV        # Sync a Google Sheet tab to local CSV
@@ -106,7 +108,7 @@ corky transcribe FILE --diarize  # With speaker diarization
 corky --help                    # All commands
 ```
 
-Sheets commands request the read/write `spreadsheets` OAuth scope even for read and pull operations, so a token first created by reading can be reused by later write, push, or delete-tab commands.
+Sheets commands request the read/write `spreadsheets` OAuth scope even for read and pull operations, so a token first created by reading can be reused by later create, write, push, or delete-tab commands. `corky sheets share` uses Drive `drive.file`; run `corky auth --scope workspace` before create/share workflows to pre-authorize both Sheets and Drive.
 
 ### Transcription & speaker diarization
 

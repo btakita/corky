@@ -1114,6 +1114,35 @@ pub enum DocsCommands {
 
 #[derive(Subcommand)]
 pub enum SheetsCommands {
+    /// Create a new Google spreadsheet
+    Create {
+        /// Spreadsheet title
+        title: String,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Share a Google spreadsheet with a user
+    Share {
+        /// Google Sheet URL or spreadsheet ID
+        sheet: String,
+
+        /// Email address to share with
+        email: String,
+
+        /// Permission role to grant
+        #[arg(long, default_value = "writer", value_parser = ["reader", "writer", "commenter"])]
+        role: String,
+
+        /// Send Google's notification email
+        #[arg(long)]
+        notify: bool,
+
+        /// Google account email (login hint for OAuth)
+        #[arg(long)]
+        account: Option<String>,
+    },
     /// Read a Google Sheet range as markdown table or CSV
     Read {
         /// Google Sheet URL or spreadsheet ID

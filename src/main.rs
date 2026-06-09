@@ -413,6 +413,16 @@ fn main() -> Result<()> {
             }
         },
         Commands::Sheets(cmd) => match cmd {
+            SheetsCommands::Create { title, account } => {
+                corky::doc::sheets::create(&title, account.as_deref())
+            }
+            SheetsCommands::Share {
+                sheet,
+                email,
+                role,
+                notify,
+                account,
+            } => corky::doc::sheets::share(&sheet, &email, &role, notify, account.as_deref()),
             SheetsCommands::Read {
                 sheet,
                 range,

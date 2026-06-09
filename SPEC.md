@@ -1707,7 +1707,37 @@ For Google Docs, replaces the content with the contents of a local markdown file
 
 **OAuth scopes:** `DOCS_SCOPE` (`documents`, read/write) for Google Docs; `DRIVE_READONLY_SCOPE` for metadata detection plus `DRIVE_FILE_SCOPE` for binary file media replacement.
 
-### 14.2.5 Google Sheets Read
+### 14.2.5 Google Sheets Create / Share
+
+```
+corky sheets create <TITLE> [--account EMAIL]
+corky sheets share <SHEET_URL_OR_ID> <EMAIL> [--role reader|writer|commenter] [--notify] [--account EMAIL]
+```
+
+`create` creates a new Google spreadsheet and prints both `id:` and `url:` lines.
+`share` grants a user permission on an existing spreadsheet through Drive
+permissions. The default share role is `writer`; `reader` and `commenter` are also
+accepted. By default, `share` suppresses Google's notification email; `--notify`
+requests it.
+
+**APIs:**
+- create: `POST https://sheets.googleapis.com/v4/spreadsheets?fields=spreadsheetId,spreadsheetUrl,properties.title`
+- share: `POST https://www.googleapis.com/drive/v3/files/{id}/permissions?supportsAllDrives=true&sendNotificationEmail=<bool>`
+
+**OAuth scopes:** `create` uses `SHEETS_SCOPE` (`spreadsheets`, read/write).
+`share` uses `DRIVE_FILE_SCOPE` (`drive.file`). Users can run
+`corky auth --email EMAIL --scope workspace` before create/share workflows to cache
+both scopes in one browser flow.
+
+**Edge cases:**
+
+| ID | Scenario | Behavior |
+|----|----------|----------|
+| SC1 | Empty title | Fails with "Spreadsheet title cannot be empty" |
+| SC2 | Invalid share role | Fails with "Unsupported share role" |
+| SC3 | Empty share email | Fails with "Share email cannot be empty" |
+
+### 14.2.6 Google Sheets Read
 
 ```
 corky doc sheet <SHEET_URL_OR_ID> [--range RANGE] [--format table|csv] [-o FILE] [--account EMAIL]
@@ -1717,7 +1747,7 @@ Reads a Google Sheets range and outputs as a markdown table (default) or CSV. `-
 
 **OAuth scope:** `SHEETS_SCOPE` (`spreadsheets`, read/write). Sheets read and pull commands request the read/write scope up front so the shared `gmail:<account>` token cache is write-capable when the same workflow later runs `corky sheets write`, `push`, or `delete-tab`. A manually cached `SHEETS_READONLY_SCOPE` token is insufficient for `corky sheets *` commands and will be upgraded through the normal incremental OAuth flow.
 
-### 14.2.6 Google Sheets Write
+### 14.2.7 Google Sheets Write
 
 ```
 corky doc sheet-write <SHEET_URL_OR_ID> <RANGE> <CSV_FILE> [--account EMAIL]
@@ -1744,7 +1774,7 @@ After any Google OAuth flow, Corky verifies the returned token actually covers t
 | SW2 | Auth error (401) | Error: "Sheets API: unauthorized. Re-run `corky filter auth`." |
 | SW3 | Quoted commas in CSV | Field preserved correctly (parser handles RFC 4180) |
 
-### 14.2.7 Google Sheets CSV Tab Sync
+### 14.2.8 Google Sheets CSV Tab Sync
 
 ```
 corky sheets pull <SHEET_URL_OR_ID> <TAB> <CSV_FILE> [--account EMAIL]
