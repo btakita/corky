@@ -24,7 +24,7 @@ Or via shell installer:
 curl -sSf https://raw.githubusercontent.com/btakita/corky/main/install.sh | sh
 ```
 
-Or from source: `cargo install --path .`
+Or from source: `make install`
 
 ## Quick start
 
@@ -125,7 +125,7 @@ corky transcribe call.amr --diarize --speakers "Alice,Bob" -o transcript.md
 
 Diarization uses [pyannote-rs](https://github.com/thewh1teagle/pyannote-rs) (ONNX Runtime) to detect and label speakers. When run without `--speakers`, corky shows text excerpts per speaker and prompts you to assign names interactively. ONNX models auto-download on first use — no gated HuggingFace access required.
 
-**Feature flags:** Transcription (CPU) is enabled by default. GPU acceleration is auto-detected — `make install` and `install.sh` detect NVIDIA CUDA (Linux) or Apple Metal (macOS) and build with the appropriate GPU backend, falling back to CPU-only if the GPU build fails. For manual control: `cargo install --path . --features transcribe-cuda` (Linux) or `--features transcribe-metal` (macOS). Diarization is enabled by default. Video formats (mov, mkv, webm, etc.) are transcribed via ffmpeg; audio formats use symphonia with ffmpeg fallback.
+**Feature flags:** Transcription (CPU) is enabled by default. Local source builds/install targets require GPU acceleration: `make build`, `make release`, `make install`, and `make wheel` select `transcribe-cuda` (NVIDIA Linux) or `transcribe-metal` (macOS) through `CORKY_LOCAL_GPU_FEATURE` and fail if no GPU backend is available. For manual control: `cargo install --path . --features transcribe-cuda` (Linux) or `--features transcribe-metal` (macOS). Diarization is enabled by default. Video formats (mov, mkv, webm, etc.) are transcribed via ffmpeg; audio formats use symphonia with ffmpeg fallback.
 
 > This feature was designed collaboratively using [agent-doc](https://github.com/btakita/agent-doc) interactive document sessions.
 
@@ -217,8 +217,8 @@ These commands keep the normal human-readable output by default. `--json` emits 
 
 ```sh
 cp .corky.toml.example mail/.corky.toml
-make check    # clippy + test
-make release  # build + symlink to .bin/corky
+make check    # GPU-feature clippy + test
+make release  # GPU build + symlink to .bin/corky
 ```
 
 See [building](https://btakita.github.io/corky/development/building.html) and [conventions](https://btakita.github.io/corky/development/conventions.html).

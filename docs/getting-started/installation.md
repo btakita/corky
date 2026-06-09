@@ -21,9 +21,13 @@ This downloads a prebuilt binary to `~/.local/bin/corky`. Use `--system` to inst
 ## From source
 
 ```sh
-cargo install --path .
+make install
 ```
+
+Source installs require a GPU transcription backend. `make install` selects
+`transcribe-cuda` on NVIDIA Linux or `transcribe-metal` on macOS and stops if the
+GPU build cannot be produced.
 
 ## Windows
 
-`pip install corky` is the easiest option. Alternatively, download `.zip` from [GitHub Releases](https://github.com/btakita/corky/releases) or build from source with `cargo install --path .`.
+`pip install corky` is the easiest option. Alternatively, download `.zip` from [GitHub Releases](https://github.com/btakita/corky/releases) or build from source with `make install`.

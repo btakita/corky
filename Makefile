@@ -1,66 +1,59 @@
-.PHONY: build release test clippy check precommit install install-hooks clean init-python wheel publish publish-crate publish-pypi
+.PHONY: build release release-gpu require-local-gpu test clippy check precommit install install-hooks clean init-python wheel publish publish-crate publish-pypi
 
 # GCP OAuth credentials (public desktop-app credentials, injected at build time)
 export CORKY_DEFAULT_GCP_CLIENT_ID ?= $(shell pass corky/gcp/client_id 2>/dev/null)
 export CORKY_DEFAULT_GCP_CLIENT_SECRET ?= $(shell pass corky/gcp/client_secret 2>/dev/null)
 
-# Build debug binary
-build:
-	cargo build
+# Local binary builds must include GPU-accelerated transcription support.
+UNAME_S := $(shell uname -s)
+NVIDIA_SMI_OK := $(shell if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then printf yes; fi)
+ifeq ($(UNAME_S),Darwin)
+CORKY_LOCAL_GPU_FEATURE ?= transcribe-metal
+else ifeq ($(NVIDIA_SMI_OK),yes)
+CORKY_LOCAL_GPU_FEATURE ?= transcribe-cuda
+else
+CORKY_LOCAL_GPU_FEATURE ?=
+endif
 
-# Build release binary and symlink to .bin/
-release:
-	cargo build --release
-	@mkdir -p .bin
-	@ln -sf ../target/release/corky .bin/corky
-	@echo "Installed .bin/corky -> target/release/corky"
-
-# Build release binary with GPU support (CUDA on Linux, Metal on macOS)
-release-gpu:
-	@if [ "$$(uname)" = "Darwin" ]; then \
-		echo "Building with Metal (macOS)..."; \
-		cargo build --release --features transcribe-metal; \
-	elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then \
-		echo "Building with CUDA (Linux)..."; \
-		cargo build --release --features transcribe-cuda; \
-	else \
-		echo "No GPU detected — building CPU-only."; \
-		cargo build --release; \
+require-local-gpu:
+	@if [ -z "$(CORKY_LOCAL_GPU_FEATURE)" ]; then \
+		echo "GPU support is required for local corky builds and installs."; \
+		echo "Install/configure CUDA or Metal, or set CORKY_LOCAL_GPU_FEATURE=transcribe-cuda|transcribe-metal explicitly."; \
+		exit 2; \
 	fi
+
+# Build debug binary with the required local GPU feature
+build: require-local-gpu
+	cargo build --features $(CORKY_LOCAL_GPU_FEATURE)
+
+# Build release binary with the required local GPU feature and symlink to .bin/
+release: require-local-gpu
+	cargo build --release --features $(CORKY_LOCAL_GPU_FEATURE)
 	@mkdir -p .bin
 	@ln -sf ../target/release/corky .bin/corky
 	@echo "Installed .bin/corky -> target/release/corky"
 
-# Run tests
-test:
-	cargo test --workspace
+# Backward-compatible alias for explicit GPU release builds.
+release-gpu: release
 
-# Lint
-clippy:
-	cargo clippy --workspace --all-targets -- -D warnings
+# Run tests with the required local GPU feature
+test: require-local-gpu
+	cargo test --workspace --features $(CORKY_LOCAL_GPU_FEATURE)
+
+# Lint with the required local GPU feature
+clippy: require-local-gpu
+	cargo clippy --workspace --all-targets --features $(CORKY_LOCAL_GPU_FEATURE) -- -D warnings
 
 # clippy + test
 check: clippy test
 
 # Pre-commit: clippy + test + audit-docs
 precommit: check
-	cargo run --quiet -- audit-docs
+	cargo run --quiet --features $(CORKY_LOCAL_GPU_FEATURE) -- audit-docs
 
-# Install to ~/.cargo/bin (auto-detects GPU for transcribe-cuda)
-install:
-	@FEATURES=""; \
-	if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then \
-		echo "GPU detected — attempting install with transcribe-cuda..."; \
-		if cargo install --path . --features transcribe-cuda 2>/dev/null; then \
-			echo "Installed with GPU support (transcribe-cuda)."; \
-			exit 0; \
-		else \
-			echo "GPU build failed — falling back to CPU-only install."; \
-		fi; \
-	else \
-		echo "No GPU detected — installing CPU-only."; \
-	fi; \
-	cargo install --path .
+# Install to ~/.cargo/bin with the required local GPU feature
+install: require-local-gpu
+	cargo install --path . --features $(CORKY_LOCAL_GPU_FEATURE)
 
 # Install git hooks
 install-hooks:
@@ -84,11 +77,11 @@ init-python:
 	fi
 	uv venv .venv --python "$(PY_VERSION)" --no-project --clear --seed $(VENV_ARGS)
 	uv pip install maturin
-	@echo "Venv ready. Use 'make wheel' to build, or '.venv/bin/maturin develop --release' to install into venv."
+	@echo "Venv ready. Use 'make wheel' to build/install into venv with the local GPU feature."
 
 # Build wheel and install into venv for testing
-wheel:
-	.venv/bin/maturin develop --release
+wheel: require-local-gpu
+	.venv/bin/maturin develop --release --features $(CORKY_LOCAL_GPU_FEATURE)
 
 # Publish to crates.io
 publish-crate:

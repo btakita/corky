@@ -49,17 +49,42 @@ corky init --user you@gmail.com
 
 **New user (from source):**
 ```sh
-cargo install --path .
+make install
 corky init --user you@gmail.com
 ```
 
 **Developer (from repo checkout):**
 ```sh
 cp .corky.toml.example mail/.corky.toml   # configure your email accounts
-make release                                              # build + symlink to .bin/corky
+make release                              # GPU build + symlink to .bin/corky
 ```
 
 See README.md for full config reference (.corky.toml, Gmail OAuth).
+
+## Local GPU Builds
+
+This checkout requires GPU-accelerated transcription support for every local corky
+binary an agent builds or installs. Use the Makefile targets for local binaries:
+
+```sh
+make build
+make release
+make install
+make wheel
+```
+
+Those targets resolve `CORKY_LOCAL_GPU_FEATURE` to `transcribe-cuda` on NVIDIA
+Linux or `transcribe-metal` on macOS, then fail if no GPU backend is available.
+Direct cargo or maturin commands must include the same feature explicitly, for example:
+
+```sh
+cargo build --release --features transcribe-cuda
+cargo install --path . --features transcribe-cuda
+.venv/bin/maturin develop --release --features transcribe-cuda
+```
+
+Do not accept CPU-only fallback for a local build/install. If the GPU build fails,
+stop and report the CUDA/Metal error.
 
 ## Google Workspace Integration
 
@@ -194,7 +219,7 @@ Steps 1–2 are automated (CI-runnable). Step 3 requires Claude Code. Skip grace
 5. `cargo publish` (crates.io)
 6. Run the `PyPI` GitHub Actions workflow (PyPI trusted publishing via environment `pypi`)
 7. `gh release create v<version> --generate-notes` with prebuilt binary (GitHub Release)
-8. Install binary: `cargo install --path .`
+8. Install binary: `make install`
 
 The PyPI project must have a trusted publisher for repository `btakita/corky`,
 workflow `.github/workflows/pypi.yml`, environment `pypi`. The workflow uses
@@ -211,7 +236,7 @@ Publish order when instruction-files changes: instruction-files → agent-doc �
 
 ## Conventions
 
-- Use `make check` (clippy + test), `make release` (build + .bin symlink) for development
+- Use `make check` (GPU-feature clippy + test), `make release` (GPU build + .bin symlink) for development
 - Use `serde` derive for all data types
 - Use `anyhow` for application errors, `thiserror` for domain errors
 - Use `toml_edit` for format-preserving TOML edits (add-label)

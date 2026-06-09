@@ -71,12 +71,20 @@ esac
 
 TARGET="${ARCH_TARGET}-${OS_TARGET}"
 
-# Detect GPU
+# Detect GPU-backed release variant for this platform.
 GPU_SUFFIX=""
-if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
-    echo "NVIDIA GPU detected — will try GPU-accelerated binary."
-    GPU_SUFFIX="-cuda"
-fi
+case "$OS" in
+    Darwin)
+        echo "macOS detected — requiring Metal-accelerated binary."
+        GPU_SUFFIX="-metal"
+        ;;
+    Linux)
+        if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+            echo "NVIDIA GPU detected — requiring CUDA-accelerated binary."
+            GPU_SUFFIX="-cuda"
+        fi
+        ;;
+esac
 
 # Resolve version
 if [ -z "$VERSION" ]; then
@@ -96,19 +104,18 @@ TAG="v$VERSION"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# Try GPU binary first if GPU detected, fall back to CPU
+# Install a GPU binary when the local platform requires one.
 ARCHIVE="corky-${TARGET}${GPU_SUFFIX}.tar.gz"
 URL="https://github.com/$REPO/releases/download/$TAG/$ARCHIVE"
 
 if [ -n "$GPU_SUFFIX" ]; then
-    echo "Trying GPU binary: $ARCHIVE"
+    echo "Downloading required GPU binary: $ARCHIVE"
     if curl -sSfL "$URL" -o "$TMPDIR/$ARCHIVE" 2>/dev/null; then
         echo "GPU binary downloaded."
     else
-        echo "GPU binary not available — falling back to CPU."
-        GPU_SUFFIX=""
-        ARCHIVE="corky-${TARGET}.tar.gz"
-        URL="https://github.com/$REPO/releases/download/$TAG/$ARCHIVE"
+        echo "Required GPU binary is not available: $URL" >&2
+        echo "Install from source with the matching GPU feature instead." >&2
+        exit 1
     fi
 else
     echo "Installing corky $VERSION for $TARGET..."

@@ -979,15 +979,23 @@ Yeah.
 - `transcribe-metal` — Apple Metal GPU-accelerated transcription (macOS)
 - `diarize` — pyannote-rs speaker diarization (implies `transcribe`)
 
-**GPU auto-detection:**
+**Local GPU build/install requirement:**
 
-Both install methods auto-detect GPU availability and attempt GPU-accelerated builds:
+Local source build/install methods require GPU acceleration and stop if a GPU
+backend cannot be selected or built:
 
-- **`make install`** (from source): On macOS, builds with `--features transcribe-metal`. On Linux, runs `nvidia-smi` — if found, attempts `cargo install --features transcribe-cuda`. On failure (missing CUDA toolkit, incompatible driver), falls back to CPU-only install silently.
-- **`make release-gpu`** (build only): Same auto-detection as `make install` but runs `cargo build --release` instead of `cargo install`.
-- **`install.sh`** (prebuilt binary): Checks for `nvidia-smi` (Linux) or macOS platform. Downloads the appropriate GPU binary variant (`-cuda` or `-metal`). Falls back to standard binary if GPU variant isn't available.
+- **`make build`** (from source): Builds with `--features $CORKY_LOCAL_GPU_FEATURE`.
+- **`make test` / `make clippy` / `make check`** (local verification): Compile with `--features $CORKY_LOCAL_GPU_FEATURE`.
+- **`make release` / `make release-gpu`** (from source): Builds with `--features $CORKY_LOCAL_GPU_FEATURE` and symlinks `.bin/corky`.
+- **`make install`** (from source): Installs with `--features $CORKY_LOCAL_GPU_FEATURE`.
+- **`make wheel`** (local Python/venv install): Runs maturin with `--features $CORKY_LOCAL_GPU_FEATURE`.
+- **`install.sh`** (prebuilt binary): Checks for `nvidia-smi` on Linux or macOS platform. Downloads the appropriate GPU binary variant (`-cuda` or `-metal`) and fails if the required GPU binary is unavailable.
 
-No user action needed — GPU support is enabled automatically when hardware is available. If the GPU build fails, the install continues with CPU-only transcription.
+`CORKY_LOCAL_GPU_FEATURE` defaults to `transcribe-metal` on macOS and
+`transcribe-cuda` on Linux when `nvidia-smi` succeeds. If auto-detection cannot
+select a backend, local source build/install targets exit with instructions to set
+`CORKY_LOCAL_GPU_FEATURE=transcribe-cuda` or `transcribe-metal`. CPU-only fallback
+is not acceptable for local binaries.
 
 **Audio decode pipeline:** Video formats (mov, mkv, webm, avi, ts, mts) go directly to ffmpeg. Audio formats supported by symphonia are tried first; on failure, ffmpeg is used as a fallback.
 

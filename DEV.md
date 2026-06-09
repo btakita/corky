@@ -10,8 +10,8 @@ secret_paths:
   gcp_client_id: "corky/gcp/client_id"
   gcp_client_secret: "corky/gcp/client_secret"
 post_release:
-  - "cargo install --path ."
-  - "cargo build --release"
+  - "make install"
+  - "make release"
 ---
 
 # corky — Release Notes
@@ -20,8 +20,16 @@ post_release:
 
 The Makefile injects `CORKY_DEFAULT_GCP_CLIENT_ID` and `CORKY_DEFAULT_GCP_CLIENT_SECRET`
 via `pass` at build time (using `env!()` in Rust). Release builds (`make release`)
-automatically pick these up. Manual `cargo build --release` will too, as long as the
-env vars are exported (the Makefile handles this).
+automatically pick these up. Manual `cargo build --release --features transcribe-cuda`
+will too, as long as the env vars are exported (the Makefile handles this).
+
+## Local GPU build requirement
+
+Local corky binaries must be built and installed with GPU-accelerated transcription.
+Use `make build`, `make release`, `make install`, or `make wheel`; they require
+`CORKY_LOCAL_GPU_FEATURE` (`transcribe-cuda` on this Linux/CUDA workstation,
+`transcribe-metal` on macOS). If a direct cargo/maturin command is unavoidable,
+include `--features transcribe-cuda` locally and stop on GPU build failure.
 
 For `cargo publish`, the crate compiles on crates.io without GCP creds — `env!()` uses
 empty-string defaults so the published crate builds cleanly.
