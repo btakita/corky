@@ -74,6 +74,7 @@ corky auth --email you@gmail.com --scope drive-readonly  # Pre-authenticate Driv
 corky filter auth               # Authenticate for Gmail filter API
 corky linkedin draft              # Create LinkedIn draft
 corky linkedin publish FILE      # Publish to LinkedIn
+corky linkedin post FILE         # Alias for publish
 corky linkedin comment FILE TEXT # Comment on a published post
 corky youtube comment FILE TEXT      # Comment on a published video
 corky youtube playlist add PL VID   # Add video to playlist

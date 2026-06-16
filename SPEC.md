@@ -1458,6 +1458,7 @@ Client credentials resolution order per field:
 5. Upload images (if any): resolve paths relative to draft file, call platform image upload API
 6. Call platform API (LinkedIn: POST /rest/posts) with image URNs
 7. Update draft frontmatter: status=published, post_id, post_url, published_at
+8. For LinkedIn, immediately reconcile the created post body with `PARTIAL_UPDATE` using the same full commentary. If this post-create update fails, keep the draft marked published to prevent duplicate posts and report the repair command.
 
 **LinkedIn image upload flow:**
 1. `POST /rest/images?action=initializeUpload` with `owner: urn:li:person:{id}` → returns upload URL + image URN
@@ -1472,6 +1473,7 @@ Client credentials resolution order per field:
 corky linkedin auth [--profile NAME]              # OAuth flow, stores token
 corky linkedin draft [BODY] [--author X] [--visibility public] [--tags X,Y]
 corky linkedin publish <file>                     # Publish ready draft
+corky linkedin post <file>                        # Alias for publish
 corky linkedin check                              # Validate profiles.toml
 corky linkedin list [--status X]                  # List LinkedIn drafts
 corky linkedin rename-author <old> <new>          # Rename across drafts + profiles

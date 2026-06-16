@@ -11,6 +11,7 @@ Use `BREAKING CHANGE:` prefix in version entries to flag incompatible changes.
 - **Gmail URL refetch**: `corky sync refetch` now accepts a Gmail web URL and refetches the single selected message without mutating sync history.
 - **Sheets OAuth + write scope**: Sheets commands request write scope, and OAuth/test cleanup for Sheets is more reliable.
 - **Sheets create/share**: Added `corky sheets create` and `corky sheets share` for creating spreadsheets and sharing them by email through Drive permissions.
+- **LinkedIn publish reconciliation**: `corky linkedin publish` now marks the created draft published and immediately re-applies the full body with `PARTIAL_UPDATE`; `corky linkedin post` is accepted as a publish alias.
 
 ## 0.28.2
 

@@ -677,6 +677,7 @@ pub enum LinkedinCommands {
     },
 
     /// Publish a ready LinkedIn draft
+    #[command(alias = "post")]
     Publish {
         /// Path to the draft file
         file: PathBuf,

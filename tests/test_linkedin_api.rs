@@ -46,6 +46,9 @@ fn create_post_text_only() {
         .mock("POST", "/rest/posts")
         .match_header("Authorization", "Bearer test-token")
         .match_header("LinkedIn-Version", "202601")
+        .match_body(mockito::Matcher::PartialJsonString(
+            r#"{"commentary":"Hello world"}"#.to_string(),
+        ))
         .with_status(201)
         .with_header("x-restli-id", "urn:li:share:123456")
         .create();
@@ -65,6 +68,33 @@ fn create_post_text_only() {
         post_url,
         "https://www.linkedin.com/feed/update/urn:li:share:123456"
     );
+}
+
+#[test]
+fn update_post_sends_full_commentary_patch() {
+    let mut server = mockito::Server::new();
+    let body = "Line one.\n\nLine two with details that must not be truncated.";
+    let mock = server
+        .mock("POST", "/rest/posts/urn%3Ali%3Ashare%3A123456")
+        .match_header("Authorization", "Bearer test-token")
+        .match_header("X-RestLi-Method", "PARTIAL_UPDATE")
+        .match_header("LinkedIn-Version", "202601")
+        .match_body(mockito::Matcher::PartialJsonString(
+            serde_json::json!({
+                "patch": {
+                    "$set": {
+                        "commentary": body
+                    }
+                }
+            })
+            .to_string(),
+        ))
+        .with_status(204)
+        .create();
+
+    let result = linkedin::update_post_at(&server.url(), "test-token", "urn:li:share:123456", body);
+    mock.assert();
+    assert!(result.is_ok());
 }
 
 #[test]

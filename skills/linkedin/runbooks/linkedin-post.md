@@ -27,10 +27,10 @@
 
 ## Posting
 
-1. Copy post body -> paste into LinkedIn post composer
-2. Publish the post
-3. Immediately add the first comment with links
-4. Verify both post and comment are visible
+1. Convert the approved body into a ready `mail/social/*.md` LinkedIn draft with YAML frontmatter.
+2. Run `corky linkedin post <file>` (alias for `publish`).
+3. Add the first comment with links using `corky linkedin comment <published-file> "<comment>"`.
+4. Verify both post and comment are visible.
 
 ## Timing
 

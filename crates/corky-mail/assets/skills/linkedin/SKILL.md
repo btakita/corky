@@ -12,7 +12,7 @@ Draft and publish LinkedIn posts. Handles formatting constraints, link placement
 
 ```
 /linkedin draft <topic>     — draft a LinkedIn post
-/linkedin post <file>       — publish a post to LinkedIn
+/linkedin post <file>       — publish a ready social draft to LinkedIn
 /linkedin schedule <file>   — schedule a post for later
 ```
 
@@ -33,7 +33,7 @@ Write a LinkedIn post following the formatting and structure guidelines in `runb
 corky linkedin post <file>
 ```
 
-Publishes the post body and optionally adds the first comment with links.
+Alias for `corky linkedin publish <file>`. Publishes a ready frontmatter-backed draft from `mail/social/`, then re-applies the full post body with LinkedIn `PARTIAL_UPDATE` to guard against create-time truncation. Add first comments separately with `corky linkedin comment <published-file> "<comment>"`.
 
 ### `schedule` — Schedule a Post
 

@@ -106,6 +106,15 @@ fn test_cli_mb_alias() {
 }
 
 #[test]
+fn test_cli_linkedin_post_alias() {
+    let mut cmd = corky_cmd();
+    cmd.args(["linkedin", "post"]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("FILE"));
+}
+
+#[test]
 fn test_cli_sync_routes() {
     let tmp = tempfile::TempDir::new().unwrap();
     let project_dir = tmp.path().to_path_buf();

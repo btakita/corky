@@ -115,7 +115,8 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
         _ => bail!("Publishing not yet implemented for {}", platform),
     };
 
-    // Update draft frontmatter
+    // Update draft frontmatter before post-create reconciliation. If reconciliation
+    // fails after LinkedIn created the post, this prevents a retry from duplicating it.
     let mut draft = draft;
     draft.meta.status = DraftStatus::Published;
     draft.meta.post_id = Some(post_id.clone());
@@ -124,6 +125,18 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
 
     let rendered = draft.render()?;
     std::fs::write(path, rendered)?;
+
+    if platform == Platform::LinkedIn
+        && let Err(err) = linkedin::update_post(&token.access_token, &post_id, &draft.body)
+    {
+        bail!(
+            "LinkedIn post was created at {}, but post-create body reconciliation failed: {}.\n\
+             The draft was marked published to prevent a duplicate post; rerun `corky linkedin edit {}` to repair it.",
+            post_url,
+            err,
+            path.display()
+        );
+    }
 
     println!("Published to {}: {}", platform, post_url);
     Ok(())
