@@ -34,8 +34,7 @@ pub fn map_visibility(visibility: &str) -> Result<&'static str> {
 /// and italic markers appear as literal characters in the feed. This
 /// function removes them so the post reads naturally.
 fn strip_linkedin_markdown(text: &str) -> String {
-    text.replace('`', "")
-        .replace("**", "")
+    text.replace('`', "").replace("**", "")
 }
 
 /// Get the authenticated user's URN via /v2/userinfo.

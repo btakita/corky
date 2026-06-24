@@ -145,18 +145,18 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
     }
 
     // Post first comment if declared in frontmatter
-    if platform == Platform::LinkedIn {
-        if let Some(ref comment) = draft.meta.first_comment {
-            match linkedin::create_comment(&token.access_token, &urn, &post_id, comment) {
-                Ok(comment_id) => {
-                    println!("Posted first comment: {}", comment_id);
-                }
-                Err(err) => {
-                    eprintln!(
-                        "Warning: first comment failed (post is live at {}): {}",
-                        post_url, err
-                    );
-                }
+    if platform == Platform::LinkedIn
+        && let Some(ref comment) = draft.meta.first_comment
+    {
+        match linkedin::create_comment(&token.access_token, &urn, &post_id, comment) {
+            Ok(comment_id) => {
+                println!("Posted first comment: {}", comment_id);
+            }
+            Err(err) => {
+                eprintln!(
+                    "Warning: first comment failed (post is live at {}): {}",
+                    post_url, err
+                );
             }
         }
     }

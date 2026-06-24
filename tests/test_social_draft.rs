@@ -153,6 +153,7 @@ fn d8_render_parse_roundtrip() {
         video: None,
         captions: None,
         title: None,
+        first_comment: None,
     };
 
     let original = SocialDraft::new(meta, "Test body content.\n".to_string());
@@ -254,6 +255,7 @@ fn im4_roundtrip_with_images() {
         video: None,
         captions: None,
         title: None,
+        first_comment: None,
     };
 
     let original = SocialDraft::new(meta, "Post with images.\n".to_string());
@@ -282,6 +284,7 @@ fn im6_empty_images_omitted_in_yaml() {
         video: None,
         captions: None,
         title: None,
+        first_comment: None,
     };
 
     let draft = SocialDraft::new(meta, "Body.\n".to_string());
@@ -328,6 +331,7 @@ fn yt1_roundtrip_with_video_fields() {
         video: Some("assets/demo.mp4".to_string()),
         captions: Some("assets/demo.srt".to_string()),
         title: Some("Rust Tutorial: Getting Started".to_string()),
+        first_comment: None,
     };
 
     let original = SocialDraft::new(meta, "Video description goes here.\n".to_string());
@@ -404,6 +408,7 @@ fn li2_roundtrip_with_post_id() {
         video: None,
         captions: None,
         title: None,
+        first_comment: None,
     };
 
     let original = SocialDraft::new(meta, "Edited content.\n".to_string());
@@ -434,6 +439,7 @@ fn yt3_none_video_fields_omitted() {
         video: None,
         captions: None,
         title: None,
+        first_comment: None,
     };
 
     let draft = SocialDraft::new(meta, "Body.\n".to_string());

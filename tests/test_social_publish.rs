@@ -27,6 +27,7 @@ fn ready_meta() -> SocialDraftMeta {
         video: None,
         captions: None,
         title: None,
+        first_comment: None,
     }
 }
 
