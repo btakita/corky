@@ -76,6 +76,7 @@ pub fn run_draft(
         video: None,
         captions: None,
         title: None,
+        first_comment: None,
     };
 
     let body_text = body.unwrap_or("").to_string();

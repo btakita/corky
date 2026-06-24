@@ -96,6 +96,12 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
         println!("---");
         println!("{}", draft.body.trim());
         println!("---");
+        if let Some(ref comment) = draft.meta.first_comment {
+            println!("[dry-run] First comment ({} chars):", comment.len());
+            println!("---");
+            println!("{}", comment.trim());
+            println!("---");
+        }
         println!(
             "[dry-run] No post created. Set status to 'ready' and run without --dry-run to publish."
         );
@@ -136,6 +142,23 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
             err,
             path.display()
         );
+    }
+
+    // Post first comment if declared in frontmatter
+    if platform == Platform::LinkedIn {
+        if let Some(ref comment) = draft.meta.first_comment {
+            match linkedin::create_comment(&token.access_token, &urn, &post_id, comment) {
+                Ok(comment_id) => {
+                    println!("Posted first comment: {}", comment_id);
+                }
+                Err(err) => {
+                    eprintln!(
+                        "Warning: first comment failed (post is live at {}): {}",
+                        post_url, err
+                    );
+                }
+            }
+        }
     }
 
     println!("Published to {}: {}", platform, post_url);

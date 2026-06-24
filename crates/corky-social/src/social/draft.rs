@@ -71,6 +71,8 @@ pub struct SocialDraftMeta {
     pub captions: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_comment: Option<String>,
 }
 
 fn default_visibility() -> String {
