@@ -693,6 +693,9 @@ pub enum LinkedinCommands {
         /// New post text (reads from file body if omitted)
         #[arg(long)]
         body: Option<String>,
+        /// Validate and show the payload without actually updating the post
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Validate profiles in .corky.toml

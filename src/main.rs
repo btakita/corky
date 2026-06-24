@@ -201,8 +201,8 @@ fn main() -> Result<()> {
             LinkedinCommands::Publish { file, dry_run } => {
                 corky::social::run_publish(&file, dry_run)
             }
-            LinkedinCommands::Edit { file, body } => {
-                corky::social::run_edit(&file, body.as_deref())
+            LinkedinCommands::Edit { file, body, dry_run } => {
+                corky::social::run_edit(&file, body.as_deref(), dry_run)
             }
             LinkedinCommands::Check => corky::social::run_check(),
             LinkedinCommands::List { status } => corky::social::run_list(status.as_deref()),

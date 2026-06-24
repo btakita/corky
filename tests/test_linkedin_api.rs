@@ -45,7 +45,7 @@ fn create_post_text_only() {
     let mock = server
         .mock("POST", "/rest/posts")
         .match_header("Authorization", "Bearer test-token")
-        .match_header("LinkedIn-Version", "202601")
+        .match_header("LinkedIn-Version", "202506")
         .match_body(mockito::Matcher::PartialJsonString(
             r#"{"commentary":"Hello world"}"#.to_string(),
         ))
@@ -78,7 +78,7 @@ fn update_post_sends_full_commentary_patch() {
         .mock("POST", "/rest/posts/urn%3Ali%3Ashare%3A123456")
         .match_header("Authorization", "Bearer test-token")
         .match_header("X-RestLi-Method", "PARTIAL_UPDATE")
-        .match_header("LinkedIn-Version", "202601")
+        .match_header("LinkedIn-Version", "202506")
         .match_body(mockito::Matcher::PartialJsonString(
             serde_json::json!({
                 "patch": {

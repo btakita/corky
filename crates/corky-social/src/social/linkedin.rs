@@ -12,6 +12,10 @@ const MAX_IMAGES: usize = 20;
 /// Default LinkedIn API base URL.
 const API_BASE: &str = "https://api.linkedin.com";
 
+/// LinkedIn REST API version (confirmed active and working for all operations).
+/// Versions 202401–202501 return 426 NONEXISTENT_VERSION; 202503+ are active.
+const LINKEDIN_API_VERSION: &str = "202506";
+
 /// LinkedIn visibility values.
 pub fn map_visibility(visibility: &str) -> Result<&'static str> {
     match visibility.to_lowercase().as_str() {
@@ -78,7 +82,7 @@ pub fn upload_image_at(
     let init_url = format!("{}/rest/images?action=initializeUpload", api_base);
     let init_resp = ureq::post(&init_url)
         .set("Authorization", &format!("Bearer {}", access_token))
-        .set("LinkedIn-Version", "202601")
+        .set("LinkedIn-Version", LINKEDIN_API_VERSION)
         .set("X-Restli-Protocol-Version", "2.0.0")
         .send_json(&init_payload);
 
@@ -161,7 +165,7 @@ pub fn update_post_at(
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", access_token))
         .set("X-RestLi-Method", "PARTIAL_UPDATE")
-        .set("LinkedIn-Version", "202601")
+        .set("LinkedIn-Version", LINKEDIN_API_VERSION)
         .set("Content-Type", "application/json")
         .send_json(&payload);
 
@@ -331,7 +335,7 @@ pub fn create_post_at(
     let url = format!("{}/rest/posts", api_base);
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", access_token))
-        .set("LinkedIn-Version", "202601")
+        .set("LinkedIn-Version", LINKEDIN_API_VERSION)
         .set("X-Restli-Protocol-Version", "2.0.0")
         .send_json(&payload);
 

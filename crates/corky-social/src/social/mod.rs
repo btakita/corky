@@ -332,7 +332,7 @@ pub fn run_playlist_remove(playlist_id: &str, video_id: &str) -> Result<()> {
 }
 
 /// Run the `social edit` command: update a published post's commentary.
-pub fn run_edit(file: &Path, body: Option<&str>) -> Result<()> {
+pub fn run_edit(file: &Path, body: Option<&str>, dry_run: bool) -> Result<()> {
     let content = std::fs::read_to_string(file)?;
     let draft = SocialDraft::parse(&content)?;
 
@@ -347,6 +347,24 @@ pub fn run_edit(file: &Path, body: Option<&str>) -> Result<()> {
 
     if commentary.trim().is_empty() {
         bail!("Post body is empty. Provide --body or add text to the draft file.");
+    }
+
+    let char_count = commentary.chars().count();
+    if char_count > 3000 {
+        bail!(
+            "Post body exceeds LinkedIn's 3000 character limit ({} characters)",
+            char_count
+        );
+    }
+
+    if dry_run {
+        println!("[dry-run] Would update post: {}", post_id);
+        println!("[dry-run] Body ({} chars):", char_count);
+        println!("---");
+        println!("{}", commentary);
+        println!("---");
+        println!("[dry-run] No post updated. Run without --dry-run to apply.");
+        return Ok(());
     }
 
     // Resolve author → URN → token (same as publish flow)
