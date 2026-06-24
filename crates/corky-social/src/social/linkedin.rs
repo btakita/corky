@@ -24,6 +24,16 @@ pub fn map_visibility(visibility: &str) -> Result<&'static str> {
     }
 }
 
+/// Strip markdown formatting that LinkedIn cannot render.
+///
+/// LinkedIn posts are plain text — inline code backticks, bold markers,
+/// and italic markers appear as literal characters in the feed. This
+/// function removes them so the post reads naturally.
+fn strip_linkedin_markdown(text: &str) -> String {
+    text.replace('`', "")
+        .replace("**", "")
+}
+
 /// Get the authenticated user's URN via /v2/userinfo.
 pub fn get_user_urn(access_token: &str) -> Result<String> {
     get_user_urn_at(API_BASE, access_token)
@@ -129,6 +139,8 @@ pub fn update_post_at(
             char_count
         );
     }
+
+    let commentary = strip_linkedin_markdown(commentary);
 
     // URL-encode the URN (colons → %3A, commas → %2C)
     let encoded_urn = post_urn
@@ -269,6 +281,8 @@ pub fn create_post_at(
         );
     }
 
+    let body = strip_linkedin_markdown(body);
+
     // Validate image count
     if image_urns.len() > MAX_IMAGES {
         bail!(
@@ -333,5 +347,42 @@ pub fn create_post_at(
             bail!("LinkedIn API error (HTTP {}): {}", status, body);
         }
         Err(e) => bail!("LinkedIn API request failed: {}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_backticks() {
+        assert_eq!(
+            strip_linkedin_markdown("lazily's `StateMachine` is one Cell"),
+            "lazily's StateMachine is one Cell"
+        );
+    }
+
+    #[test]
+    fn test_strip_bold_markers() {
+        assert_eq!(
+            strip_linkedin_markdown("**Not truncated** verified"),
+            "Not truncated verified"
+        );
+    }
+
+    #[test]
+    fn test_strip_mixed_markdown() {
+        assert_eq!(
+            strip_linkedin_markdown("`Some(next)` advances. `None` rejects. **Done.**"),
+            "Some(next) advances. None rejects. Done."
+        );
+    }
+
+    #[test]
+    fn test_strip_no_markdown_unchanged() {
+        assert_eq!(
+            strip_linkedin_markdown("Plain text with no formatting."),
+            "Plain text with no formatting."
+        );
     }
 }
