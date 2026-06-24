@@ -167,7 +167,7 @@ fn run_internal(
 /// Build a RFC 2822 MIME message as bytes.
 ///
 /// Returns `multipart/mixed` when attachments are present, otherwise `text/plain`.
-fn build_mime_message(
+pub fn build_mime_message(
     to: &str,
     from: &str,
     subject: &str,

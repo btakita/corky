@@ -43,5 +43,12 @@ zip = "2"
 [features]
 vendored-openssl = ["native-tls/vendored"]
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "draft_mime"
+harness = false
+
 [lints.rust]
 warnings = "deny"
