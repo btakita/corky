@@ -20,6 +20,7 @@ fn build_mime_benches(c: &mut Criterion) {
                 black_box("Hello Alice, this is a plain-text body."),
                 black_box(&None),
                 black_box(&[][..]),
+                black_box(&[][..]),
             )
             .unwrap()
         })
@@ -33,6 +34,7 @@ fn build_mime_benches(c: &mut Criterion) {
                 black_box("Re: Threading a reply"),
                 black_box("Body of the reply."),
                 black_box(&reply_to),
+                black_box(&[][..]),
                 black_box(&[][..]),
             )
             .unwrap()
@@ -52,6 +54,7 @@ fn build_mime_benches(c: &mut Criterion) {
                 black_box("See attached."),
                 black_box(&None),
                 black_box(&attachments[..]),
+                black_box(&[][..]),
             )
             .unwrap()
         })
