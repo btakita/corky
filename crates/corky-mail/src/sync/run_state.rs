@@ -84,7 +84,10 @@ impl SyncRunState {
     pub fn transition(self, event: SyncRunEvent) -> Result<SyncRunState> {
         use SyncRunState::*;
         let next = match (self, event) {
-            (Idle | Done | Error, SyncRunEvent::Start) => Fetching,
+            // Start from a terminal/idle phase OR re-start (resume) an interrupted
+            // in-flight run — the resume consumer (#ckysyncsm-resume) re-enters
+            // Fetching for an account whose last run crashed mid-flight.
+            (Idle | Done | Error | Fetching | Merging | Writing, SyncRunEvent::Start) => Fetching,
             (Fetching, SyncRunEvent::Fetched) => Merging,
             (Merging, SyncRunEvent::Merged) => Writing,
             (Fetching | Merging | Writing, SyncRunEvent::Complete) => Done,
@@ -206,6 +209,16 @@ mod tests {
         // A new run after Done/Error starts over.
         assert_eq!(Done.transition(SyncRunEvent::Start).unwrap(), Fetching);
         assert_eq!(Error.transition(SyncRunEvent::Start).unwrap(), Fetching);
+    }
+
+    #[test]
+    fn resume_restarts_an_interrupted_run() {
+        use SyncRunState::*;
+        // #ckysyncsm-resume: Start must re-enter Fetching from any in-flight phase
+        // so the resume consumer can cleanly restart a crashed account's run.
+        assert_eq!(Fetching.transition(SyncRunEvent::Start).unwrap(), Fetching);
+        assert_eq!(Merging.transition(SyncRunEvent::Start).unwrap(), Fetching);
+        assert_eq!(Writing.transition(SyncRunEvent::Start).unwrap(), Fetching);
     }
 
     #[test]

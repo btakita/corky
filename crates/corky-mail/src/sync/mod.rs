@@ -216,9 +216,24 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
     // Track touched files for --full orphan cleanup
     let mut touched: Option<HashSet<PathBuf>> = if full { Some(HashSet::new()) } else { None };
 
+    // Resume consumer (#ckysyncsm-resume): accounts whose last run is still marked
+    // in-flight on disk crashed mid-sync. Force a full re-fetch for them this run so
+    // the in-flight window is re-verified/reconciled (idempotent by Message-ID)
+    // instead of a thin incremental from a possibly mid-write cursor.
+    let interrupted: HashSet<String> = run_state::load()
+        .map(|log| run_state::interrupted_accounts(&log).into_iter().collect())
+        .unwrap_or_default();
+
     for name in &names {
         let acct = &accounts[name];
         println!("\n=== Account: {} ({}) ===", name, acct.user);
+
+        let resuming = interrupted.contains(name);
+        if resuming {
+            println!("  resuming interrupted run for {name} — forcing a full re-verify");
+        }
+        // An interrupted account re-verifies in full; others keep the run's mode.
+        let account_full = full || resuming;
 
         // Record the run-phase marker (#ckysyncsm) so a crash mid-sync leaves an
         // in-flight marker on disk for the next run to detect and resume/repair.
@@ -231,7 +246,7 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
                 &acct.labels,
                 acct.sync_days,
                 &mut state,
-                full,
+                account_full,
                 touched.as_mut(),
                 None,
             ),
@@ -247,7 +262,7 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
                     &acct.labels,
                     acct.sync_days,
                     &mut state,
-                    full,
+                    account_full,
                     None,
                     touched.as_mut(),
                     None,

@@ -311,8 +311,14 @@ runs `interrupted_accounts()` returns.
 
 `corky sync` records `Start` before each account's sync and `Complete`/`Fail` after,
 through the same locked atomic store (`save_json_with_lock`) as `.sync-state.json`.
-The resume *consumer* (reconciling an `is_in_flight` account on the next run) is
-staged as follow-up; this ships the typed machine + durable marker.
+
+**Resume consumer (#ckysyncsm-resume):** at the start of a run, `sync` loads the log
+and computes `interrupted_accounts()` (those left `is_in_flight` by a crash). Each such
+account being synced is forced to a **full re-fetch** this run (`account_full = full ||
+resuming`) so its in-flight window is re-verified/reconciled — idempotent by Message-ID —
+instead of a thin incremental from a possibly mid-write cursor. A successful run then
+records `Complete`, clearing the marker. `Start` is a valid transition from any in-flight
+phase precisely so an interrupted run can be cleanly resumed.
 
 ### 3.5 manifest.toml
 
