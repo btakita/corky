@@ -253,10 +253,24 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
         }
     }
 
-    // Orphan cleanup on --full
+    // Orphan cleanup on --full of ALL accounts.
+    //
+    // #ckyorphan(a): a scoped `--account X` full sync only records files touched
+    // for that one account, but conversations live in a single global
+    // `mail/conversations/` dir. Running global cleanup then deletes every other
+    // account's conversations. There is no reliable per-account orphan set
+    // (threads accumulate labels across accounts), so a scoped sync skips
+    // cleanup entirely. `cleanup_orphans` itself guards against reaping the
+    // mailbox on a transient empty/partial fetch (#ckyorphan(b)).
     let conv_dir = resolve::conversations_dir();
     if let Some(ref touched_set) = touched {
-        cleanup_orphans(&conv_dir, touched_set)?;
+        if account.is_some() {
+            println!(
+                "\nSkipping orphan cleanup: scoped --account sync cannot determine global orphans."
+            );
+        } else {
+            cleanup_orphans(&conv_dir, touched_set)?;
+        }
     }
 
     // Generate manifest
@@ -778,21 +792,78 @@ fn find_thread_file_by_id(dir: &std::path::Path, thread_id: &str) -> Option<std:
     None
 }
 
-/// Delete conversation files not touched during a --full sync.
+/// Fraction of the mailbox that a single `--full` sync may reap before the
+/// safety guard trips. A full sync that would delete more than this share of
+/// existing conversations is treated as a likely transient/partial fetch
+/// failure rather than a genuine mass deletion, and is skipped. Override with
+/// `CORKY_SYNC_FORCE_ORPHAN_CLEANUP=1`.
+const ORPHAN_CLEANUP_MAX_DELETE_FRACTION: f64 = 0.5;
+
+fn force_orphan_cleanup() -> bool {
+    std::env::var("CORKY_SYNC_FORCE_ORPHAN_CLEANUP")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Delete conversation files not touched during a `--full` sync.
+///
+/// #ckyorphan(b): a transient empty/partial fetch leaves `touched` empty (or
+/// far smaller than the mailbox), which would classify every — or nearly every —
+/// conversation as an orphan and wipe the data store. Guard against that: if the
+/// sync would delete more than [`ORPHAN_CLEANUP_MAX_DELETE_FRACTION`] of the
+/// mailbox (which includes the `touched.is_empty()` case), skip and warn instead
+/// of reaping, leaving the files in place so the next successful sync recovers.
+/// `CORKY_SYNC_FORCE_ORPHAN_CLEANUP=1` overrides the guard for intentional bulk
+/// deletions.
 fn cleanup_orphans(conversations_dir: &PathBuf, touched: &HashSet<PathBuf>) -> Result<()> {
     if !conversations_dir.exists() {
         return Ok(());
     }
+
+    let mut md_files: Vec<PathBuf> = Vec::new();
     for entry in std::fs::read_dir(conversations_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") && !touched.contains(&path) {
-            std::fs::remove_file(&path)?;
-            println!(
-                "  Removed orphan: {}",
-                path.file_name().unwrap_or_default().to_string_lossy()
-            );
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            md_files.push(path);
         }
+    }
+
+    let total = md_files.len();
+    let orphans: Vec<PathBuf> = md_files
+        .into_iter()
+        .filter(|path| !touched.contains(path))
+        .collect();
+
+    if orphans.is_empty() {
+        return Ok(());
+    }
+
+    // Safety guard: never reap the overwhelming majority of the mailbox in one
+    // sync unless explicitly forced — that pattern means a transient/partial
+    // fetch (or a scoped sync that slipped through), not a real deletion.
+    if !force_orphan_cleanup() && total > 0 {
+        let delete_fraction = orphans.len() as f64 / total as f64;
+        if delete_fraction > ORPHAN_CLEANUP_MAX_DELETE_FRACTION {
+            eprintln!(
+                "  Skipping orphan cleanup: would delete {}/{} conversations ({:.0}%), above the {:.0}% safety threshold.\n  \
+This usually means a transient or partial fetch. Re-run a successful full sync, or set \
+CORKY_SYNC_FORCE_ORPHAN_CLEANUP=1 to override.",
+                orphans.len(),
+                total,
+                delete_fraction * 100.0,
+                ORPHAN_CLEANUP_MAX_DELETE_FRACTION * 100.0
+            );
+            return Ok(());
+        }
+    }
+
+    for path in orphans {
+        std::fs::remove_file(&path)?;
+        println!(
+            "  Removed orphan: {}",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        );
     }
     Ok(())
 }
@@ -801,6 +872,68 @@ fn cleanup_orphans(conversations_dir: &PathBuf, touched: &HashSet<PathBuf>) -> R
 mod tests {
     use super::*;
     use crate::sync::types::{AccountSyncState, ContactSyncState, GmailLabelState, LabelState};
+    use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn unique_temp_dir(tag: &str) -> PathBuf {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir()
+            .join(format!("corky-orphan-test-{tag}-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_md(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, "x").unwrap();
+        path
+    }
+
+    #[test]
+    fn cleanup_orphans_preserves_all_when_touched_empty() {
+        // #ckyorphan(b): a transient empty fetch (touched empty) must NOT reap
+        // the whole mailbox.
+        let dir = unique_temp_dir("empty");
+        let a = write_md(&dir, "a.md");
+        let b = write_md(&dir, "b.md");
+        cleanup_orphans(&dir, &HashSet::new()).unwrap();
+        assert!(a.exists() && b.exists(), "empty touched must not delete files");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn cleanup_orphans_skips_when_majority_orphaned() {
+        // Touching only 1 of 4 (75% would be reaped) trips the safety guard.
+        let dir = unique_temp_dir("majority");
+        let keep = write_md(&dir, "keep.md");
+        let o1 = write_md(&dir, "o1.md");
+        let o2 = write_md(&dir, "o2.md");
+        let o3 = write_md(&dir, "o3.md");
+        let touched: HashSet<PathBuf> = [keep.clone()].into_iter().collect();
+        cleanup_orphans(&dir, &touched).unwrap();
+        assert!(
+            keep.exists() && o1.exists() && o2.exists() && o3.exists(),
+            "above-threshold reap must be skipped"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn cleanup_orphans_deletes_below_threshold() {
+        // Touching 3 of 4 (25% reaped) is below the guard → orphan is deleted.
+        let dir = unique_temp_dir("below");
+        let k1 = write_md(&dir, "k1.md");
+        let k2 = write_md(&dir, "k2.md");
+        let k3 = write_md(&dir, "k3.md");
+        let orphan = write_md(&dir, "orphan.md");
+        let touched: HashSet<PathBuf> = [k1.clone(), k2.clone(), k3.clone()].into_iter().collect();
+        cleanup_orphans(&dir, &touched).unwrap();
+        assert!(k1.exists() && k2.exists() && k3.exists());
+        assert!(!orphan.exists(), "below-threshold orphan should be deleted");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn parse_refetch_target_keeps_raw_thread_id() {

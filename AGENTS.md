@@ -129,7 +129,7 @@ If `[gsc]` service-account auth is configured, corky only caches that Search Con
   One label can fan-out to multiple mailboxes.
 - **Dedup**: Messages deduplicated by `(sender, date)` tuple when merging into existing files.
 - **Slug collisions**: Different threads with same slug get `-2`, `-3` suffix.
-- **Orphan cleanup**: On `sync full`, files not touched during sync are deleted.
+- **Orphan cleanup**: On `sync full` of all accounts, files not touched during sync are deleted. Skipped for scoped `--account` syncs (touched set is account-scoped, dir is global) and when it would reap >50% of conversations (transient/empty-fetch guard; override with `CORKY_SYNC_FORCE_ORPHAN_CLEANUP=1`).
 - **HTML-first body extraction**: Prefers `text/html` (converted to markdown via `htmd`) over `text/plain`. Falls back to plain text when no HTML part exists.
 
 ## File Formats

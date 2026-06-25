@@ -1054,6 +1054,10 @@ For each message:
 
 On `--full` sync: track all files written/updated. After sync, delete any `.md` files in `conversations/` not in the touched set.
 
+**Scope guard:** orphan cleanup runs only on a full sync of **all** accounts. A scoped `corky sync --full --account X` skips cleanup entirely — conversations live in a single global `conversations/` dir, so the touched set covers only account `X`'s files and global cleanup would delete every other account's conversations.
+
+**Safety threshold:** cleanup is skipped (with a warning) when it would delete more than 50% of existing conversations — including the case where a transient/partial fetch leaves the touched set empty. This prevents an empty or partial fetch from wiping the mailbox; the files stay in place so the next successful full sync recovers. Set `CORKY_SYNC_FORCE_ORPHAN_CLEANUP=1` to override the threshold for an intentional bulk deletion.
+
 ### 6.6 State Persistence
 
 State is saved only after all accounts complete successfully. If sync crashes mid-way, state is not saved — next run re-fetches.
