@@ -144,7 +144,7 @@ fn parse_email_scheduled(
 ) -> Option<ScheduledItem> {
     // Try YAML frontmatter first
     if let Some(meta) = crate::draft::parse_draft_yaml(content) {
-        if meta.status.to_lowercase() != "scheduled" {
+        if !meta.status.is_scheduled() {
             return None;
         }
         let scheduled_at = meta.scheduled_at?;
@@ -185,7 +185,11 @@ fn parse_email_scheduled(
     }
 
     let status = status?;
-    if status.to_lowercase() != "scheduled" {
+    if status
+        .parse::<crate::draft::EmailDraftStatus>()
+        .map(|s| !s.is_scheduled())
+        .unwrap_or(true)
+    {
         return None;
     }
 

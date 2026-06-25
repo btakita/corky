@@ -159,7 +159,12 @@ Optional fields: `attachments` (list of file paths), `thread_id` (Gmail thread I
 Required fields: `# Subject` heading (in body), `to`, `---` delimiters
 Recommended fields: `status`, `author`
 
-Status values: `draft` → `review` → `approved` → `scheduled` → `sent`
+Status values (typed `EmailDraftStatus`, serde lowercase): `draft` → `review` → `approved` → `scheduled` → `sent`, plus terminal `failed`. The status is a typed enum (`crates/corky-mail/src/draft/mod.rs`), so an unknown value fails parsing instead of silently mis-comparing:
+
+- **Send-eligible** (`draft push --send`): `review`, `approved`, `scheduled` (`is_send_eligible()`).
+- **Scheduler-eligible** (§16): only `scheduled` + due (`is_scheduled()`).
+- **Terminal**: `sent`, `failed` — the scheduler skips them (`is_terminal()`).
+- `transition(EmailEvent)` models the lifecycle edges and rejects invalid ones.
 
 **Threading via `thread_id`:** When present, the value is included as `threadId` in Gmail API send/draft requests. This ensures the reply is placed in the correct Gmail thread, complementing `in_reply_to` which sets the RFC 2822 `In-Reply-To` header.
 

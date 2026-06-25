@@ -23,7 +23,108 @@ use crate::accounts::{
 
 static META_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*\*(.+?)\*\*:\s*(.+)$").unwrap());
 
-const VALID_SEND_STATUSES: &[&str] = &["review", "approved", "scheduled"];
+/// Email draft lifecycle status — replaces the stringly-typed `status` field.
+///
+/// Lifecycle: `draft → review → approved → scheduled → sent` (with `failed` as a
+/// terminal error state). `review`/`approved`/`scheduled` are send-eligible (the
+/// old `VALID_SEND_STATUSES` list); only `scheduled` drafts are picked up by the
+/// scheduler (§16); `sent`/`failed` are terminal so the scheduler skips them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EmailDraftStatus {
+    #[default]
+    Draft,
+    Review,
+    Approved,
+    Scheduled,
+    Sent,
+    Failed,
+}
+
+/// Events that drive the [`EmailDraftStatus`] lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmailEvent {
+    /// Move a draft into review.
+    Submit,
+    /// Approve a reviewed draft.
+    Approve,
+    /// Mark an approved/reviewed draft as scheduled (implies readiness).
+    Schedule,
+    /// The message was sent.
+    Send,
+    /// Sending failed.
+    Fail,
+}
+
+impl EmailDraftStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EmailDraftStatus::Draft => "draft",
+            EmailDraftStatus::Review => "review",
+            EmailDraftStatus::Approved => "approved",
+            EmailDraftStatus::Scheduled => "scheduled",
+            EmailDraftStatus::Sent => "sent",
+            EmailDraftStatus::Failed => "failed",
+        }
+    }
+
+    /// Terminal states the scheduler must never re-send.
+    pub fn is_terminal(self) -> bool {
+        matches!(self, EmailDraftStatus::Sent | EmailDraftStatus::Failed)
+    }
+
+    /// Statuses from which `draft push --send` may send (the old VALID_SEND_STATUSES).
+    pub fn is_send_eligible(self) -> bool {
+        matches!(
+            self,
+            EmailDraftStatus::Review | EmailDraftStatus::Approved | EmailDraftStatus::Scheduled
+        )
+    }
+
+    /// Whether the scheduler should fire this draft when due.
+    pub fn is_scheduled(self) -> bool {
+        matches!(self, EmailDraftStatus::Scheduled)
+    }
+
+    /// Advance the lifecycle for an [`EmailEvent`], rejecting invalid transitions.
+    pub fn transition(self, event: EmailEvent) -> Result<EmailDraftStatus> {
+        use EmailDraftStatus::*;
+        let next = match (self, event) {
+            (Draft, EmailEvent::Submit) => Review,
+            (Review, EmailEvent::Approve) => Approved,
+            (Review | Approved, EmailEvent::Schedule) => Scheduled,
+            (Review | Approved | Scheduled, EmailEvent::Send) => Sent,
+            (Draft | Review | Approved | Scheduled, EmailEvent::Fail) => Failed,
+            (from, ev) => bail!("Invalid email transition: {from} -> {ev:?}"),
+        };
+        Ok(next)
+    }
+}
+
+impl std::fmt::Display for EmailDraftStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for EmailDraftStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "draft" => Ok(EmailDraftStatus::Draft),
+            "review" => Ok(EmailDraftStatus::Review),
+            "approved" => Ok(EmailDraftStatus::Approved),
+            "scheduled" => Ok(EmailDraftStatus::Scheduled),
+            "sent" => Ok(EmailDraftStatus::Sent),
+            "failed" => Ok(EmailDraftStatus::Failed),
+            _ => bail!(
+                "Invalid email status '{}'. Valid: draft, review, approved, scheduled, sent, failed",
+                s
+            ),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DraftPushResult {
@@ -42,10 +143,6 @@ pub struct DraftPushResult {
     pub image_paths: Vec<String>,
 }
 
-fn default_draft_status() -> String {
-    "draft".to_string()
-}
-
 /// YAML frontmatter metadata for an email draft.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailDraftMeta {
@@ -54,8 +151,8 @@ pub struct EmailDraftMeta {
     pub subject: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cc: Option<String>,
-    #[serde(default = "default_draft_status")]
-    pub status: String,
+    #[serde(default)]
+    pub status: EmailDraftStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -135,7 +232,7 @@ fn parse_yaml_draft(
     if let Some(ref cc) = meta.cc {
         map.insert("CC".to_string(), cc.clone());
     }
-    map.insert("Status".to_string(), meta.status.clone());
+    map.insert("Status".to_string(), meta.status.to_string());
     if let Some(ref author) = meta.author {
         map.insert("Author".to_string(), author.clone());
     }
@@ -504,7 +601,7 @@ fn update_draft_status(path: &Path, new_status: &str) -> Result<()> {
         let rest = &after_first[end..]; // includes "\n---" and body
 
         let mut meta: EmailDraftMeta = serde_yaml::from_str(yaml_str)?;
-        meta.status = new_status.to_string();
+        meta.status = new_status.parse()?;
         let new_yaml = serde_yaml::to_string(&meta)?;
         let updated = format!("---\n{}{}", new_yaml, rest);
         std::fs::write(path, updated)?;
@@ -663,17 +760,22 @@ fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult>
 
     let (meta, subject, body) = parse_draft(file)?;
 
-    // Validate Status for --send
+    // Validate Status for --send: must parse to a send-eligible EmailDraftStatus.
     let status = meta
         .get("Status")
         .map(|s| s.to_lowercase())
         .unwrap_or_default();
-    if send && !status.is_empty() && !VALID_SEND_STATUSES.contains(&status.as_str()) {
-        bail!(
-            "Cannot send: Status is '{}'. Must be one of: {}",
-            meta.get("Status").unwrap_or(&String::new()),
-            VALID_SEND_STATUSES.join(", ")
-        );
+    if send && !status.is_empty() {
+        let send_ok = status
+            .parse::<EmailDraftStatus>()
+            .map(EmailDraftStatus::is_send_eligible)
+            .unwrap_or(false);
+        if !send_ok {
+            bail!(
+                "Cannot send: Status is '{}'. Must be one of: review, approved, scheduled",
+                meta.get("Status").unwrap_or(&String::new()),
+            );
+        }
     }
 
     let (acct_name, acct, password) = resolve_account(&meta, file)?;
@@ -805,7 +907,74 @@ fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult>
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::str::FromStr;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn email_status_roundtrips_through_str() {
+        for s in [
+            EmailDraftStatus::Draft,
+            EmailDraftStatus::Review,
+            EmailDraftStatus::Approved,
+            EmailDraftStatus::Scheduled,
+            EmailDraftStatus::Sent,
+            EmailDraftStatus::Failed,
+        ] {
+            assert_eq!(EmailDraftStatus::from_str(s.as_str()).unwrap(), s);
+        }
+        assert!(EmailDraftStatus::from_str("bogus").is_err());
+        // Default is Draft (serde + new-draft default).
+        assert_eq!(EmailDraftStatus::default(), EmailDraftStatus::Draft);
+    }
+
+    #[test]
+    fn email_status_predicates() {
+        assert!(EmailDraftStatus::Sent.is_terminal());
+        assert!(EmailDraftStatus::Failed.is_terminal());
+        assert!(!EmailDraftStatus::Scheduled.is_terminal());
+
+        // Send-eligible == the old VALID_SEND_STATUSES list.
+        for s in [
+            EmailDraftStatus::Review,
+            EmailDraftStatus::Approved,
+            EmailDraftStatus::Scheduled,
+        ] {
+            assert!(s.is_send_eligible());
+        }
+        assert!(!EmailDraftStatus::Draft.is_send_eligible());
+        assert!(!EmailDraftStatus::Sent.is_send_eligible());
+
+        assert!(EmailDraftStatus::Scheduled.is_scheduled());
+        assert!(!EmailDraftStatus::Approved.is_scheduled());
+    }
+
+    #[test]
+    fn email_status_transitions() {
+        use EmailDraftStatus::*;
+        assert_eq!(Draft.transition(EmailEvent::Submit).unwrap(), Review);
+        assert_eq!(Review.transition(EmailEvent::Approve).unwrap(), Approved);
+        assert_eq!(Approved.transition(EmailEvent::Schedule).unwrap(), Scheduled);
+        assert_eq!(Scheduled.transition(EmailEvent::Send).unwrap(), Sent);
+        assert_eq!(Review.transition(EmailEvent::Send).unwrap(), Sent);
+        assert_eq!(Approved.transition(EmailEvent::Fail).unwrap(), Failed);
+        // Invalid edges rejected.
+        assert!(Draft.transition(EmailEvent::Approve).is_err());
+        assert!(Sent.transition(EmailEvent::Send).is_err());
+        assert!(Failed.transition(EmailEvent::Submit).is_err());
+    }
+
+    #[test]
+    fn email_status_serde_is_lowercase() {
+        // The typed field must serialize/parse as lowercase YAML to stay
+        // backward-compatible with existing drafts (#ckyemailsm).
+        let meta: EmailDraftMeta =
+            serde_yaml::from_str("to: a@b.com\nstatus: scheduled\n").unwrap();
+        assert_eq!(meta.status, EmailDraftStatus::Scheduled);
+        let yaml = serde_yaml::to_string(&meta).unwrap();
+        assert!(yaml.contains("status: scheduled"), "got: {yaml}");
+        // An unknown status fails the typed parse (no silent stringly-typed drift).
+        assert!(serde_yaml::from_str::<EmailDraftMeta>("to: a@b.com\nstatus: bogus\n").is_err());
+    }
 
     fn yaml_draft_content() -> String {
         "---\nto: alice@example.com\ncc: bob@example.com\nstatus: draft\nauthor: Brian\naccount: personal\nfrom: brian@example.com\nin_reply_to: \"<msg-1>\"\n---\n\n# Test Subject\n\nHello, this is the body.\n".to_string()
@@ -888,7 +1057,7 @@ mod tests {
         let meta = parse_draft_yaml(&content).unwrap();
         assert_eq!(meta.to, "alice@example.com");
         assert_eq!(meta.cc.as_deref(), Some("bob@example.com"));
-        assert_eq!(meta.status, "draft");
+        assert_eq!(meta.status, crate::draft::EmailDraftStatus::Draft);
         assert_eq!(meta.author.as_deref(), Some("Brian"));
         assert_eq!(meta.account.as_deref(), Some("personal"));
         assert_eq!(meta.from.as_deref(), Some("brian@example.com"));

@@ -204,7 +204,7 @@ mod tests {
         let meta: crate::draft::EmailDraftMeta = serde_yaml::from_str(yaml_str).unwrap();
         assert_eq!(meta.to, "a@b.com");
         assert_eq!(meta.cc.as_deref(), Some("c@d.com"));
-        assert_eq!(meta.status, "draft");
+        assert_eq!(meta.status, crate::draft::EmailDraftStatus::Draft);
         assert_eq!(meta.author.as_deref(), Some("Alice"));
     }
 

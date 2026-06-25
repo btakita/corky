@@ -118,7 +118,7 @@ fn convert_legacy_to_yaml(content: &str) -> Result<String> {
     // Parse metadata fields
     let mut to = String::new();
     let mut cc: Option<String> = None;
-    let mut status = String::from("draft");
+    let mut status = crate::draft::EmailDraftStatus::Draft;
     let mut author: Option<String> = None;
     let mut account: Option<String> = None;
     let mut from: Option<String> = None;
@@ -131,7 +131,11 @@ fn convert_legacy_to_yaml(content: &str) -> Result<String> {
         match key.as_str() {
             "To" => to = val,
             "CC" => cc = Some(val),
-            "Status" => status = val.to_lowercase(),
+            "Status" => {
+                status = val
+                    .parse()
+                    .unwrap_or(crate::draft::EmailDraftStatus::Draft)
+            }
             "Author" => author = Some(val),
             "Account" => account = Some(val),
             "From" => from = Some(val),
@@ -249,7 +253,7 @@ Hello body
         assert!(super::super::is_yaml_format(&yaml_content));
         let meta = super::super::parse_draft_yaml(&yaml_content).unwrap();
         assert_eq!(meta.to, "a@b.com");
-        assert_eq!(meta.status, "draft");
+        assert_eq!(meta.status, crate::draft::EmailDraftStatus::Draft);
         assert_eq!(meta.author.as_deref(), Some("Alice"));
     }
 

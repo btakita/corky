@@ -12,7 +12,7 @@ static META_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*\*(.+?)\*\*:\s*(.
 
 const REQUIRED_FIELDS: &[&str] = &["To"];
 const RECOMMENDED_FIELDS: &[&str] = &["Status", "Author"];
-const VALID_STATUSES: &[&str] = &["draft", "review", "approved", "sent", "scheduled"];
+const VALID_STATUSES: &[&str] = &["draft", "review", "approved", "scheduled", "sent", "failed"];
 
 /// Validate a draft file. Returns list of issues (empty = valid).
 pub fn validate_draft(path: &Path) -> Vec<String> {
@@ -75,17 +75,10 @@ fn validate_yaml_draft(text: &str) -> Vec<String> {
         issues.push("Warning: missing recommended field: author".to_string());
     }
 
-    // Status validation
-    let status = meta.status.to_lowercase();
-    if !status.is_empty() && !VALID_STATUSES.contains(&status.as_str()) {
-        issues.push(format!(
-            "Invalid status '{}'. Valid: {}",
-            meta.status,
-            VALID_STATUSES.join(", ")
-        ));
-    }
-
-    if status == "draft" {
+    // Status validation: the typed EmailDraftStatus is already validated at parse
+    // time (an invalid status makes parse_draft_yaml fail above), so only the
+    // workflow hint remains for the YAML path.
+    if meta.status == draft::EmailDraftStatus::Draft {
         issues
             .push("Warning: Status is 'draft'. Set to 'review' when ready for review".to_string());
     }
