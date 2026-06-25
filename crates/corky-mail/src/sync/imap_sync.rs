@@ -222,7 +222,10 @@ pub fn merge_message_to_file(
     if seen.contains(&dedup_key(message)) {
         // Still update labels/accounts even if message is a dupe
         if let Some(ref ef) = existing_file {
-            std::fs::write(ef, thread_to_markdown(&thread))?;
+            // #ckyatomicwrite: atomic write so a crash can't truncate a thread
+            // file (a half-written file re-parses to None and loses all prior
+            // merged messages).
+            crate::file_store::atomic_write(ef, thread_to_markdown(&thread).as_bytes(), None)?;
             let _ = set_mtime(ef, &thread.last_date);
         }
         return Ok(existing_file);
@@ -253,7 +256,8 @@ pub fn merge_message_to_file(
         out_dir.join(format!("{}.md", slug))
     };
 
-    std::fs::write(&file_path, thread_to_markdown(&thread))?;
+    // #ckyatomicwrite: atomic write so a crash can't leave a truncated thread file.
+    crate::file_store::atomic_write(&file_path, thread_to_markdown(&thread).as_bytes(), None)?;
     let _ = set_mtime(&file_path, &thread.last_date);
 
     let file_name = file_path.file_name().unwrap_or_default().to_string_lossy();

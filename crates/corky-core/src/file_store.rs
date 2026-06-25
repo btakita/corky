@@ -32,6 +32,20 @@ fn write_json_atomic<T>(path: &Path, value: &T, permissions: Option<u32>) -> Res
 where
     T: Serialize,
 {
+    let serialized = serde_json::to_vec(value)?;
+    atomic_write(path, &serialized, permissions)
+}
+
+/// Atomically write `contents` to `path`: write to a temp file in the same
+/// directory, `fsync` it, then rename into place (#ckyatomicwrite).
+///
+/// The `sync_all` before the rename is what makes this power-loss durable —
+/// without it the rename can be visible while the file's data blocks are not yet
+/// flushed, exposing a truncated/empty file after a crash. Use this instead of a
+/// plain `fs::write` for any file whose partial contents would corrupt state
+/// (conversation markdown, JSON stores). Optionally sets unix permissions on the
+/// temp file before the rename.
+pub fn atomic_write(path: &Path, contents: &[u8], permissions: Option<u32>) -> Result<()> {
     #[cfg(not(unix))]
     let _ = permissions;
 
@@ -43,13 +57,15 @@ where
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("{} has no parent directory", path.display()))?;
-    let serialized = serde_json::to_vec(value)?;
     let mut tmp = NamedTempFile::new_in(parent)
         .with_context(|| format!("creating temp file in {}", parent.display()))?;
-    tmp.write_all(&serialized)
+    tmp.write_all(contents)
         .with_context(|| format!("writing temp file for {}", path.display()))?;
     tmp.flush()
         .with_context(|| format!("flushing temp file for {}", path.display()))?;
+    tmp.as_file()
+        .sync_all()
+        .with_context(|| format!("syncing temp file for {}", path.display()))?;
 
     #[cfg(unix)]
     if let Some(mode) = permissions {
@@ -146,6 +162,22 @@ mod tests {
     #[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
     struct TestState {
         value: u32,
+    }
+
+    #[test]
+    fn atomic_write_creates_and_overwrites_full_contents() {
+        // #ckyatomicwrite: write lands fully; a second write fully replaces it
+        // (no truncation/leftover bytes), and nested parent dirs are created.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/conv.md");
+        atomic_write(&path, b"# Thread\n\nfirst message\n", None).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# Thread\n\nfirst message\n"
+        );
+        // Overwrite with shorter content — must not leave trailing bytes.
+        atomic_write(&path, b"short", None).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "short");
     }
 
     #[test]

@@ -1071,6 +1071,8 @@ On `--full` sync: track all files written/updated. After sync, delete any `.md` 
 
 State is saved only after all accounts complete successfully. If sync crashes mid-way, state is not saved — next run re-fetches.
 
+**Durable writes:** conversation markdown and the JSON state stores are written through `file_store::atomic_write` — a temp file in the same directory is written, `fsync`'d, and renamed into place. The `sync_all` before the rename makes it power-loss durable: a crash can never expose a truncated/empty thread file (which would re-parse to `None` and drop all previously-merged messages) or a half-written state file.
+
 ### 6.7 Contact Sync
 
 **State:** Per-contact, per-mailbox FNV-1a content hash in `.sync-state.json` under `contacts.{name}.mailboxes.{mb}`.
