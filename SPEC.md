@@ -1792,10 +1792,13 @@ corky sheets delete-tab <SHEET_URL_OR_ID> <TAB> [--account EMAIL]
 
 `pull` reads every value from the named tab and writes the result as CSV. `push` treats the named tab as a whole-file sync target: it creates the tab when missing, clears the existing tab values so stale cells cannot survive, and writes the local CSV from `A1`. `delete-tab` removes a tab by exact title after resolving its numeric `sheetId`.
 
+**push rollback safety:** because clear and write are two separate HTTP calls, `push` snapshots the existing tab rows **before** clearing. If the snapshot read fails, `push` aborts before clearing so the tab is left untouched. If the value write fails *after* the clear, `push` saves the snapshot to a local `<CSV>.bak` file and attempts to restore it to the tab, then errors — so an interrupted push never silently leaves the tab empty. (`CORKY_SYNC_FORCE_ORPHAN_CLEANUP` does not apply here; this is a per-push safeguard.)
+
 Tabs with spaces or punctuation are emitted as quoted A1 notation internally (for example, `Project Plan` becomes `'Project Plan'!A1` for writes). CSV parsing handles quoted fields, escaped quotes, embedded newlines, empty fields, and CRLF or LF line endings.
 
 **API:**
 - pull: `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}`
+- push snapshot (rollback safety): `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}` before clearing
 - push clear: `POST https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}:clear`
 - push write: `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{tab}!A1?valueInputOption=USER_ENTERED`
 - missing tab creation: `POST https://sheets.googleapis.com/v4/spreadsheets/{id}:batchUpdate` with `addSheet`

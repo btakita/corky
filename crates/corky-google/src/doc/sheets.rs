@@ -1,5 +1,5 @@
-use anyhow::{Result, bail};
-use std::path::Path;
+use anyhow::{Context, Result, bail};
+use std::path::{Path, PathBuf};
 
 use crate::filter::gmail_auth;
 
@@ -145,6 +145,13 @@ pub fn pull_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> R
 ///
 /// This is a tab-level sync, not a partial update: the tab is created if it is
 /// missing, then cleared before values are written from A1.
+///
+/// #ckysheets: the clear and the write are two separate HTTP calls, so a failure
+/// between them would leave the tab empty with no backup. To make that safe we
+/// snapshot the existing rows **before** clearing. If snapshotting fails we abort
+/// before touching the tab; if the value write fails we both save the snapshot to
+/// a local `<file>.bak` CSV and attempt to restore it to the tab, so a partial
+/// failure never silently discards the previous contents.
 pub fn push_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> Result<()> {
     let sheet_id = parse_sheet_id(sheet);
     let token = get_sheets_token(account)?;
@@ -158,19 +165,71 @@ pub fn push_tab(sheet: &str, tab: &str, file: &Path, account: Option<&str>) -> R
     ensure_tab_exists(sheet_id, tab, &token)?;
 
     let clear_range = tab_range(tab);
+
+    // Snapshot before clearing. On snapshot failure, bail without clearing so the
+    // tab is left untouched (no data loss).
+    let backup = fetch_rows(sheet_id, Some(&clear_range), &token).context(
+        "failed to snapshot existing tab before clearing; push aborted to avoid data loss",
+    )?;
+
     eprintln!("Clearing tab {tab}...");
     clear_values(sheet_id, &clear_range, &token)?;
 
     let start_range = tab_start_range(tab);
     eprintln!("Writing {} rows to tab {tab}...", values.len());
-    let updated = update_values(sheet_id, &start_range, &values, &token)?;
-    println!(
-        "Synced {} rows to {tab} ({} cells updated).",
-        values.len(),
-        updated
-    );
+    match update_values(sheet_id, &start_range, &values, &token) {
+        Ok(updated) => {
+            println!(
+                "Synced {} rows to {tab} ({} cells updated).",
+                values.len(),
+                updated
+            );
+            Ok(())
+        }
+        Err(write_err) if backup.is_empty() => {
+            // Tab was empty before the clear — nothing to restore.
+            Err(write_err)
+        }
+        Err(write_err) => {
+            eprintln!(
+                "Write failed after clearing {tab}; restoring previous {} row(s)...",
+                backup.len()
+            );
+            // Persist the snapshot locally first so it survives even if the
+            // restore write also fails.
+            let backup_path = backup_csv_path(file);
+            if let Err(save_err) = std::fs::write(&backup_path, format_csv(&backup)) {
+                eprintln!(
+                    "  warning: could not write local backup {}: {save_err}",
+                    backup_path.display()
+                );
+            }
+            match update_values(sheet_id, &start_range, &backup, &token) {
+                Ok(_) => bail!(
+                    "Sheets push to {tab} failed; previous contents restored. \
+                     Backup saved to {}. Cause: {write_err}",
+                    backup_path.display()
+                ),
+                Err(restore_err) => bail!(
+                    "Sheets push to {tab} failed AND rollback failed — the tab may be empty. \
+                     Previous contents saved to {}; restore it with `corky sheets push`. \
+                     Push error: {write_err}; rollback error: {restore_err}",
+                    backup_path.display()
+                ),
+            }
+        }
+    }
+}
 
-    Ok(())
+/// Local rollback-backup path for a failed `sheets push`: the source CSV path
+/// with a `.bak` suffix appended (`data.csv` → `data.csv.bak`).
+fn backup_csv_path(file: &Path) -> PathBuf {
+    let mut name = file
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(".bak");
+    file.with_file_name(name)
 }
 
 /// Delete a Google Sheet tab by title.
@@ -692,6 +751,24 @@ mod tests {
     #[test]
     fn test_parse_sheet_id_raw() {
         assert_eq!(parse_sheet_id("abc123"), "abc123");
+    }
+
+    #[test]
+    fn test_backup_csv_path() {
+        // #ckysheets: failed push writes a sibling `<file>.bak` backup.
+        assert_eq!(
+            backup_csv_path(Path::new("/tmp/data.csv")),
+            PathBuf::from("/tmp/data.csv.bak")
+        );
+        assert_eq!(
+            backup_csv_path(Path::new("export")),
+            PathBuf::from("export.bak")
+        );
+        // Nested path keeps its directory.
+        assert_eq!(
+            backup_csv_path(Path::new("a/b/contacts.csv")),
+            PathBuf::from("a/b/contacts.csv.bak")
+        );
     }
 
     #[test]
