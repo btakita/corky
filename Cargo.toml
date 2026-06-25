@@ -86,5 +86,9 @@ warnings = "deny"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+# panic = "unwind" (the default) is required so `corky watch` can catch a
+# panicking tick via tokio's spawn_blocking JoinError and keep the daemon
+# running (#ckywatchpanic). Under panic = "abort" a single bad tick aborts the
+# whole process, violating the never-crashes-loop contract in watch.rs.
+panic = "unwind"
 strip = true

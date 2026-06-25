@@ -1301,6 +1301,8 @@ while not shutdown:
 
 SIGTERM, SIGINT → clean shutdown (finish current poll, then exit). Both IMAP and Gmail API sync paths check the shutdown signal and return early when interrupted.
 
+**Panic isolation:** every loop tick (sync, schedule, auto-upgrade, filter-drift) runs through `spawn_blocking`, and a panic inside a tick is caught as a `JoinError`, logged, and skipped — the daemon continues to the next interval instead of crashing. This requires the **unwind** panic strategy; the release profile sets `panic = "unwind"` (not `abort`) specifically so a single bad tick cannot abort the long-running watch process.
+
 ### 9.3 Notifications
 
 - macOS: `osascript -e 'display notification ...'`

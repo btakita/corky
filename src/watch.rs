@@ -262,6 +262,32 @@ fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
     new_count
 }
 
+/// Run one blocking watch-loop tick, isolating panics so a single bad tick can
+/// never crash the daemon (#ckywatchpanic).
+///
+/// `spawn_blocking` catches a panic in the closure and surfaces it as a
+/// `JoinError` (requires the unwind panic strategy — see `[profile.release]` in
+/// Cargo.toml). The previous code propagated that `JoinError` with `?`, exiting
+/// the loop on the first panicking tick and violating the never-crashes-loop
+/// contract. Here we log it and let the loop continue. The tick's own return
+/// value is intentionally discarded, matching the prior behavior.
+async fn run_tick<F, R>(label: &str, f: F)
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    match tokio::task::spawn_blocking(f).await {
+        Ok(_) => {}
+        Err(e) if e.is_panic() => {
+            eprintln!("  warning: {label} tick panicked; continuing watch loop");
+        }
+        Err(_) => {
+            // Cancelled (e.g. runtime shutdown) — nothing to recover, just continue.
+            eprintln!("  warning: {label} tick did not complete; continuing watch loop");
+        }
+    }
+}
+
 /// corky watch [--interval N]
 #[tokio::main]
 pub async fn run(interval_override: Option<u64>) -> Result<()> {
@@ -306,17 +332,17 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
         // Run sync in a blocking context
         let notify_enabled = config.notify;
         let shutdown_for_poll = shutdown.clone();
-        tokio::task::spawn_blocking(move || {
+        run_tick("sync", move || {
             poll_once(notify_enabled, shutdown_for_poll);
         })
-        .await?;
+        .await;
 
         if shutdown.load(Ordering::Relaxed) {
             break;
         }
 
         // Scheduled publishing
-        tokio::task::spawn_blocking(schedule_tick).await?;
+        run_tick("schedule", schedule_tick).await;
 
         if shutdown.load(Ordering::Relaxed) {
             break;
@@ -327,7 +353,7 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
             cycles_since_upgrade_check += 1;
             if cycles_since_upgrade_check >= upgrade_check_every {
                 cycles_since_upgrade_check = 0;
-                tokio::task::spawn_blocking(try_auto_upgrade).await?;
+                run_tick("auto-upgrade", try_auto_upgrade).await;
                 // If we get here, exec() didn't happen (no upgrade or failed)
             }
         }
@@ -340,7 +366,7 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
         cycles_since_filter_check += 1;
         if cycles_since_filter_check >= filter_check_every {
             cycles_since_filter_check = 0;
-            tokio::task::spawn_blocking(check_filter_drift).await?;
+            run_tick("filter-drift", check_filter_drift).await;
         }
 
         if shutdown.load(Ordering::Relaxed) {
@@ -362,6 +388,18 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
 mod tests {
     use super::*;
     use crate::sync::types::{AccountSyncState, GmailLabelState, LabelState};
+
+    #[tokio::test]
+    async fn run_tick_swallows_panic_and_continues() {
+        // #ckywatchpanic: a panicking tick must NOT propagate — run_tick returns
+        // normally so the watch loop keeps running. (Test builds use the unwind
+        // panic strategy, matching the release profile after the fix.)
+        run_tick("panic-tick", || panic!("boom")).await;
+        // A normal tick with a non-unit return also completes; the value is
+        // discarded just like the loop expects.
+        run_tick("ok-tick", || 42_usize).await;
+        // Reaching here means neither call propagated.
+    }
 
     type AccountSpec<'a> = Vec<(&'a str, Vec<(&'a str, u32, u32)>)>;
     type GmailApiAccountSpec<'a> = Vec<(&'a str, Vec<(&'a str, Option<u64>)>)>;
