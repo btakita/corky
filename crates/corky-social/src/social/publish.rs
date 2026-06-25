@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use chrono::Utc;
 use std::path::Path;
 
-use super::draft::{DraftStatus, SocialDraft};
+use super::draft::{DraftStatus, PublishEvent, SocialDraft};
 use super::linkedin;
 use super::platform::Platform;
 use super::profiles::ProfilesFile;
@@ -15,29 +15,26 @@ use super::youtube;
 /// (auth, images) but prints the payload instead of creating the post.
 pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
     let content = std::fs::read_to_string(path)?;
-    let draft = SocialDraft::parse(&content)?;
+    let mut draft = SocialDraft::parse(&content)?;
 
-    // PB1: Check status
-    // - Published → always reject (prevents double-publish)
-    // - Draft + scheduled_at set → allowed (scheduling implies readiness)
-    // - Draft + no scheduled_at + not dry-run → reject (manual publish requires ready)
-    // - Ready → always allowed
-    // - dry-run → always allowed (for testing)
-    if draft.meta.status == DraftStatus::Published {
+    // PB1 (centralized in the DraftStatus state machine): `ready` folds in the
+    // legacy "status is Ready, or scheduled_at is set, or this is a dry-run" rule.
+    // `Publishing` is accepted here so an interrupted attempt can be reconciled below.
+    let ready = dry_run || draft.meta.scheduled_at.is_some();
+    draft.meta.status.can_publish(ready)?;
+
+    // Crash recovery: a draft left in `Publishing` means a prior attempt was
+    // interrupted. If it recorded a post_id the post already exists, so we must
+    // reconcile (finalize without re-creating) rather than double-post. Without a
+    // post_id we cannot know whether the platform created the post, so refuse to
+    // retry automatically and ask the operator to verify.
+    if !dry_run && draft.meta.status == DraftStatus::Publishing && draft.meta.post_id.is_none() {
         bail!(
-            "Draft has already been published.\n\
-             Published at: {}",
-            draft
-                .meta
-                .published_at
-                .map(|t| t.to_string())
-                .unwrap_or_default()
-        );
-    }
-    if !dry_run && draft.meta.status != DraftStatus::Ready && draft.meta.scheduled_at.is_none() {
-        bail!(
-            "Draft is not ready for publishing (status: draft).\n\
-             Set status to 'ready' or add scheduled_at to the frontmatter."
+            "A previous publish attempt for this draft was interrupted before a post id \
+             was recorded.\n\
+             The post may or may not exist on {}. Verify on the platform, then either set \
+             status to 'published' (with the post_id) or 'ready' to retry.",
+            draft.meta.platform
         );
     }
 
@@ -108,43 +105,76 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Call platform API
-    let (post_id, post_url) = match platform {
-        Platform::LinkedIn => linkedin::create_post(
-            &token.access_token,
-            &urn,
-            &draft.body,
-            &draft.meta.visibility,
-            &image_urns,
-        )?,
-        Platform::Youtube => publish_youtube(path, &draft, &token.access_token)?,
-        _ => bail!("Publishing not yet implemented for {}", platform),
+    // Reconcile an interrupted attempt (status `publishing` + recorded post_id):
+    // the post already exists, so skip the create call and finish the post-create
+    // steps instead of double-posting.
+    let resuming = draft.meta.status == DraftStatus::Publishing && draft.meta.post_id.is_some();
+
+    let (post_id, post_url) = if resuming {
+        let post_id = draft.meta.post_id.clone().expect("checked by `resuming`");
+        let post_url = draft.meta.post_url.clone().unwrap_or_default();
+        println!(
+            "Resuming interrupted publish (post already created): {}",
+            post_url
+        );
+        (post_id, post_url)
+    } else {
+        // Persist the crash-safe `Publishing` marker BEFORE the platform API call so
+        // a crash mid-create is detectable (and refuses an automatic re-post).
+        draft.meta.status = draft.meta.status.transition(PublishEvent::Start)?;
+        draft.meta.publish_started_at = Some(Utc::now());
+        std::fs::write(path, draft.render()?)?;
+
+        let created = match platform {
+            Platform::LinkedIn => linkedin::create_post(
+                &token.access_token,
+                &urn,
+                &draft.body,
+                &draft.meta.visibility,
+                &image_urns,
+            ),
+            Platform::Youtube => publish_youtube(path, &draft, &token.access_token),
+            _ => bail!("Publishing not yet implemented for {}", platform),
+        };
+
+        match created {
+            Ok((post_id, post_url)) => {
+                // Checkpoint the post_id while STILL `publishing`, so a crash before
+                // the terminal write reconciles (by post_id) instead of re-posting.
+                draft.meta.post_id = Some(post_id.clone());
+                draft.meta.post_url = Some(post_url.clone());
+                std::fs::write(path, draft.render()?)?;
+                (post_id, post_url)
+            }
+            Err(err) => {
+                // Mark Failed so the scheduler stops auto-retrying; the operator
+                // resets status to 'ready' to try again.
+                if let Ok(failed) = draft.meta.status.transition(PublishEvent::Failed) {
+                    draft.meta.status = failed;
+                    if let Ok(rendered) = draft.render() {
+                        let _ = std::fs::write(path, rendered);
+                    }
+                }
+                return Err(err);
+            }
+        }
     };
 
-    // Update draft frontmatter before post-create reconciliation. If reconciliation
-    // fails after LinkedIn created the post, this prevents a retry from duplicating it.
-    let mut draft = draft;
-    draft.meta.status = DraftStatus::Published;
-    draft.meta.post_id = Some(post_id.clone());
-    draft.meta.post_url = Some(post_url.clone());
-    draft.meta.published_at = Some(Utc::now());
-
-    let rendered = draft.render()?;
-    std::fs::write(path, rendered)?;
-
+    // Best-effort post-create body reconciliation. On failure the draft stays
+    // `publishing` with its post_id, so a retry reconciles instead of duplicating.
     if platform == Platform::LinkedIn
         && let Err(err) = linkedin::update_post(&token.access_token, &post_id, &draft.body)
     {
         bail!(
             "LinkedIn post was created at {}, but post-create body reconciliation failed: {}.\n\
-             The draft was marked published to prevent a duplicate post; rerun `corky linkedin edit {}` to repair it.",
+             The draft is marked `publishing` with its post_id, so rerunning `corky linkedin publish {}` reconciles instead of duplicating.",
             post_url,
             err,
             path.display()
         );
     }
 
-    // Post first comment if declared in frontmatter
+    // Post first comment if declared in frontmatter (warn-only; never blocks finalize).
     if platform == Platform::LinkedIn
         && let Some(ref comment) = draft.meta.first_comment
     {
@@ -160,6 +190,11 @@ pub fn publish(path: &Path, dry_run: bool) -> Result<()> {
             }
         }
     }
+
+    // Terminal write: `Publishing` → `Published`.
+    draft.meta.status = draft.meta.status.transition(PublishEvent::Succeeded)?;
+    draft.meta.published_at = Some(Utc::now());
+    std::fs::write(path, draft.render()?)?;
 
     println!("Published to {}: {}", platform, post_url);
     Ok(())

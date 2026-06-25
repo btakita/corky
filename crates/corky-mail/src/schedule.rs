@@ -98,8 +98,9 @@ fn scan_social_dir(
             && let Ok(content) = std::fs::read_to_string(&path)
             && let Ok(draft) = SocialDraft::parse(&content)
         {
-            // Skip already-published items (prevents double-publish)
-            if draft.meta.status == crate::social::draft::DraftStatus::Published {
+            // Skip terminal items (published/failed) — prevents double-publish and
+            // stops the scheduler from re-running a draft whose publish failed.
+            if draft.meta.status.is_terminal() {
                 continue;
             }
             if let Some(scheduled_at) = draft.meta.scheduled_at

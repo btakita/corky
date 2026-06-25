@@ -1443,17 +1443,35 @@ Social drafts live in `{data_dir}/social/` as Markdown files with YAML frontmatt
 | `platform` | yes | — | linkedin, bluesky, mastodon, twitter |
 | `author` | yes | — | Profile name in profiles.toml |
 | `visibility` | no | `public` | public, connections (platform-specific) |
-| `status` | no | `draft` | draft → ready → published |
+| `status` | no | `draft` | draft → ready → publishing → published (or failed) |
 | `tags` | no | `[]` | Freeform tags |
-| `scheduled_at` | no | — | Future publish time (not yet implemented) |
-| `published_at` | no | — | Set on publish |
+| `scheduled_at` | no | — | Future publish time |
+| `published_at` | no | — | Set on the terminal `published` write |
+| `publish_started_at` | no | — | Set when an attempt enters `publishing` (crash marker) |
 | `post_id` | no | — | Set on publish (platform post ID) |
 | `post_url` | no | — | Set on publish (permalink) |
 | `images` | no | `[]` | List of image paths (relative to draft file) |
 
 **Images:** The `images` field accepts a list of file paths relative to the draft file location. On publish, each image is uploaded to the platform and attached to the post. LinkedIn supports up to 20 images per post (1 image = single image post, 2+ = carousel).
 
-**Status transitions:** `draft` → `ready` → `published` (one-way).
+**Status state machine (`DraftStatus`):** the publish lifecycle is a typed enum that
+owns its own transitions (`crates/corky-social/src/social/draft.rs`):
+
+```
+draft ──(set ready / scheduled_at)──► ready ──Start──► publishing ──Succeeded──► published (terminal)
+                                                            └───────────Failed──► failed (terminal)
+```
+
+- **`publishing`** is a crash-safe transient marker persisted **before** the platform
+  API call. A `post_id` is checkpointed while still `publishing`, so a process crash
+  between create and the terminal write reconciles by `post_id` on retry instead of
+  re-posting (double-publish). A `publishing` draft with **no** `post_id` means the
+  crash happened during the create call itself — corky refuses to auto-retry and asks
+  the operator to verify on the platform.
+- **`published`** and **`failed`** are terminal (`DraftStatus::is_terminal()`); the
+  scheduler (§16) skips both. Reset a `failed` draft to `ready` to retry.
+- `DraftStatus::can_publish(ready)` centralizes the PB1 gate; `transition(event)`
+  rejects invalid edges (e.g. `published → publishing`).
 
 ### 12.4 Token Store
 
@@ -1492,13 +1510,16 @@ Client credentials resolution order per field:
 ### 12.6 Publish Flow
 
 1. Parse draft file (YAML frontmatter + body)
-2. Verify status is `ready` (not `draft` or `published`)
-3. Resolve author → URN via profiles.toml
-4. Lookup valid token for URN in token store
-5. Upload images (if any): resolve paths relative to draft file, call platform image upload API
-6. Call platform API (LinkedIn: POST /rest/posts) with image URNs
-7. Update draft frontmatter: status=published, post_id, post_url, published_at
-8. For LinkedIn, immediately reconcile the created post body with `PARTIAL_UPDATE` using the same full commentary. If this post-create update fails, keep the draft marked published to prevent duplicate posts and report the repair command.
+2. Gate via `DraftStatus::can_publish(ready)` where `ready = dry_run || scheduled_at.is_some()` — rejects `published`/`failed`, and `draft` unless ready folds in
+3. If status is `publishing` with **no** `post_id`, bail (a prior attempt was interrupted mid-create; operator must verify before retry)
+4. Resolve author → URN via profiles.toml
+5. Lookup valid token for URN in token store
+6. Upload images (if any): resolve paths relative to draft file, call platform image upload API
+7. **Crash-safe marker:** unless resuming a `publishing` draft with a `post_id`, transition `→ publishing`, set `publish_started_at`, and write the draft **before** the API call
+8. Call platform API (LinkedIn: POST /rest/posts) with image URNs. On error, transition `→ failed`, persist, and return the error (scheduler then skips it)
+9. **Checkpoint:** while still `publishing`, write `post_id`, `post_url` so a crash before the terminal write reconciles instead of re-posting
+10. For LinkedIn, reconcile the created post body with `PARTIAL_UPDATE`. If it fails, the draft stays `publishing` with its `post_id`, so rerunning `corky linkedin publish` reconciles instead of duplicating
+11. **Terminal write:** transition `→ published`, set `published_at`, persist
 
 **LinkedIn image upload flow:**
 1. `POST /rest/images?action=initializeUpload` with `owner: urn:li:person:{id}` → returns upload URL + image URN
@@ -1594,7 +1615,7 @@ Unified scheduling for social media posts and email drafts. A single `schedule` 
 - `ProcessResult` — `{ path, kind, success, message }`
 
 **Flow:**
-1. Scan `social/` for `.md` files where `status: ready` and `scheduled_at <= now + grace`
+1. Scan `social/` for `.md` files with `scheduled_at <= now + grace` whose status is **not terminal** (`DraftStatus::is_terminal()` skips `published`/`failed`); a `draft` with `scheduled_at` set is due (scheduling implies readiness)
 2. Scan `drafts/` and `mailboxes/*/drafts/` for `.md` files where `**Status**: scheduled` and `**Scheduled-At** <= now + grace`
 3. Sort by `scheduled_at` ascending (earliest first)
 4. Dispatch: `Social` → `social::publish::publish(path)`, `Email` → `draft::run(path, send=true)`
@@ -1620,7 +1641,7 @@ The `Scheduled-At` field uses RFC 3339 / ISO 8601 format with timezone (UTC reco
 
 Social drafts already have `scheduled_at: Option<DateTime<Utc>>` in YAML frontmatter (§12.3). The scheduler checks for `status: ready` combined with `scheduled_at` in the past.
 
-Status flow: `draft` → `ready` (with `scheduled_at` set) → `published`
+Status flow: `draft` → `ready` (with `scheduled_at` set) → `publishing` → `published` (or `failed`)
 
 ### 13.4 CLI Commands
 

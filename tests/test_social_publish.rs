@@ -21,6 +21,7 @@ fn ready_meta() -> SocialDraftMeta {
         tags: vec![],
         scheduled_at: None,
         published_at: None,
+        publish_started_at: None,
         post_id: None,
         post_url: None,
         images: vec![],

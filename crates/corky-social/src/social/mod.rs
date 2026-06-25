@@ -70,6 +70,7 @@ pub fn run_draft(
         tags: tags.to_vec(),
         scheduled_at: None,
         published_at: None,
+        publish_started_at: None,
         post_id: None,
         post_url: None,
         images: vec![],
