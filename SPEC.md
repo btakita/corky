@@ -533,6 +533,8 @@ format (run `corky draft migrate` to convert legacy format).
 - Attachment filenames are sanitized for the MIME `quoted-string` (control characters dropped, `"`/`\` backslash-escaped) so a crafted filename cannot inject headers or break the MIME structure
 - Reply threading: `In-Reply-To` + `References` headers set from `in_reply_to:` YAML field (normalized to RFC 5322 angle-bracket `<id>` form); `threadId` set from `thread_id:` YAML field
 
+**Large-attachment streaming (#ckymimestream):** when the combined attachment size is ≥ 5 MB, the MIME is spooled to a temp file via a streaming builder (attachments are read and base64-encoded in 57-byte → 76-char chunks written directly to the file), and the Gmail `{"raw":"…"}` JSON body is produced by streaming a base64url encoder over that file. Neither the raw attachment bytes, their full base64 string, nor the whole-message base64url payload are held in RAM at once, so a 500 MB attachment no longer peaks at ~1.8 GB. Below the threshold the simple in-memory path is used.
+
 **OAuth scope:** `GMAIL_SEND_SCOPE` (`gmail.compose`)
 
 **Token handling:** `draft send` resolves the same named account as `draft push`, stores compose-scope OAuth under `gmail:<account>:send`, and uses the resolved account user as the default `From:` header when YAML omits `from:`. The optional CLI `--account` value is treated as a Google login hint for OAuth, not as the token-store key. If Gmail returns 401, corky clears that cached send token and instructs the user to re-run `corky draft send`, which triggers compose-scope re-auth.

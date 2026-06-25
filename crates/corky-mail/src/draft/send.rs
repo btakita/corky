@@ -8,12 +8,20 @@
 use anyhow::{Result, bail};
 use base64::Engine as _;
 use serde::Serialize;
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use crate::draft::{parse_draft, parse_draft_yaml};
 use crate::filter::gmail_auth;
 
 const GMAIL_SEND_URL: &str = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+
+/// Attachments whose combined size meets this threshold are sent through the
+/// streaming path (#ckymimestream): the MIME is spooled to a temp file and the
+/// Gmail `raw` JSON body is produced by streaming a base64url encoder, so the
+/// message is never held in RAM as a single ~1.3× string. Below the threshold
+/// the simple in-memory path is used unchanged.
+const LARGE_ATTACHMENT_BYTES: u64 = 5 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DraftSendResult {
@@ -120,20 +128,13 @@ fn run_internal(
         account.or(Some(acct.user.as_str())),
     )?;
 
-    let mime = build_mime_message(
-        &meta.to,
-        from,
-        &subject,
-        &body,
-        &meta.in_reply_to,
-        &attachment_paths,
-    )?;
-    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&mime);
-
-    let mut payload = serde_json::json!({ "raw": raw });
-    if let Some(tid) = &meta.thread_id {
-        payload["threadId"] = serde_json::Value::String(tid.clone());
-    }
+    // #ckymimestream: for large attachments, spool the MIME to a temp file and
+    // stream the base64url `raw` body so the message is never held in RAM as one
+    // ~1.3× string. Below the threshold the simple in-memory JSON path is used.
+    let total_attachment_bytes: u64 = attachment_paths
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+        .sum();
 
     if !quiet {
         eprintln!("Sending to {} — subject: {}", meta.to, subject);
@@ -145,12 +146,46 @@ fn run_internal(
         }
     }
 
-    let resp = ureq::post(GMAIL_SEND_URL)
-        .set("Authorization", &format!("Bearer {}", token))
-        .set("Content-Type", "application/json")
-        .send_json(&payload);
+    let resp_result = if total_attachment_bytes >= LARGE_ATTACHMENT_BYTES {
+        // Spool streamed MIME to an unnamed temp file, then stream it back
+        // through the base64url JSON body.
+        let mut spool = tempfile::tempfile()?;
+        build_mime_to_writer(
+            &mut spool,
+            &meta.to,
+            from,
+            &subject,
+            &body,
+            &meta.in_reply_to,
+            &attachment_paths,
+        )?;
+        spool.seek(SeekFrom::Start(0))?;
+        let body = StreamingRawBody::new(spool, meta.thread_id.as_deref());
+        ureq::post(GMAIL_SEND_URL)
+            .set("Authorization", &format!("Bearer {}", token))
+            .set("Content-Type", "application/json")
+            .send(body)
+    } else {
+        let mime = build_mime_message(
+            &meta.to,
+            from,
+            &subject,
+            &body,
+            &meta.in_reply_to,
+            &attachment_paths,
+        )?;
+        let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&mime);
+        let mut payload = serde_json::json!({ "raw": raw });
+        if let Some(tid) = &meta.thread_id {
+            payload["threadId"] = serde_json::Value::String(tid.clone());
+        }
+        ureq::post(GMAIL_SEND_URL)
+            .set("Authorization", &format!("Bearer {}", token))
+            .set("Content-Type", "application/json")
+            .send_json(&payload)
+    };
 
-    match resp {
+    match resp_result {
         Ok(r) => {
             let body: serde_json::Value = r.into_json()?;
             let msg_id = body["id"].as_str().unwrap_or("(unknown)");
@@ -230,6 +265,159 @@ fn normalize_message_id(mid: &str) -> String {
     }
 }
 
+/// Streaming base64url-no-pad encoder over a reader (#ckymimestream).
+///
+/// Reads raw bytes from `inner` and exposes them as base64url (no padding),
+/// carrying 0–2 bytes across `read` boundaries so 3-byte groups align. At EOF
+/// the trailing 1–2 bytes are encoded without padding. This lets the Gmail
+/// `raw` body be produced incrementally instead of base64-encoding the whole
+/// message into one string.
+struct Base64UrlReader<R: Read> {
+    inner: R,
+    carry: Vec<u8>,
+    out: Vec<u8>,
+    out_pos: usize,
+    eof: bool,
+}
+
+impl<R: Read> Base64UrlReader<R> {
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            carry: Vec::new(),
+            out: Vec::new(),
+            out_pos: 0,
+            eof: false,
+        }
+    }
+
+    /// Read up to `RAW_CHUNK * N` bytes, encode the 3-byte-aligned portion, and
+    /// carry the remainder. Returns the number of raw bytes consumed.
+    fn refill(&mut self) -> std::io::Result<usize> {
+        const RAW_CHUNK: usize = 57 * 64; // multiple of 3 → clean 76-char lines
+        let mut buf = vec![0u8; RAW_CHUNK];
+        let mut total = 0;
+        while total < RAW_CHUNK {
+            let n = self.inner.read(&mut buf[total..])?;
+            if n == 0 {
+                break;
+            }
+            total += n;
+        }
+        if total == 0 {
+            return Ok(0);
+        }
+        let mut combined = std::mem::take(&mut self.carry);
+        combined.extend_from_slice(&buf[..total]);
+        let aligned = (combined.len() / 3) * 3;
+        let enc = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&combined[..aligned]);
+        if aligned < combined.len() {
+            self.carry = combined[aligned..].to_vec();
+        }
+        self.out = enc.into_bytes();
+        self.out_pos = 0;
+        Ok(total)
+    }
+}
+
+impl<R: Read> Read for Base64UrlReader<R> {
+    fn read(&mut self, dst: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            if self.out_pos < self.out.len() {
+                let to_copy = std::cmp::min(self.out.len() - self.out_pos, dst.len());
+                dst[..to_copy].copy_from_slice(&self.out[self.out_pos..self.out_pos + to_copy]);
+                self.out_pos += to_copy;
+                return Ok(to_copy);
+            }
+            if self.eof {
+                return Ok(0);
+            }
+            let consumed = self.refill()?;
+            if consumed == 0 {
+                self.eof = true;
+                if !self.carry.is_empty() {
+                    let enc = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&self.carry);
+                    self.out = enc.into_bytes();
+                    self.out_pos = 0;
+                    self.carry.clear();
+                    continue;
+                }
+                return Ok(0);
+            }
+        }
+    }
+}
+
+/// Emits the Gmail `messages.send` JSON body `{"raw":"<base64url(mime)>"[,"threadId":"…"]}`
+/// by streaming `mime` through a [`Base64UrlReader`], so a large message is
+/// never materialized as a single string (#ckymimestream).
+struct StreamingRawBody<R: Read> {
+    phase: StreamingPhase,
+    header: Cursor<Vec<u8>>,
+    b64: Base64UrlReader<R>,
+    tail: Cursor<Vec<u8>>,
+}
+
+enum StreamingPhase {
+    Header,
+    Base64,
+    Tail,
+    Done,
+}
+
+impl<R: Read> StreamingRawBody<R> {
+    fn new(mime: R, thread_id: Option<&str>) -> Self {
+        let tail = match thread_id.filter(|t| !t.trim().is_empty()) {
+            // Close the `raw` string with a leading `"`, then the rest of the object.
+            Some(t) => format!("\",\"threadId\":\"{}\"}}", t),
+            None => "\"}".to_string(),
+        };
+        Self {
+            phase: StreamingPhase::Header,
+            header: Cursor::new(b"{\"raw\":\"".to_vec()),
+            b64: Base64UrlReader::new(mime),
+            tail: Cursor::new(tail.into_bytes()),
+        }
+    }
+}
+
+impl<R: Read> Read for StreamingRawBody<R> {
+    fn read(&mut self, dst: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            match self.phase {
+                StreamingPhase::Header => {
+                    let n = self.header.read(dst)?;
+                    if n == 0 {
+                        self.phase = StreamingPhase::Base64;
+                        continue;
+                    }
+                    return Ok(n);
+                }
+                StreamingPhase::Base64 => {
+                    let n = self.b64.read(dst)?;
+                    if n == 0 {
+                        self.phase = StreamingPhase::Tail;
+                        continue;
+                    }
+                    return Ok(n);
+                }
+                StreamingPhase::Tail => {
+                    let n = self.tail.read(dst)?;
+                    if n == 0 {
+                        self.phase = StreamingPhase::Done;
+                        continue;
+                    }
+                    return Ok(n);
+                }
+                StreamingPhase::Done => return Ok(0),
+            }
+        }
+    }
+}
+
+/// Build a RFC 2822 MIME message as bytes.
+///
+/// Returns `multipart/mixed` when attachments are present, otherwise `text/plain`.
 pub fn build_mime_message(
     to: &str,
     from: &str,
@@ -238,77 +426,108 @@ pub fn build_mime_message(
     in_reply_to: &Option<String>,
     attachments: &[PathBuf],
 ) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    build_mime_to_writer(&mut buf, to, from, subject, body, in_reply_to, attachments)?;
+    Ok(buf)
+}
+
+/// Build a RFC 2822 MIME message streamed into `out` (#ckymimestream).
+///
+/// Streaming variant of [`build_mime_message`]: attachments are read and
+/// base64-encoded in 57-byte (→ 76-char) chunks written straight to `out`, so
+/// neither the raw attachment bytes nor their full base64 string are held in
+/// memory at once. Output is byte-identical to the in-memory builder.
+pub fn build_mime_to_writer<W: Write>(
+    out: &mut W,
+    to: &str,
+    from: &str,
+    subject: &str,
+    body: &str,
+    in_reply_to: &Option<String>,
+    attachments: &[PathBuf],
+) -> Result<()> {
     let boundary = format!("corky_boundary_{}", chrono::Utc::now().timestamp_millis());
-    let mut msg = String::new();
 
     if !from.is_empty() {
-        msg.push_str(&format!("From: {}\r\n", from));
+        write!(out, "From: {}\r\n", from)?;
     }
-    msg.push_str(&format!("To: {}\r\n", to));
-    msg.push_str(&format!("Subject: {}\r\n", encode_header(subject)));
+    write!(out, "To: {}\r\n", to)?;
+    write!(out, "Subject: {}\r\n", encode_header(subject))?;
     if let Some(mid) = in_reply_to {
         // #ckymime: RFC 5322 msg-id must be angle-bracketed; a bare id is malformed.
         let mid = normalize_message_id(mid);
-        msg.push_str(&format!("In-Reply-To: {}\r\n", mid));
-        msg.push_str(&format!("References: {}\r\n", mid));
+        write!(out, "In-Reply-To: {}\r\n", mid)?;
+        write!(out, "References: {}\r\n", mid)?;
     }
-    msg.push_str("MIME-Version: 1.0\r\n");
+    write!(out, "MIME-Version: 1.0\r\n")?;
 
     if attachments.is_empty() {
-        msg.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
-        msg.push_str("\r\n");
-        msg.push_str(body);
-    } else {
-        msg.push_str(&format!(
-            "Content-Type: multipart/mixed; boundary=\"{}\"\r\n",
-            boundary
-        ));
-        msg.push_str("\r\n");
-
-        // Text part
-        msg.push_str(&format!("--{}\r\n", boundary));
-        msg.push_str("Content-Type: text/plain; charset=UTF-8\r\n");
-        msg.push_str("\r\n");
-        msg.push_str(body);
-        msg.push_str("\r\n");
-
-        // Attachment parts
-        for path in attachments {
-            let raw_filename = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "attachment".to_string());
-            // #ckymime: a raw filename with a quote or CR/LF could break the MIME
-            // structure / inject headers — sanitize for the quoted-string.
-            let filename = sanitize_mime_filename(&raw_filename);
-            let data = std::fs::read(path)?;
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
-            let mime_type = mime_guess::from_path(path)
-                .first_or_octet_stream()
-                .to_string();
-
-            msg.push_str(&format!("--{}\r\n", boundary));
-            msg.push_str(&format!(
-                "Content-Type: {}; name=\"{}\"\r\n",
-                mime_type, filename
-            ));
-            msg.push_str("Content-Transfer-Encoding: base64\r\n");
-            msg.push_str(&format!(
-                "Content-Disposition: attachment; filename=\"{}\"\r\n",
-                filename
-            ));
-            msg.push_str("\r\n");
-            // Break base64 into 76-char lines (RFC 2045)
-            for chunk in encoded.as_bytes().chunks(76) {
-                msg.push_str(std::str::from_utf8(chunk)?);
-                msg.push_str("\r\n");
-            }
-        }
-
-        msg.push_str(&format!("--{}--\r\n", boundary));
+        write!(out, "Content-Type: text/plain; charset=UTF-8\r\n\r\n{}", body)?;
+        return Ok(());
     }
 
-    Ok(msg.into_bytes())
+    write!(
+        out,
+        "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
+        boundary
+    )?;
+    // Text part
+    write!(out, "--{}\r\n", boundary)?;
+    write!(out, "Content-Type: text/plain; charset=UTF-8\r\n\r\n{}\r\n", body)?;
+
+    // Attachment parts — streamed in 57-byte chunks (57 → exactly 76 base64
+    // chars, no padding), matching the in-memory builder's line breaks.
+    const RAW_CHUNK: usize = 57;
+    for path in attachments {
+        let raw_filename = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "attachment".to_string());
+        // #ckymime: a raw filename with a quote or CR/LF could break the MIME
+        // structure / inject headers — sanitize for the quoted-string.
+        let filename = sanitize_mime_filename(&raw_filename);
+        let mime_type = mime_guess::from_path(path)
+            .first_or_octet_stream()
+            .to_string();
+
+        write!(out, "--{}\r\n", boundary)?;
+        write!(
+            out,
+            "Content-Type: {}; name=\"{}\"\r\n",
+            mime_type, filename
+        )?;
+        write!(out, "Content-Transfer-Encoding: base64\r\n")?;
+        write!(
+            out,
+            "Content-Disposition: attachment; filename=\"{}\"\r\n\r\n",
+            filename
+        )?;
+
+        let mut f = std::fs::File::open(path)?;
+        let mut buf = [0u8; RAW_CHUNK];
+        loop {
+            let mut filled = 0;
+            while filled < RAW_CHUNK {
+                let n = f.read(&mut buf[filled..])?;
+                if n == 0 {
+                    break;
+                }
+                filled += n;
+            }
+            if filled == 0 {
+                break;
+            }
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..filled]);
+            out.write_all(encoded.as_bytes())?;
+            write!(out, "\r\n")?;
+            if filled < RAW_CHUNK {
+                break;
+            }
+        }
+    }
+
+    write!(out, "--{}--\r\n", boundary)?;
+    Ok(())
 }
 
 /// Encode a header value using RFC 2047 base64 UTF-8 if it contains non-ASCII.
@@ -440,5 +659,98 @@ mod tests {
         assert!(text.contains("Content-Type: multipart/mixed"));
         assert!(text.contains("Content-Transfer-Encoding: base64"));
         assert!(text.contains("Content-Disposition: attachment"));
+    }
+
+    #[test]
+    fn test_build_mime_to_writer_streams_attachment_roundtrip() {
+        // #ckymimestream: streamed build must yield MIME whose base64 decodes
+        // back to the original attachment bytes, with ≤76-char lines.
+        use std::io::Write;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let payload = b"\xE2\x9C\x93 binary \x00\x01\x02 data with non-ascii"; // 36 bytes
+        tmp.as_file().write_all(payload).unwrap();
+        let path = tmp.path().to_path_buf();
+
+        let mut out = Vec::new();
+        build_mime_to_writer(
+            &mut out,
+            "alice@example.com",
+            "brian@example.com",
+            "Subj",
+            "Body",
+            &None,
+            &[path],
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("Content-Type: multipart/mixed"));
+
+        // Every base64 content line (between the attachment headers and the
+        // closing boundary) must be ≤76 chars and decode back to the payload.
+        let mut in_attachment = false;
+        let mut collected = String::new();
+        for line in text.lines() {
+            if line.starts_with("--corky_boundary_") && line.ends_with("--") {
+                in_attachment = false;
+            } else if line.starts_with("Content-Disposition: attachment") {
+                in_attachment = true;
+            } else if in_attachment && !line.contains(':') && !line.is_empty() {
+                assert!(line.len() <= 76, "base64 line too long: {}", line.len());
+                collected.push_str(line);
+            }
+        }
+        let decoded =
+            base64::engine::general_purpose::STANDARD.decode(collected.as_bytes()).unwrap();
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn test_base64url_reader_matches_bulk_encode() {
+        // #ckymimestream: the streaming base64url reader must produce exactly
+        // what a one-shot URL_SAFE_NO_PAD encode produces, across sizes that
+        // stress 3-byte-group alignment (carry of 0, 1, and 2 bytes).
+        for size in [0usize, 1, 2, 3, 4, 5, 57, 58, 114, 115, 1000, 4096, 8192] {
+            let data: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
+            let expected = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&data);
+
+            let mut reader = Base64UrlReader::new(std::io::Cursor::new(data));
+            let mut got = Vec::new();
+            reader.read_to_end(&mut got).unwrap();
+
+            assert_eq!(
+                String::from_utf8(got).unwrap(),
+                expected,
+                "base64url stream mismatch at size {size}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_streaming_raw_body_no_threadid() {
+        let mime = b"From: a@b\r\n\r\nhello";
+        let mut body = StreamingRawBody::new(std::io::Cursor::new(mime.to_vec()), None);
+        let mut out = Vec::new();
+        body.read_to_end(&mut out).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let raw = parsed["raw"].as_str().unwrap();
+        let expected_raw =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mime);
+        assert_eq!(raw, expected_raw);
+        assert!(parsed.get("threadId").is_none(), "no threadId expected");
+    }
+
+    #[test]
+    fn test_streaming_raw_body_with_threadid() {
+        let mime = b"From: a@b\r\n\r\nhello";
+        let mut body =
+            StreamingRawBody::new(std::io::Cursor::new(mime.to_vec()), Some("t987"));
+        let mut out = Vec::new();
+        body.read_to_end(&mut out).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            parsed["raw"].as_str().unwrap(),
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mime)
+        );
+        assert_eq!(parsed["threadId"].as_str().unwrap(), "t987");
     }
 }
