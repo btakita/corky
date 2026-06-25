@@ -250,6 +250,8 @@ Secret resolution order (shared `util::resolve_secret`):
 
 Label scoping syntax: `account:label` (e.g. `"proton-dev:INBOX"`) binds a label to a specific account.
 
+**Malformed config is an error, not a panic:** format-preserving writes (`save_topic`, `save_contact`, social profile updates) expect `[topics]`, `[contacts]`, and `[profiles.*]` to be TOML tables. If a hand-edit puts a scalar there instead, the command returns an actionable error (`… is not a table; fix or remove it`) rather than panicking. Likewise, shared-mailbox git operations degrade gracefully when the `git` binary is missing (the failure is reported via the command's exit-code/stderr path) instead of aborting the process.
+
 ### 3.4 .sync-state.json
 
 ```json

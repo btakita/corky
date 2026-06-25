@@ -73,7 +73,9 @@ pub fn save_topic(name: &str, topic: &TopicConfig, path: Option<&Path>) -> Resul
     if doc.get("topics").is_none() {
         doc.insert("topics", toml_edit::Item::Table(toml_edit::Table::new()));
     }
-    let topics = doc["topics"].as_table_mut().unwrap();
+    let topics = doc["topics"].as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!("`.corky.toml` `[topics]` is not a table; fix or remove the `topics` entry")
+    })?;
 
     // Build topic table
     let mut table = toml_edit::Table::new();
@@ -174,6 +176,20 @@ description = "Alpha project"
         let loaded = load_topics(Some(&path)).unwrap();
         assert_eq!(loaded["rust-dev"].keywords, vec!["rust", "dev"]);
         assert_eq!(loaded["rust-dev"].contacts, vec!["alice"]);
+    }
+
+    #[test]
+    fn save_topic_errors_on_scalar_topics_instead_of_panicking() {
+        // #ckyconfigunwrap: a hand-edited `topics = "..."` scalar must surface
+        // an error, not panic via as_table_mut().unwrap().
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".corky.toml");
+        std::fs::write(&path, "topics = \"oops\"\n").unwrap();
+        let err = save_topic("rust-dev", &TopicConfig::default(), Some(&path)).unwrap_err();
+        assert!(
+            err.to_string().contains("[topics]") && err.to_string().contains("not a table"),
+            "got: {err}"
+        );
     }
 
     #[test]

@@ -11,14 +11,22 @@ use crate::resolve;
 use super::templates::{generate_agents_md, generate_readme_md};
 
 fn run_git(args: &[&str]) -> (String, String, i32) {
-    let output = Command::new(args[0])
-        .args(&args[1..])
-        .output()
-        .unwrap_or_else(|_| panic!("Failed to run: {}", args.join(" ")));
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let code = output.status.code().unwrap_or(-1);
-    (stdout, stderr, code)
+    // #ckyconfigunwrap: a missing `git` binary must not panic the process.
+    // Return code -1 with the spawn error in stderr; callers already branch on
+    // the exit code and surface stderr.
+    match Command::new(args[0]).args(&args[1..]).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let code = output.status.code().unwrap_or(-1);
+            (stdout, stderr, code)
+        }
+        Err(e) => (
+            String::new(),
+            format!("failed to run `{}`: {e}", args.join(" ")),
+            -1,
+        ),
+    }
 }
 
 /// Regenerate template files for one mailbox.

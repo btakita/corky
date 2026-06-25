@@ -370,7 +370,9 @@ fn update_profile_urn(profile_name: &str, platform: Platform, urn: &str) -> Resu
     if !doc.contains_key("profiles") {
         doc.insert("profiles", toml_edit::Item::Table(toml_edit::Table::new()));
     }
-    let profiles = doc["profiles"].as_table_mut().unwrap();
+    let profiles = doc["profiles"].as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!("`.corky.toml` `[profiles]` is not a table; fix or remove it")
+    })?;
 
     // Ensure [profiles.<name>] table exists
     if !profiles.contains_key(profile_name) {
@@ -379,7 +381,9 @@ fn update_profile_urn(profile_name: &str, platform: Platform, urn: &str) -> Resu
             toml_edit::Item::Table(toml_edit::Table::new()),
         );
     }
-    let profile = profiles[profile_name].as_table_mut().unwrap();
+    let profile = profiles[profile_name].as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!("`.corky.toml` `[profiles.{profile_name}]` is not a table; fix or remove it")
+    })?;
 
     let platform_key = platform.as_str();
     // Ensure [profiles.<name>.<platform>] table exists
@@ -388,7 +392,11 @@ fn update_profile_urn(profile_name: &str, platform: Platform, urn: &str) -> Resu
         table.insert("handle", toml_edit::value(""));
         profile.insert(platform_key, toml_edit::Item::Table(table));
     }
-    let platform_table = profile[platform_key].as_table_mut().unwrap();
+    let platform_table = profile[platform_key].as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!(
+            "`.corky.toml` `[profiles.{profile_name}.{platform_key}]` is not a table; fix or remove it"
+        )
+    })?;
     platform_table.insert("urn", toml_edit::value(urn));
 
     if let Some(parent) = path.parent() {

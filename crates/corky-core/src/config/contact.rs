@@ -68,7 +68,11 @@ pub fn save_contact(name: &str, contact: &Contact, path: Option<&Path>) -> Resul
     if doc.get("contacts").is_none() {
         doc.insert("contacts", toml_edit::Item::Table(toml_edit::Table::new()));
     }
-    let contacts = doc["contacts"].as_table_mut().unwrap();
+    let contacts = doc["contacts"].as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!(
+            "`.corky.toml` `[contacts]` is not a table; fix or remove the `contacts` entry"
+        )
+    })?;
 
     // Build contact table
     let mut table = toml_edit::Table::new();
