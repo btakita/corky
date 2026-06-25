@@ -199,6 +199,37 @@ fn run_internal(
 /// Build a RFC 2822 MIME message as bytes.
 ///
 /// Returns `multipart/mixed` when attachments are present, otherwise `text/plain`.
+/// Sanitize a filename for a MIME `quoted-string` (#ckymime): drop control
+/// characters (CR/LF would inject headers) and backslash-escape `"` and `\`.
+fn sanitize_mime_filename(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_control() {
+            continue;
+        }
+        if c == '"' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    if out.is_empty() {
+        "attachment".to_string()
+    } else {
+        out
+    }
+}
+
+/// Normalize a Message-ID to RFC 5322 angle-bracket form (#ckymime):
+/// `abc@x` → `<abc@x>`; an already-bracketed id is returned unchanged.
+fn normalize_message_id(mid: &str) -> String {
+    let trimmed = mid.trim();
+    if trimmed.starts_with('<') && trimmed.ends_with('>') && trimmed.len() >= 2 {
+        trimmed.to_string()
+    } else {
+        format!("<{}>", trimmed.trim_matches(['<', '>']))
+    }
+}
+
 pub fn build_mime_message(
     to: &str,
     from: &str,
@@ -216,6 +247,8 @@ pub fn build_mime_message(
     msg.push_str(&format!("To: {}\r\n", to));
     msg.push_str(&format!("Subject: {}\r\n", encode_header(subject)));
     if let Some(mid) = in_reply_to {
+        // #ckymime: RFC 5322 msg-id must be angle-bracketed; a bare id is malformed.
+        let mid = normalize_message_id(mid);
         msg.push_str(&format!("In-Reply-To: {}\r\n", mid));
         msg.push_str(&format!("References: {}\r\n", mid));
     }
@@ -241,10 +274,13 @@ pub fn build_mime_message(
 
         // Attachment parts
         for path in attachments {
-            let filename = path
+            let raw_filename = path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "attachment".to_string());
+            // #ckymime: a raw filename with a quote or CR/LF could break the MIME
+            // structure / inject headers — sanitize for the quoted-string.
+            let filename = sanitize_mime_filename(&raw_filename);
             let data = std::fs::read(path)?;
             let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
             let mime_type = mime_guess::from_path(path)
@@ -288,6 +324,35 @@ fn encode_header(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitize_mime_filename_blocks_injection() {
+        // #ckymime: CR/LF stripped, quotes/backslashes escaped.
+        assert_eq!(sanitize_mime_filename("report.pdf"), "report.pdf");
+        assert_eq!(
+            sanitize_mime_filename("a\"b.txt"),
+            "a\\\"b.txt"
+        );
+        // CR/LF removed → no header injection (space after `Bcc:` preserved).
+        assert_eq!(
+            sanitize_mime_filename("evil\r\nBcc: x@y.txt"),
+            "evilBcc: x@y.txt"
+        );
+        assert_eq!(sanitize_mime_filename("back\\slash"), "back\\\\slash");
+        // Control chars stripped entirely; empty result falls back.
+        assert_eq!(sanitize_mime_filename("\r\n"), "attachment");
+        // Unicode filenames pass through.
+        assert_eq!(sanitize_mime_filename("报告.pdf"), "报告.pdf");
+    }
+
+    #[test]
+    fn normalize_message_id_adds_angle_brackets() {
+        // #ckymime: RFC 5322 angle-bracket form.
+        assert_eq!(normalize_message_id("abc@mail"), "<abc@mail>");
+        assert_eq!(normalize_message_id("<abc@mail>"), "<abc@mail>");
+        assert_eq!(normalize_message_id("  <abc@mail>  "), "<abc@mail>");
+        assert_eq!(normalize_message_id("<abc@mail"), "<abc@mail>");
+    }
 
     #[test]
     fn reply_threading_warning_flags_partial_threading() {

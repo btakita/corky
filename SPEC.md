@@ -515,7 +515,8 @@ format (run `corky draft migrate` to convert legacy format).
 - No attachments → `text/plain; charset=UTF-8`
 - With attachments → `multipart/mixed` with `text/plain` body + `base64` attachment parts
 - Non-ASCII subjects encoded as RFC 2047 `=?UTF-8?B?...?=`
-- Reply threading: `In-Reply-To` + `References` headers set from `in_reply_to:` YAML field; `threadId` set from `thread_id:` YAML field
+- Attachment filenames are sanitized for the MIME `quoted-string` (control characters dropped, `"`/`\` backslash-escaped) so a crafted filename cannot inject headers or break the MIME structure
+- Reply threading: `In-Reply-To` + `References` headers set from `in_reply_to:` YAML field (normalized to RFC 5322 angle-bracket `<id>` form); `threadId` set from `thread_id:` YAML field
 
 **OAuth scope:** `GMAIL_SEND_SCOPE` (`gmail.compose`)
 
