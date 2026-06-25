@@ -69,8 +69,9 @@ pub fn run(
     {
         Ok(r) => r,
         Err(ureq::Error::Status(401, _)) => {
+            let _ = auth::clear_access_token(&token);
             bail!(
-                "Calendar API returned 401 Unauthorized.\n\
+                "Calendar API returned 401 Unauthorized. Cleared the cached token.\n\
                  Try re-authenticating with: corky cal auth"
             );
         }

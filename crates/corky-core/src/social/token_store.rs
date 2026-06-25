@@ -126,6 +126,59 @@ impl TokenStore {
         })?;
         Ok(removed_in_memory || removed_on_disk)
     }
+
+    /// Remove every persisted token whose `access_token` matches, returning true
+    /// if at least one was removed (#ckytok401).
+    ///
+    /// Used to invalidate a token the server rejected with `401` when the caller
+    /// holds only the access-token string, not the store key — so the next API
+    /// call re-authenticates instead of replaying the revoked token.
+    pub fn remove_by_access_token(&mut self, access_token: &str) -> Result<bool> {
+        self.remove_by_access_token_from(&tokens_path(), access_token)
+    }
+
+    /// [`remove_by_access_token`](Self::remove_by_access_token) against a specific path.
+    pub fn remove_by_access_token_from(
+        &mut self,
+        path: &Path,
+        access_token: &str,
+    ) -> Result<bool> {
+        let in_memory_keys: Vec<String> = self
+            .tokens
+            .iter()
+            .filter(|(_, t)| t.access_token == access_token)
+            .map(|(k, _)| k.clone())
+            .collect();
+        let removed_in_memory = in_memory_keys.iter().any(|k| self.remove(k).is_some());
+
+        let mut removed_on_disk = false;
+        file_store::save_json_with_lock::<TokenStore, _>(path, Some(0o600), |mut current| {
+            let disk_keys: Vec<String> = current
+                .tokens
+                .iter()
+                .filter(|(_, t)| t.access_token == access_token)
+                .map(|(k, _)| k.clone())
+                .collect();
+            for k in &disk_keys {
+                if current.tokens.remove(k).is_some() {
+                    removed_on_disk = true;
+                }
+            }
+            Ok(current)
+        })?;
+        Ok(removed_in_memory || removed_on_disk)
+    }
+}
+
+/// Invalidate the cached token the server rejected with `401` so the next API
+/// call re-authenticates (#ckytok401). No-op (returns `Ok(false)`) when the
+/// token string is empty or no cached token matches.
+pub fn clear_access_token(access_token: &str) -> Result<bool> {
+    if access_token.is_empty() {
+        return Ok(false);
+    }
+    let mut store = TokenStore::load()?;
+    store.remove_by_access_token(access_token)
 }
 
 #[cfg(test)]
@@ -140,6 +193,30 @@ mod tests {
             scopes: vec!["scope".to_string()],
             platform: "test".to_string(),
         }
+    }
+
+    #[test]
+    fn remove_by_access_token_clears_matching_entry() {
+        // #ckytok401: a 401 invalidates the cached token by its access-token
+        // value, leaving other accounts untouched.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tokens.json");
+
+        let mut store = TokenStore::default();
+        store.upsert("gmail:a".to_string(), token("revoked-xyz"));
+        store.upsert("gmail:b".to_string(), token("still-good"));
+        store.save_to(&path).unwrap();
+
+        let removed = store.remove_by_access_token_from(&path, "revoked-xyz").unwrap();
+        assert!(removed, "should report a removal");
+
+        let reloaded = TokenStore::load_from(&path).unwrap();
+        assert!(!reloaded.tokens.contains_key("gmail:a"), "revoked token gone");
+        assert!(reloaded.tokens.contains_key("gmail:b"), "other token kept");
+
+        // No match → no-op, returns false.
+        let mut store2 = TokenStore::load_from(&path).unwrap();
+        assert!(!store2.remove_by_access_token_from(&path, "nonexistent").unwrap());
     }
 
     #[test]

@@ -10,6 +10,7 @@ use crate::config::corky_config;
 use crate::desktop_notify::notify_oauth;
 use crate::oauth_loopback::{LoopbackServer, PortMode};
 use crate::social::token_store::{StoredToken, TokenStore};
+pub use crate::social::token_store::clear_access_token;
 
 const CALLBACK_TIMEOUT_SECS: u64 = 120;
 

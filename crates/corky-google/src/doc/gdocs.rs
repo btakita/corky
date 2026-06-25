@@ -149,7 +149,8 @@ fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
     {
         Ok(r) => Ok(r),
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Google API: unauthorized (401). Token may be expired.");
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("Google API: unauthorized (401). Cleared the cached token; it may be expired.");
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();

@@ -358,7 +358,8 @@ fn update_binary(file_id: &str, file: &Path, token: &str) -> Result<()> {
             Ok(())
         }
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Drive API: unauthorized (401). Re-run `corky auth --scope drive`.")
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("Drive API: unauthorized (401). Cleared the cached token; re-run `corky auth --scope drive`.")
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
@@ -375,7 +376,8 @@ fn api_get(token: &str, url: &str, label: &str) -> Result<ureq::Response> {
     {
         Ok(resp) => Ok(resp),
         Err(ureq::Error::Status(401, _)) => {
-            bail!("{label}: unauthorized (401). Re-run `corky auth --scope drive-readonly`.")
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("{label}: unauthorized (401). Cleared the cached token; re-run `corky auth --scope drive-readonly`.")
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();

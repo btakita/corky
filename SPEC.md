@@ -449,6 +449,8 @@ Manual Google OAuth pre-authentication for integrations that otherwise trigger b
 
 Default scope is `sync` (`gmail.readonly`). Use `--scope workspace` to pre-authorize the Drive upload, Drive read/export/download, Docs read/write, and Sheets read/write scopes used by broad Google Workspace document workflows in one browser consent flow. Google access tokens remain short-lived according to Google's token endpoint, but Corky stores refresh tokens and refreshes access tokens automatically while the authorization grant remains valid. Google auth URLs use incremental authorization (`include_granted_scopes=true`). Automatic command-triggered re-auth only forces `prompt=consent` when no cached refresh token exists or when refresh failed; when adding Drive/Docs/Sheets/Chat/Tasks scopes to an existing grant, Corky preserves the cached refresh token if Google omits a new one and keeps the union of cached and returned scopes. Refresh persistence must preserve the token's original scopes so a refreshed sync/docs/sheets token is not downgraded to filter scope metadata.
 
+**401 token invalidation:** when a Google API returns `401 Unauthorized` (for example a server-side token revocation that the local clock-based validity check can't detect), the command clears the rejected access token from the store by its value (`clear_access_token`) before erroring, so the next invocation re-authenticates instead of replaying the dead token. This applies across all Workspace surfaces — Calendar (`cal`), Docs/Sheets/Drive (`doc`), Tasks, and Chat — matching the existing `draft send` behavior; previously only `draft send` cleared its token and a revoked-but-unexpired token trapped the user until they manually deleted `tokens.json`.
+
 ### 5.4 list-folders
 
 ```

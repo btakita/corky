@@ -26,7 +26,10 @@ pub fn run(task_id: &str, tasklist: Option<&str>, account: Option<&str>) -> Resu
             Ok(())
         }
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Tasks API: unauthorized (401). Re-run `corky filter auth`.")
+            let _ = gmail_auth::clear_access_token(&token);
+            bail!(
+                "Tasks API: unauthorized (401). Cleared the cached token; re-run `corky filter auth`."
+            )
         }
         Err(ureq::Error::Status(404, _)) => {
             bail!("Task not found: {}", task_id)

@@ -286,8 +286,9 @@ fn create_spreadsheet(title: &str, token: &str) -> Result<CreatedSpreadsheet> {
             Ok(CreatedSpreadsheet { id, url })
         }
         Err(ureq::Error::Status(401, _)) => {
+            let _ = gmail_auth::clear_access_token(token);
             bail!(
-                "Sheets API: unauthorized (401). Re-run `corky auth --scope sheets` or `corky auth --scope workspace`."
+                "Sheets API: unauthorized (401). Cleared the cached token; re-run `corky auth --scope sheets` or `corky auth --scope workspace`."
             )
         }
         Err(ureq::Error::Status(status, resp)) => {
@@ -326,8 +327,9 @@ fn create_drive_permission(
     match resp {
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(401, _)) => {
+            let _ = gmail_auth::clear_access_token(token);
             bail!(
-                "Drive API: unauthorized (401). Re-run `corky auth --scope drive` or `corky auth --scope workspace`."
+                "Drive API: unauthorized (401). Cleared the cached token; re-run `corky auth --scope drive` or `corky auth --scope workspace`."
             )
         }
         Err(ureq::Error::Status(status, resp)) => {
@@ -432,7 +434,8 @@ fn update_values(sheet_id: &str, range: &str, values: &[Vec<String>], token: &st
             Ok(result["updatedCells"].as_u64().unwrap_or(0))
         }
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("Sheets API: unauthorized (401). Cleared the cached token; re-run `corky filter auth`.")
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
@@ -458,7 +461,8 @@ fn clear_values(sheet_id: &str, range: &str, token: &str) -> Result<()> {
     match resp {
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("Sheets API: unauthorized (401). Cleared the cached token; re-run `corky filter auth`.")
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
@@ -495,7 +499,8 @@ fn ensure_tab_exists(sheet_id: &str, tab: &str, token: &str) -> Result<()> {
     match resp {
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("Sheets API: unauthorized (401). Cleared the cached token; re-run `corky filter auth`.")
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
@@ -515,7 +520,8 @@ fn delete_sheet(sheet_id: &str, tab_sheet_id: i64, token: &str) -> Result<()> {
     match resp {
         Ok(_) => Ok(()),
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Sheets API: unauthorized (401). Re-run `corky filter auth`.")
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("Sheets API: unauthorized (401). Cleared the cached token; re-run `corky filter auth`.")
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
@@ -734,7 +740,8 @@ fn api_get(token: &str, url: &str) -> Result<ureq::Response> {
     {
         Ok(r) => Ok(r),
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Sheets API: unauthorized (401). Token may be expired.");
+            let _ = gmail_auth::clear_access_token(token);
+            bail!("Sheets API: unauthorized (401). Cleared the cached token; it may be expired.");
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();

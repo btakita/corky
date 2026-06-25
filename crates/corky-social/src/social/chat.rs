@@ -32,7 +32,10 @@ pub fn send(space: &str, message: &str, account: Option<&str>) -> Result<()> {
             Ok(())
         }
         Err(ureq::Error::Status(401, _)) => {
-            bail!("Chat API: unauthorized (401). Re-run `corky filter auth`.")
+            let _ = gmail_auth::clear_access_token(&token);
+            bail!(
+                "Chat API: unauthorized (401). Cleared the cached token; re-run `corky filter auth`."
+            )
         }
         Err(ureq::Error::Status(status, resp)) => {
             let body = resp.into_string().unwrap_or_default();
