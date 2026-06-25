@@ -1,17 +1,27 @@
 //! Path resolution for corky data and config directories.
 //!
 //! Resolution order for data directory:
-//!   1. mail/ in cwd (developer workflow)
-//!   2. CORKY_DATA environment variable
-//!   3. App config mailbox (via app_config::resolve_mailbox)
-//!   4. ~/Documents/mail (general user default)
+//!   1. CORKY_DATA environment variable (explicit override: --mailbox, `corky init`, tests)
+//!   2. cwd containing .corky.toml (running from inside the mail directory)
+//!   3. mail/ in cwd (developer workflow)
+//!   4. App config mailbox (via app_config::resolve_mailbox)
+//!   5. ~/Documents/mail (general user default)
 
 use std::path::PathBuf;
 
 /// Return the data directory path.
 pub fn data_dir() -> PathBuf {
+    // CORKY_DATA is an explicit override (set by --mailbox, `corky init`, and
+    // tests) and must win over implicit CWD/app-config discovery. Checking it
+    // first also keeps tests isolated from a stray ./mail symlink or a real
+    // mailbox in app config (#ckysuite).
+    if let Ok(env) = std::env::var("CORKY_DATA")
+        && !env.is_empty()
+    {
+        return PathBuf::from(env);
+    }
     // If CWD itself contains .corky.toml, treat CWD as the data dir
-    // (handles running from inside the mail/ directory)
+    // (handles running from inside the mail/ directory).
     let cwd = PathBuf::from(".");
     if cwd.join(".corky.toml").exists() || cwd.join("corky.toml").exists() {
         return cwd;
@@ -20,12 +30,7 @@ pub fn data_dir() -> PathBuf {
     if local.is_dir() {
         return local;
     }
-    if let Ok(env) = std::env::var("CORKY_DATA")
-        && !env.is_empty()
-    {
-        return PathBuf::from(env);
-    }
-    // Try app config mailbox
+    // Try app config mailbox.
     if let Ok(Some(mailbox_path)) = crate::app_config::resolve_mailbox(None) {
         return mailbox_path;
     }

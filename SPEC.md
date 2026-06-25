@@ -46,10 +46,11 @@ and pushes routing intelligence to Cloudflare.
 ### 2.2 Resolution Order
 
 The data directory is resolved at runtime in this order:
-1. `mail/` directory in current working directory (developer workflow)
-2. `CORKY_DATA` environment variable
-3. App config mailbox (see §2.4)
-4. `~/Documents/mail` (hardcoded fallback)
+1. `CORKY_DATA` environment variable (explicit override: `--mailbox`, `corky init`, tests)
+2. Current working directory containing `.corky.toml` (running from inside the mail directory)
+3. `mail/` directory in current working directory (developer workflow)
+4. App config mailbox (see §2.4)
+5. `~/Documents/mail` (hardcoded fallback)
 
 ### 2.3 Config Directory
 
@@ -64,7 +65,7 @@ Location: `{platformdirs.user_config_dir("corky")}/config.toml`
 - macOS: `~/Library/Application Support/corky/config.toml`
 - Windows: `%APPDATA%/corky/config.toml`
 
-Stores named mailboxes (data directory references) and a default. Used in resolution step 3.
+Stores named mailboxes (data directory references) and a default. Used in resolution step 4.
 
 Mailbox resolution (when no explicit name given):
 1. `default_mailbox` set → use that mailbox
