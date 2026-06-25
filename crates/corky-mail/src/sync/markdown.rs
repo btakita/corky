@@ -8,6 +8,42 @@ use crate::util::thread_key_from_subject;
 
 static META_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*\*(.+?)\*\*:[ ]*(.+)$").unwrap());
 static MSG_HEADER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^## (.+?) \u{2014} (.+)$").unwrap());
+static THREAD_ID_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\*\*Thread ID\*\*:\s*(.+)$").unwrap());
+static THREAD_ALIASES_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\*\*Thread Aliases\*\*:\s*(.+)$").unwrap());
+
+/// Parse just the identity fields of a thread file from raw text, without a full
+/// `Thread` parse. Returns `(thread_id, aliases)`. Used by the directory scanners
+/// that must decide which file a provider key resolves to (#ckythreadmerge).
+pub fn parse_thread_identity(text: &str) -> (String, Vec<String>) {
+    let thread_id = THREAD_ID_RE
+        .captures(text)
+        .map(|c| c[1].trim().to_string())
+        .unwrap_or_default();
+    let aliases = THREAD_ALIASES_RE
+        .captures(text)
+        .map(|c| split_csv(&c[1]))
+        .unwrap_or_default();
+    (thread_id, aliases)
+}
+
+/// True if `key` is claimed by a thread whose identity is `(thread_id, aliases)`.
+pub fn claims_key(thread_id: &str, aliases: &[String], key: &str) -> bool {
+    let key = key.trim();
+    if key.is_empty() {
+        return false;
+    }
+    thread_id.trim() == key || aliases.iter().any(|a| a.trim() == key)
+}
+
+fn split_csv(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
 
 /// Serialize a Thread to Markdown.
 pub fn thread_to_markdown(thread: &Thread) -> String {
@@ -21,6 +57,9 @@ pub fn thread_to_markdown(thread: &Thread) -> String {
         format!("**Thread ID**: {}", thread.id),
         format!("**Last updated**: {}", thread.last_date),
     ];
+    if !thread.aliases.is_empty() {
+        lines.push(format!("**Thread Aliases**: {}", thread.aliases.join(", ")));
+    }
     if !thread.tracking.is_empty() {
         lines.push(format!("**Tracking**: {}", thread.tracking.join(", ")));
     }
@@ -93,12 +132,12 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
 
     let tracking = meta
         .get("Tracking")
-        .map(|s| {
-            s.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
+        .map(|s| split_csv(s))
+        .unwrap_or_default();
+
+    let aliases = meta
+        .get("Thread Aliases")
+        .map(|s| split_csv(s))
         .unwrap_or_default();
 
     // Split into message sections on "## Sender — Date"
@@ -183,6 +222,7 @@ pub fn parse_thread_markdown(text: &str) -> Option<Thread> {
         messages,
         last_date,
         tracking,
+        aliases,
     })
 }
 
@@ -210,6 +250,7 @@ mod tests {
             }],
             last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             tracking: vec![],
+            aliases: vec![],
         };
 
         let md = thread_to_markdown(&thread);
@@ -244,6 +285,7 @@ mod tests {
             }],
             last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
             tracking: vec![],
+            aliases: vec![],
         };
 
         let md = thread_to_markdown(&thread);
@@ -288,6 +330,7 @@ mod tests {
             messages: vec![],
             last_date: String::new(),
             tracking: vec!["sendgrid.net".to_string(), "outlier.ai".to_string()],
+            aliases: vec![],
         };
 
         let md = thread_to_markdown(&thread);
@@ -307,9 +350,69 @@ mod tests {
             messages: vec![],
             last_date: String::new(),
             tracking: vec![],
+            aliases: vec![],
         };
 
         let md = thread_to_markdown(&thread);
         assert!(!md.contains("**Tracking**"));
+    }
+
+    #[test]
+    fn test_claims_key() {
+        assert!(claims_key("primary", &[], "primary"));
+        assert!(claims_key(
+            "primary",
+            &["alt1".to_string(), "alt2".to_string()],
+            "alt2"
+        ));
+        assert!(!claims_key(
+            "primary",
+            &["alt1".to_string()],
+            "nope"
+        ));
+        // empty key never claims
+        assert!(!claims_key("primary", &["primary".to_string()], ""));
+        // whitespace is tolerated
+        assert!(claims_key("  primary  ", &["  alt  ".to_string()], "alt"));
+    }
+
+    #[test]
+    fn test_parse_thread_identity_extracts_id_and_aliases() {
+        let md = "# Subject\n\n\
+                  **Labels**: inbox\n\
+                  **Thread ID**: main-id\n\
+                  **Thread Aliases**: alias-a, alias-b\n\
+                  **Last updated**: Mon, 1 Jan 2024 00:00:00 +0000\n";
+        let (id, aliases) = parse_thread_identity(md);
+        assert_eq!(id, "main-id");
+        assert_eq!(aliases, vec!["alias-a", "alias-b"]);
+    }
+
+    #[test]
+    fn test_parse_thread_identity_no_aliases() {
+        let md = "# Subject\n\n**Thread ID**: lone-id\n**Last updated**: x\n";
+        let (id, aliases) = parse_thread_identity(md);
+        assert_eq!(id, "lone-id");
+        assert!(aliases.is_empty());
+    }
+
+    #[test]
+    fn test_aliases_roundtrip() {
+        let thread = Thread {
+            id: "primary".to_string(),
+            subject: "Aliases".to_string(),
+            labels: vec![],
+            accounts: vec![],
+            messages: vec![],
+            last_date: String::new(),
+            tracking: vec![],
+            aliases: vec!["alpha".to_string(), "beta".to_string()],
+        };
+
+        let md = thread_to_markdown(&thread);
+        assert!(md.contains("**Thread Aliases**: alpha, beta"));
+
+        let parsed = parse_thread_markdown(&md).unwrap();
+        assert_eq!(parsed.aliases, vec!["alpha", "beta"]);
     }
 }

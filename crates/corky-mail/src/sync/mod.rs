@@ -766,15 +766,14 @@ fn remove_thread_file(
     Ok(())
 }
 
-/// Find a thread file by its Thread ID metadata.
+/// Find a thread file whose identity (Thread ID or an alias) claims `thread_id`.
+///
+/// Alias-aware so refetch resolves a merged thread regardless of which
+/// provider's key the operator passes (#ckythreadmerge).
 fn find_thread_file_by_id(dir: &std::path::Path, thread_id: &str) -> Option<std::path::PathBuf> {
-    use once_cell::sync::Lazy;
-    use regex::Regex;
+    use self::markdown::{claims_key, parse_thread_identity};
 
-    static THREAD_ID_RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?m)^\*\*Thread ID\*\*:\s*(.+)$").unwrap());
-
-    if !dir.exists() {
+    if thread_id.trim().is_empty() || !dir.exists() {
         return None;
     }
     for entry in std::fs::read_dir(dir).ok()?.flatten() {
@@ -782,11 +781,11 @@ fn find_thread_file_by_id(dir: &std::path::Path, thread_id: &str) -> Option<std:
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        if let Ok(text) = std::fs::read_to_string(&path)
-            && let Some(cap) = THREAD_ID_RE.captures(&text)
-            && cap[1].trim() == thread_id
-        {
-            return Some(path);
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let (tid, aliases) = parse_thread_identity(&text);
+            if claims_key(&tid, &aliases, thread_id) {
+                return Some(path);
+            }
         }
     }
     None

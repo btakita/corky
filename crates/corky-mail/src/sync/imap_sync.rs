@@ -4,22 +4,17 @@ use anyhow::Result;
 use chrono::{DateTime, Datelike, Utc};
 use imap::Session;
 use native_tls::TlsStream;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::HashSet;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::markdown::{parse_thread_markdown, thread_to_markdown};
+use super::markdown::{claims_key, parse_thread_identity, parse_thread_markdown, thread_to_markdown};
 use super::types::{AccountSyncState, LabelState, Message, SyncState, Thread};
 use crate::config::corky_config;
 use crate::resolve;
 use crate::util::{slugify, thread_key_from_subject};
-
-static THREAD_ID_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^\*\*Thread ID\*\*:\s*(.+)$").unwrap());
 
 /// Extract body from a parsed email, preferring HTML→markdown over plain text.
 fn extract_body(parsed: &mailparse::ParsedMail) -> String {
@@ -145,9 +140,13 @@ fn set_mtime(path: &Path, date_str: &str) -> Result<()> {
     Ok(())
 }
 
-/// Find an existing thread file by its Thread ID metadata.
-fn find_thread_file(out_dir: &Path, thread_id: &str) -> Option<PathBuf> {
-    if !out_dir.exists() {
+/// Find an existing thread file whose identity (Thread ID or an alias) claims `key`.
+///
+/// Alias-aware so a thread written under one provider's key (e.g. Gmail
+/// `threadId`) is found when another provider resolves the same conversation by
+/// a different key (#ckythreadmerge).
+fn find_thread_file(out_dir: &Path, key: &str) -> Option<PathBuf> {
+    if key.trim().is_empty() || !out_dir.exists() {
         return None;
     }
     for entry in std::fs::read_dir(out_dir).ok()?.flatten() {
@@ -155,9 +154,36 @@ fn find_thread_file(out_dir: &Path, thread_id: &str) -> Option<PathBuf> {
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let (tid, aliases) = parse_thread_identity(&text);
+            if claims_key(&tid, &aliases, key) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+/// Find a thread file that already holds a message with the given Message-ID.
+///
+/// Cross-provider bridge (#ckythreadmerge): the same message synced from IMAP
+/// (subject-keyed) and Gmail (threadId-keyed) shares one Message-ID, so matching
+/// on it merges both provider views into one file even when the thread keys
+/// differ. Scans the serialized `**Message-ID**: <mid>` line rather than a full
+/// parse so large directories stay cheap.
+fn find_thread_file_by_message_id(out_dir: &Path, message_id: &str) -> Option<PathBuf> {
+    let mid = message_id.trim();
+    if mid.is_empty() || !out_dir.exists() {
+        return None;
+    }
+    let needle = format!("**Message-ID**: {}", mid);
+    for entry in std::fs::read_dir(out_dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
         if let Ok(text) = std::fs::read_to_string(&path)
-            && let Some(cap) = THREAD_ID_RE.captures(&text)
-            && cap[1].trim() == thread_id
+            && text.lines().any(|l| l.trim() == needle.as_str())
         {
             return Some(path);
         }
@@ -189,7 +215,16 @@ pub fn merge_message_to_file(
 ) -> Result<Option<PathBuf>> {
     std::fs::create_dir_all(out_dir)?;
 
-    let existing_file = find_thread_file(out_dir, thread_key);
+    // Resolve the existing file: first by the provider thread key (alias-aware),
+    // then — if that misses — by Message-ID so the same message synced from two
+    // providers (IMAP subject-key vs Gmail threadId) lands in one file (#ckythreadmerge).
+    let existing_file = find_thread_file(out_dir, thread_key).or_else(|| {
+        message
+            .message_id
+            .as_deref()
+            .filter(|m| !m.trim().is_empty())
+            .and_then(|mid| find_thread_file_by_message_id(out_dir, mid))
+    });
     let mut thread: Thread = if let Some(ref ef) = existing_file {
         let text = std::fs::read_to_string(ef)?;
         parse_thread_markdown(&text).unwrap_or_else(|| Thread {
@@ -204,6 +239,16 @@ pub fn merge_message_to_file(
             ..Default::default()
         }
     };
+
+    // Record the provider key as an alias when the thread was found under a
+    // different primary id (the cross-provider merge case), so future lookups by
+    // either provider's key resolve to this one file (#ckythreadmerge).
+    if !thread.id.is_empty()
+        && thread.id != thread_key
+        && !thread.aliases.iter().any(|a| a.trim() == thread_key)
+    {
+        thread.aliases.push(thread_key.to_string());
+    }
 
     // Accumulate labels and accounts
     if !label_name.is_empty() && !thread.labels.contains(&label_name.to_string()) {

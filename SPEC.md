@@ -101,6 +101,7 @@ Mailbox resolution (when no explicit name given):
 **Labels**: {label1}, {label2}
 **Accounts**: {account1}, {account2}
 **Thread ID**: {thread_key}
+**Thread Aliases**: {alt_key1}, {alt_key2}   ← only present for cross-provider merges
 **Last updated**: {RFC 2822 date}
 **Tracking**: {domain1}, {domain2}   ← only present when tracking pixels detected
 
@@ -122,6 +123,8 @@ Mailbox resolution (when no explicit name given):
 ```
 
 Per-message `**Message-ID**:`, `**To**:`, and `**CC**:` lines are emitted after the message header when non-empty. Old files without these lines parse correctly (fields default to empty). `**Message-ID**:` is extracted during both Gmail and IMAP sync (the IMAP path reads it from the parsed message headers) and stored per message for use in reply threading (`in_reply_to` in drafts).
+
+`**Thread Aliases**:` is emitted only when a thread has been merged across providers (see §4.5). A thread "claims" a key `K` when `Thread ID == K` or `Thread Aliases` contains `K`; file lookups during sync and refetch match on any claimed key.
 
 Metadata regex: `^\*\*(.+?)\*\*:\s*(.+)$` (multiline)
 Message header regex: `^## (.+?) — (.+)$` (multiline, em dash U+2014)
@@ -353,7 +356,19 @@ When the same thread is fetched from multiple labels or accounts:
 - Messages are merged and deduplicated
 - Messages are sorted by parsed date
 
-### 4.5 Label Routing
+### 4.5 Cross-Provider Thread Reconciliation
+
+IMAP threads are keyed by the subject-derived `thread_key` (§4.2) while Gmail API threads are keyed by Gmail's `threadId`. Without reconciliation the same conversation synced from both providers forks into two files. Corky merges them with a **Message-ID bridge**:
+
+1. On merge, the existing file is resolved first by the provider `thread_key` (alias-aware), then — if that misses — by the message's `Message-ID`: any file that already holds a message with that `Message-ID` is the match.
+2. When a match is found under a different primary id, the incoming `thread_key` is appended to `**Thread Aliases**:` so future lookups from either provider resolve to the one file.
+3. The matched message is then subject to normal deduplication (§4.3), so the shared message is not duplicated and labels/accounts still accumulate.
+
+Because the bridge keys on the globally unique `Message-ID`, it works in both directions (Gmail-then-IMAP and IMAP-then-Gmail) and for CC'd cross-account conversations. Replies that only ever appear under one provider are not bridged by `Message-ID`, but once the parent thread files are merged and an alias recorded, subsequent replies resolve via the alias. `refetch` resolves a merged thread by any claimed key (id or alias).
+
+Limitation: a message with no `Message-ID` cannot bridge, so two distinct keys for it still produce two files (the pre-fix behavior).
+
+### 4.6 Label Routing
 
 Labels in the `[routing]` section of `.corky.toml` route to configured mailbox directories.
 Fan-out: one label can route to multiple mailboxes (array of paths).
@@ -365,7 +380,7 @@ Account:label syntax (`"proton-dev:INBOX"`):
 - The IMAP folder used is the part after the colon
 - Supported in both account `labels` arrays and `[routing]` keys (e.g. `"work:for-lucas" = ["mailboxes/lucas"]` routes only when syncing the `work` account)
 
-### 4.6 Manifest Generation
+### 4.7 Manifest Generation
 
 After sync, scan all `.md` files in `conversations/`:
 1. Parse each file back into a Thread object

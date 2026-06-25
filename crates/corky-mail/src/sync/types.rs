@@ -33,6 +33,13 @@ pub struct Thread {
     pub last_date: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tracking: Vec<String>,
+    /// Additional provider thread keys that map to this thread (#ckythreadmerge).
+    /// The primary identity is `id`; `aliases` lets a thread written under one
+    /// provider's key (e.g. Gmail `threadId`) be found when another provider
+    /// (e.g. IMAP subject-key) or a refetch resolves by a different key. A file
+    /// "claims" a key K when `id == K` or `aliases` contains K.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

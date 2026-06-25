@@ -36,6 +36,7 @@ fn test_roundtrip_single_message() {
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
+        aliases: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -72,6 +73,7 @@ fn test_roundtrip_message_id() {
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
+        aliases: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -105,6 +107,7 @@ fn test_roundtrip_message_id_none() {
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
+        aliases: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -158,6 +161,7 @@ fn test_roundtrip_multiple_messages() {
         ],
         last_date: "Mon, 10 Feb 2025 11:00:00 +0000".to_string(),
         tracking: vec![],
+        aliases: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -361,6 +365,168 @@ fn test_dedup_different_sender_same_date_not_skipped() {
     let content = std::fs::read_to_string(entries[0].path()).unwrap();
     let parsed = parse_thread_markdown(&content).unwrap();
     assert_eq!(parsed.messages.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Cross-provider thread merge (#ckythreadmerge)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_cross_provider_merge_by_message_id() {
+    // The same message synced from Gmail (threadId key) and IMAP (subject key)
+    // shares one Message-ID, so both providers must land in a single thread file
+    // with the second key recorded as an alias instead of forking a duplicate.
+    let tmp = TempDir::new().unwrap();
+    let out_dir = tmp.path().join("conversations");
+    std::fs::create_dir_all(&out_dir).unwrap();
+
+    let mid = "<unique-1234@example.com>";
+
+    // Gmail API path: thread key is the Gmail threadId.
+    let gmail_msg = Message {
+        id: "gmail-1".to_string(),
+        thread_id: "gmail-thread-abc".to_string(),
+        from: "Alice <alice@example.com>".to_string(),
+        to: String::new(),
+        cc: String::new(),
+        date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        subject: "Cross Provider".to_string(),
+        body: "Via Gmail API".to_string(),
+        message_id: Some(mid.to_string()),
+    };
+    merge_message_to_file(&out_dir, "inbox", "gmail-acct", &gmail_msg, "gmail-thread-abc")
+        .unwrap();
+
+    // IMAP path: the very same message, but keyed by the subject slug.
+    let imap_msg = Message {
+        id: "imap-1".to_string(),
+        thread_id: "cross provider".to_string(),
+        from: "Alice <alice@example.com>".to_string(),
+        to: String::new(),
+        cc: String::new(),
+        date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        subject: "Cross Provider".to_string(),
+        body: "Via Gmail API".to_string(),
+        message_id: Some(mid.to_string()),
+    };
+    merge_message_to_file(&out_dir, "inbox", "imap-acct", &imap_msg, "cross provider")
+        .unwrap();
+
+    // Exactly one file; the IMAP message deduped into the Gmail thread and the
+    // subject key was recorded as an alias.
+    let entries: Vec<_> = std::fs::read_dir(&out_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+    assert_eq!(entries.len(), 1, "cross-provider merge should keep one file");
+
+    let content = std::fs::read_to_string(entries[0].path()).unwrap();
+    assert!(content.contains("**Thread ID**: gmail-thread-abc"));
+    assert!(content.contains("**Thread Aliases**: cross provider"));
+    // Both accounts accumulated onto the merged thread.
+    assert!(content.contains("**Accounts**: gmail-acct, imap-acct"));
+    assert!(content.contains(mid));
+}
+
+#[test]
+fn test_alias_lookup_merges_followup_by_key() {
+    // After a cross-provider merge records an alias, a later message arriving
+    // under that alias key must resolve to the merged file (no new duplicate).
+    let tmp = TempDir::new().unwrap();
+    let out_dir = tmp.path().join("conversations");
+    std::fs::create_dir_all(&out_dir).unwrap();
+
+    let mid1 = "<orig-abc@example.com>";
+    // Gmail writes the thread under its threadId.
+    let gmail_msg = Message {
+        id: "g1".to_string(),
+        thread_id: "gmail-tid".to_string(),
+        from: "Alice <alice@example.com>".to_string(),
+        to: String::new(),
+        cc: String::new(),
+        date: "Mon, 10 Feb 2025 09:00:00 +0000".to_string(),
+        subject: "Alias Followup".to_string(),
+        body: "Original".to_string(),
+        message_id: Some(mid1.to_string()),
+    };
+    merge_message_to_file(&out_dir, "inbox", "gmail-acct", &gmail_msg, "gmail-tid").unwrap();
+
+    // IMAP replies in the same conversation; its (different) Message-ID won't
+    // match, but after the first bridge merge recorded "imap-key" as an alias,
+    // the subject key resolves directly. First force the alias by bridging a
+    // second shared message:
+    let bridge = Message {
+        id: "b1".to_string(),
+        thread_id: "imap-key".to_string(),
+        from: "Bob <bob@example.com>".to_string(),
+        to: String::new(),
+        cc: String::new(),
+        date: "Mon, 10 Feb 2025 09:30:00 +0000".to_string(),
+        subject: "Alias Followup".to_string(),
+        body: "Shared".to_string(),
+        message_id: Some("<shared-bridge@example.com>".to_string()),
+    };
+    // Write the shared message under the Gmail key first so it exists there...
+    merge_message_to_file(&out_dir, "inbox", "gmail-acct", &bridge, "gmail-tid").unwrap();
+    // ...then under the IMAP key: Message-ID bridge merges + records alias.
+    merge_message_to_file(&out_dir, "inbox", "imap-acct", &bridge, "imap-key").unwrap();
+
+    // Now a brand-new IMAP reply (new Message-ID) keyed only by "imap-key":
+    let reply = Message {
+        id: "r1".to_string(),
+        thread_id: "imap-key".to_string(),
+        from: "Bob <bob@example.com>".to_string(),
+        to: String::new(),
+        cc: String::new(),
+        date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        subject: "Re: Alias Followup".to_string(),
+        body: "Reply body".to_string(),
+        message_id: Some("<reply-new@example.com>".to_string()),
+    };
+    merge_message_to_file(&out_dir, "inbox", "imap-acct", &reply, "imap-key").unwrap();
+
+    let entries: Vec<_> = std::fs::read_dir(&out_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+    assert_eq!(entries.len(), 1, "alias lookup should keep one file");
+
+    let content = std::fs::read_to_string(entries[0].path()).unwrap();
+    assert!(content.contains("**Thread Aliases**: imap-key"));
+    assert!(content.contains("Reply body"));
+}
+
+#[test]
+fn test_no_merge_without_message_id() {
+    // Without a Message-ID there is no cross-provider bridge: two distinct keys
+    // produce two files (documents the pre-fix behavior so the bridge is the
+    // only thing closing the gap).
+    let tmp = TempDir::new().unwrap();
+    let out_dir = tmp.path().join("conversations");
+    std::fs::create_dir_all(&out_dir).unwrap();
+
+    let msg = Message {
+        id: "1".to_string(),
+        thread_id: "no-merge".to_string(),
+        from: "Alice <alice@example.com>".to_string(),
+        to: String::new(),
+        cc: String::new(),
+        date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
+        subject: "No Merge".to_string(),
+        body: "Body".to_string(),
+        message_id: None,
+    };
+    merge_message_to_file(&out_dir, "inbox", "a1", &msg, "key-one").unwrap();
+    merge_message_to_file(&out_dir, "inbox", "a2", &msg, "key-two").unwrap();
+
+    let entries: Vec<_> = std::fs::read_dir(&out_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+    assert_eq!(entries.len(), 2, "no Message-ID means no bridge, two files");
 }
 
 // ---------------------------------------------------------------------------
@@ -739,6 +905,7 @@ fn test_thread_to_markdown_format() {
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
+        aliases: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -765,6 +932,7 @@ fn test_thread_to_markdown_empty_labels() {
         messages: vec![],
         last_date: String::new(),
         tracking: vec![],
+        aliases: vec![],
     };
 
     let md = thread_to_markdown(&thread);
@@ -809,6 +977,7 @@ fn test_manifest_generation() {
         }],
         last_date: "Mon, 10 Feb 2025 10:00:00 +0000".to_string(),
         tracking: vec![],
+        aliases: vec![],
     };
 
     std::fs::write(
