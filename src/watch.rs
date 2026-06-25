@@ -19,6 +19,74 @@ struct SyncCursorSnapshot {
     gmail_history_ids: HashMap<String, HashMap<String, u64>>,
 }
 
+/// A periodic phase in the watch loop (#ckywatchsm), replacing the loose
+/// `cycles_since_*: u64` counters with a typed cadence + per-phase circuit breaker.
+///
+/// Normal cadence: due once every `every` cycles. On repeated failure the phase
+/// enters exponential backoff (skipped for `2^(failures-1)` cycles, capped at
+/// `MAX_BACKOFF_CYCLES`) instead of being retried every tick — so e.g. a phase
+/// failing on a persistent OAuth error stops hammering the loop. A success resets
+/// the breaker.
+struct PeriodicPhase {
+    name: &'static str,
+    every: u64,
+    cycles_since: u64,
+    consecutive_failures: u32,
+    backoff_remaining: u64,
+}
+
+/// Cap on backoff so a long-failing phase still retries roughly hourly-ish.
+const MAX_BACKOFF_CYCLES: u64 = 64;
+/// Cap the exponent so `1 << exp` never overflows / exceeds the backoff cap.
+const MAX_BACKOFF_EXP: u32 = 6;
+
+impl PeriodicPhase {
+    fn new(name: &'static str, every: u64) -> Self {
+        PeriodicPhase {
+            name,
+            every: every.max(1),
+            cycles_since: 0,
+            consecutive_failures: 0,
+            backoff_remaining: 0,
+        }
+    }
+
+    /// Advance one watch cycle; returns true if this phase should run now.
+    /// While in backoff the phase is skipped (and the cadence counter is held)
+    /// until the backoff window elapses.
+    fn tick(&mut self) -> bool {
+        if self.backoff_remaining > 0 {
+            self.backoff_remaining -= 1;
+            return false;
+        }
+        self.cycles_since += 1;
+        if self.cycles_since >= self.every {
+            self.cycles_since = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Clear the breaker after a successful run.
+    fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+        self.backoff_remaining = 0;
+    }
+
+    /// Record a failure and arm exponential backoff.
+    fn record_failure(&mut self) {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        let exp = self.consecutive_failures.min(MAX_BACKOFF_EXP);
+        // exp >= 1 here, so 1 << (exp - 1) is well defined.
+        self.backoff_remaining = (1u64 << (exp - 1)).min(MAX_BACKOFF_CYCLES);
+    }
+
+    fn in_backoff(&self) -> bool {
+        self.backoff_remaining > 0
+    }
+}
+
 /// Snapshot provider-specific sync cursors from current sync state.
 fn snapshot_cursors(state: &SyncState) -> SyncCursorSnapshot {
     let mut snap = SyncCursorSnapshot::default();
@@ -271,19 +339,39 @@ fn poll_once(notify_enabled: bool, shutdown: Arc<AtomicBool>) -> usize {
 /// the loop on the first panicking tick and violating the never-crashes-loop
 /// contract. Here we log it and let the loop continue. The tick's own return
 /// value is intentionally discarded, matching the prior behavior.
-async fn run_tick<F, R>(label: &str, f: F)
+/// Run a watch tick on a blocking thread, swallowing panics so one bad tick never
+/// crashes the loop. Returns `true` if the tick completed, `false` if it panicked
+/// or was cancelled — the caller feeds that into a phase circuit breaker.
+async fn run_tick<F, R>(label: &str, f: F) -> bool
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
     match tokio::task::spawn_blocking(f).await {
-        Ok(_) => {}
+        Ok(_) => true,
         Err(e) if e.is_panic() => {
             eprintln!("  warning: {label} tick panicked; continuing watch loop");
+            false
         }
         Err(_) => {
             // Cancelled (e.g. runtime shutdown) — nothing to recover, just continue.
             eprintln!("  warning: {label} tick did not complete; continuing watch loop");
+            false
+        }
+    }
+}
+
+/// Feed a tick outcome into a phase's circuit breaker, noting when it backs off.
+fn update_phase_breaker(phase: &mut PeriodicPhase, ok: bool) {
+    if ok {
+        phase.record_success();
+    } else {
+        phase.record_failure();
+        if phase.in_backoff() {
+            eprintln!(
+                "  note: {} tick failed {}x; backing off {} cycle(s)",
+                phase.name, phase.consecutive_failures, phase.backoff_remaining
+            );
         }
     }
 }
@@ -317,12 +405,12 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
         }
     );
 
-    let mut cycles_since_upgrade_check: u64 = 0;
-    let mut cycles_since_filter_check: u64 = 0;
-    // Check for upgrades every N cycles (roughly once per hour)
-    let upgrade_check_every = (3600 / interval).max(1);
-    // Check filter drift every N cycles (roughly once per hour)
-    let filter_check_every = upgrade_check_every;
+    // Typed periodic phases (#ckywatchsm) — roughly once per hour, each with its
+    // own circuit breaker so a persistently-failing phase backs off instead of
+    // retrying every cycle.
+    let check_every = (3600 / interval).max(1);
+    let mut upgrade_phase = PeriodicPhase::new("auto-upgrade", check_every);
+    let mut filter_phase = PeriodicPhase::new("filter-drift", check_every);
 
     loop {
         if shutdown.load(Ordering::Relaxed) {
@@ -348,25 +436,21 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
             break;
         }
 
-        // Auto-upgrade check (once per hour)
-        if auto_upgrade {
-            cycles_since_upgrade_check += 1;
-            if cycles_since_upgrade_check >= upgrade_check_every {
-                cycles_since_upgrade_check = 0;
-                run_tick("auto-upgrade", try_auto_upgrade).await;
-                // If we get here, exec() didn't happen (no upgrade or failed)
-            }
+        // Auto-upgrade check (once per hour; circuit-broken on repeated failure)
+        if auto_upgrade && upgrade_phase.tick() {
+            let ok = run_tick("auto-upgrade", try_auto_upgrade).await;
+            // If we get here, exec() didn't happen (no upgrade or failed).
+            update_phase_breaker(&mut upgrade_phase, ok);
         }
 
         if shutdown.load(Ordering::Relaxed) {
             break;
         }
 
-        // Filter drift check (once per hour, best-effort)
-        cycles_since_filter_check += 1;
-        if cycles_since_filter_check >= filter_check_every {
-            cycles_since_filter_check = 0;
-            run_tick("filter-drift", check_filter_drift).await;
+        // Filter drift check (once per hour, best-effort; circuit-broken on failure)
+        if filter_phase.tick() {
+            let ok = run_tick("filter-drift", check_filter_drift).await;
+            update_phase_breaker(&mut filter_phase, ok);
         }
 
         if shutdown.load(Ordering::Relaxed) {
@@ -388,6 +472,56 @@ pub async fn run(interval_override: Option<u64>) -> Result<()> {
 mod tests {
     use super::*;
     use crate::sync::types::{AccountSyncState, GmailLabelState, LabelState};
+
+    #[test]
+    fn periodic_phase_fires_on_cadence() {
+        let mut p = PeriodicPhase::new("x", 3);
+        // Due exactly every 3rd cycle.
+        assert_eq!(
+            (0..6).map(|_| p.tick()).collect::<Vec<_>>(),
+            vec![false, false, true, false, false, true]
+        );
+    }
+
+    #[test]
+    fn periodic_phase_every_zero_is_clamped_to_one() {
+        let mut p = PeriodicPhase::new("x", 0);
+        assert!(p.tick());
+        assert!(p.tick());
+    }
+
+    #[test]
+    fn failure_arms_exponential_backoff_then_recovers() {
+        let mut p = PeriodicPhase::new("x", 1); // due every cycle
+        assert!(p.tick());
+        // 1st failure → backoff 1 cycle (1 << 0).
+        p.record_failure();
+        assert_eq!(p.consecutive_failures, 1);
+        assert!(p.in_backoff());
+        assert!(!p.tick()); // consumes the 1-cycle backoff
+        assert!(!p.in_backoff());
+        assert!(p.tick()); // due again
+        // 2nd consecutive failure → backoff 2 cycles (1 << 1).
+        p.record_failure();
+        assert_eq!(p.consecutive_failures, 2);
+        assert_eq!(p.backoff_remaining, 2);
+        assert!(!p.tick());
+        assert!(!p.tick());
+        assert!(p.tick());
+        // Success clears the breaker.
+        p.record_success();
+        assert_eq!(p.consecutive_failures, 0);
+        assert!(!p.in_backoff());
+    }
+
+    #[test]
+    fn backoff_is_capped() {
+        let mut p = PeriodicPhase::new("x", 1);
+        for _ in 0..100 {
+            p.record_failure();
+        }
+        assert!(p.backoff_remaining <= MAX_BACKOFF_CYCLES);
+    }
 
     #[tokio::test]
     async fn run_tick_swallows_panic_and_continues() {

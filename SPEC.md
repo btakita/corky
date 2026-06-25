@@ -1361,7 +1361,20 @@ while not shutdown:
 
 SIGTERM, SIGINT → clean shutdown (finish current poll, then exit). Both IMAP and Gmail API sync paths check the shutdown signal and return early when interrupted.
 
-**Panic isolation:** every loop tick (sync, schedule, auto-upgrade, filter-drift) runs through `spawn_blocking`, and a panic inside a tick is caught as a `JoinError`, logged, and skipped — the daemon continues to the next interval instead of crashing. This requires the **unwind** panic strategy; the release profile sets `panic = "unwind"` (not `abort`) specifically so a single bad tick cannot abort the long-running watch process.
+**Panic isolation:** every loop tick (sync, schedule, auto-upgrade, filter-drift) runs through `spawn_blocking`, and a panic inside a tick is caught as a `JoinError`, logged, and skipped — the daemon continues to the next interval instead of crashing. This requires the **unwind** panic strategy; the release profile sets `panic = "unwind"` (not `abort`) specifically so a single bad tick cannot abort the long-running watch process. `run_tick` returns whether the tick completed (`false` on panic/cancel) so periodic phases can break their circuit.
+
+### 9.2a Periodic phases + circuit breaker (#ckywatchsm)
+
+The periodic phases (`auto-upgrade`, `filter-drift`, ~hourly) use a typed
+`PeriodicPhase` (cadence + per-phase circuit breaker) instead of loose
+`cycles_since_*: u64` counters:
+
+- **Cadence:** `tick()` returns true once every `every` cycles (`every = max(1, 3600/interval)`).
+- **Circuit breaker:** a tick that panics/cancels feeds `record_failure()`, arming
+  exponential backoff (`2^(failures-1)` cycles, capped at `MAX_BACKOFF_CYCLES = 64`);
+  while in backoff the phase is skipped (it does not retry every tick). A successful
+  tick calls `record_success()`, clearing the breaker. So e.g. a phase failing on a
+  persistent OAuth error backs off instead of hammering the loop each interval.
 
 ### 9.3 Notifications
 
