@@ -788,6 +788,7 @@ Push local contacts to external platforms. Currently supports Google Contacts vi
 - Reads contacts from `.corky.toml` `[contacts.*]` and `mail/contacts/{name}/AGENTS.md`
 - Maps local fields → Google Person: name, emails, organization, title, phone, LinkedIn URL
 - Creates new contacts or updates existing ones (tracked by `resourceName` in `.people-sync-state.json`)
+- `.people-sync-state.json` is written through the same locked atomic store as `tokens.json` / `.sync-state.json` (`save_json_with_lock`): concurrent `contact push` runs are serialized and each save overlays its `resourceName` mappings onto the current on-disk state, so a concurrent writer's updates are never clobbered (which previously caused duplicate Google contacts on the next push)
 - Falls back to create if an update target returns 404 (deleted on Google side)
 
 **Field extraction from AGENTS.md:**

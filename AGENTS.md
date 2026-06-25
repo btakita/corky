@@ -124,7 +124,7 @@ If `[gsc]` service-account auth is configured, corky only caches that Search Con
 - **Multi-label accumulation**: Thread fetched from multiple labels/accounts accumulates all in metadata.
 - **Incremental by default**: Tracks IMAP UIDs per-account in `.sync-state.json`. `sync full` re-fetches everything.
 - **Streaming writes**: Each message merged immediately. If sync crashes, state is not saved; next run re-fetches.
-- **Shared state persistence**: `tokens.json` and `.sync-state.json` are shared across commands. Treat them as locked, atomic-write stores; when behavior changes here, update README/SPEC/instruction files in the same commit.
+- **Shared state persistence**: `tokens.json`, `.sync-state.json`, and `.people-sync-state.json` are shared across commands. Treat them as locked, atomic-write stores (`save_json_with_lock`, with per-entry overlay merges so concurrent writers don't clobber each other); when behavior changes here, update README/SPEC/instruction files in the same commit.
 - **Shared label routing**: Labels in `[routing]` section of `.corky.toml` route to `mail/mailboxes/{name}/conversations/`.
   One label can fan-out to multiple mailboxes.
 - **Dedup**: Messages deduplicated by `Message-ID` when present, else normalized sender address + UTC-second timestamp (timezone/display-name independent) when merging into existing files.

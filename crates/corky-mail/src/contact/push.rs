@@ -261,22 +261,36 @@ fn sync_state_path() -> std::path::PathBuf {
 }
 
 fn load_sync_state() -> Result<PeopleSyncState> {
-    let path = sync_state_path();
-    if !path.exists() {
-        return Ok(PeopleSyncState::default());
-    }
-    let content = std::fs::read_to_string(&path)?;
-    Ok(serde_json::from_str(&content)?)
+    crate::file_store::load_json_or_default(&sync_state_path())
 }
 
+/// Persist the People resourceName map through the locked atomic store
+/// (#ckypeoplesync). Previously this used a plain `fs::write`, so two concurrent
+/// `corky contact push` runs raced: the second load→save clobbered the first
+/// writer's freshly-stored `resourceName`s, which then re-created those Google
+/// contacts as duplicates on the next push. Going through `save_json_with_lock`
+/// serializes writers, and the merge **overlays** our entries onto the current
+/// on-disk map (rather than replacing it) so a concurrent writer's mappings are
+/// preserved. `contact push` only adds/updates name→resourceName mappings, never
+/// removes them, so a union merge is correct.
 fn save_sync_state(state: &PeopleSyncState) -> Result<()> {
-    let path = sync_state_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    crate::file_store::save_json_with_lock::<PeopleSyncState, _>(
+        &sync_state_path(),
+        None,
+        |current| Ok(merge_sync_state(current, state)),
+    )
+}
+
+/// Overlay `updates`' resourceName mappings onto `current` (the locked on-disk
+/// state), keeping any entries a concurrent writer added that `updates` doesn't
+/// know about (#ckypeoplesync).
+fn merge_sync_state(mut current: PeopleSyncState, updates: &PeopleSyncState) -> PeopleSyncState {
+    for (name, resource) in &updates.google_resource_names {
+        current
+            .google_resource_names
+            .insert(name.clone(), resource.clone());
     }
-    let content = serde_json::to_string_pretty(state)?;
-    std::fs::write(&path, content)?;
-    Ok(())
+    current
 }
 
 // --- Field extraction from AGENTS.md ---
@@ -648,6 +662,32 @@ pub fn run_google(names: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_sync_state_preserves_concurrent_writer_entries() {
+        // #ckypeoplesync: our save must overlay onto the locked on-disk state,
+        // not replace it — a concurrent writer's entry survives.
+        let mut on_disk = PeopleSyncState::default();
+        on_disk
+            .google_resource_names
+            .insert("alice".into(), "people/cA".into());
+
+        let mut ours = PeopleSyncState::default();
+        ours.google_resource_names
+            .insert("bob".into(), "people/cB".into());
+        // We also re-map alice to a newer resourceName.
+        ours.google_resource_names
+            .insert("alice".into(), "people/cA2".into());
+
+        let merged = merge_sync_state(on_disk, &ours);
+        // Concurrent writer's entry kept where we didn't touch it; our updates win.
+        assert_eq!(merged.google_resource_names.get("bob").unwrap(), "people/cB");
+        assert_eq!(
+            merged.google_resource_names.get("alice").unwrap(),
+            "people/cA2"
+        );
+        assert_eq!(merged.google_resource_names.len(), 2);
+    }
 
     #[test]
     fn test_extract_contact_payload_basic() {
