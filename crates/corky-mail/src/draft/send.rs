@@ -118,6 +118,14 @@ fn run_internal(
         .map(|p| p.display().to_string())
         .collect();
 
+    // #ckymimeinline: resolve inline `images:` paths (same anchor convention as
+    // `attachments:`) so draft send embeds them with CIDs instead of dropping them.
+    let image_paths: Vec<PathBuf> = meta
+        .images
+        .iter()
+        .map(|p| PathBuf::from(super::resolve_media_path(p, draft_dir)))
+        .collect();
+
     let from = meta.from.as_deref().unwrap_or(&acct.user);
     let account_hint = account
         .map(str::to_string)
@@ -128,11 +136,12 @@ fn run_internal(
         account.or(Some(acct.user.as_str())),
     )?;
 
-    // #ckymimestream: for large attachments, spool the MIME to a temp file and
-    // stream the base64url `raw` body so the message is never held in RAM as one
-    // ~1.3× string. Below the threshold the simple in-memory JSON path is used.
-    let total_attachment_bytes: u64 = attachment_paths
+    // #ckymimestream: for large attachments/images, spool the MIME to a temp file
+    // and stream the base64url `raw` body so the message is never held in RAM as
+    // one ~1.3× string. Below the threshold the simple in-memory JSON path is used.
+    let total_media_bytes: u64 = attachment_paths
         .iter()
+        .chain(image_paths.iter())
         .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
         .sum();
 
@@ -146,7 +155,7 @@ fn run_internal(
         }
     }
 
-    let resp_result = if total_attachment_bytes >= LARGE_ATTACHMENT_BYTES {
+    let resp_result = if total_media_bytes >= LARGE_ATTACHMENT_BYTES {
         // Spool streamed MIME to an unnamed temp file, then stream it back
         // through the base64url JSON body.
         let mut spool = tempfile::tempfile()?;
@@ -158,6 +167,7 @@ fn run_internal(
             &body,
             &meta.in_reply_to,
             &attachment_paths,
+            &image_paths,
         )?;
         spool.seek(SeekFrom::Start(0))?;
         let body = StreamingRawBody::new(spool, meta.thread_id.as_deref());
@@ -173,6 +183,7 @@ fn run_internal(
             &body,
             &meta.in_reply_to,
             &attachment_paths,
+            &image_paths,
         )?;
         let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&mime);
         let mut payload = serde_json::json!({ "raw": raw });
@@ -417,7 +428,11 @@ impl<R: Read> Read for StreamingRawBody<R> {
 
 /// Build a RFC 2822 MIME message as bytes.
 ///
-/// Returns `multipart/mixed` when attachments are present, otherwise `text/plain`.
+/// - No images/attachments → `text/plain`.
+/// - Attachments only → `multipart/mixed`.
+/// - Inline images → `multipart/related` (and `multipart/mixed` around it when
+///   attachments are also present), mirroring `draft push` so `images:` YAML is
+///   honored instead of silently dropped (#ckymimeinline).
 pub fn build_mime_message(
     to: &str,
     from: &str,
@@ -425,18 +440,47 @@ pub fn build_mime_message(
     body: &str,
     in_reply_to: &Option<String>,
     attachments: &[PathBuf],
+    images: &[PathBuf],
 ) -> Result<Vec<u8>> {
     let mut buf = Vec::new();
-    build_mime_to_writer(&mut buf, to, from, subject, body, in_reply_to, attachments)?;
+    build_mime_to_writer(&mut buf, to, from, subject, body, in_reply_to, attachments, images)?;
     Ok(buf)
 }
 
-/// Build a RFC 2822 MIME message streamed into `out` (#ckymimestream).
+/// Stream a file's contents as base64 in 57-byte (→ 76-char) lines (#ckymimestream).
+fn write_base64_stream<W: Write>(out: &mut W, path: &Path) -> Result<()> {
+    let mut f = std::fs::File::open(path)?;
+    const RAW_CHUNK: usize = 57;
+    let mut buf = [0u8; RAW_CHUNK];
+    loop {
+        let mut filled = 0;
+        while filled < RAW_CHUNK {
+            let n = f.read(&mut buf[filled..])?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
+        }
+        if filled == 0 {
+            break;
+        }
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..filled]);
+        out.write_all(encoded.as_bytes())?;
+        write!(out, "\r\n")?;
+        if filled < RAW_CHUNK {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Build a RFC 2822 MIME message streamed into `out` (#ckymimestream, #ckymimeinline).
 ///
-/// Streaming variant of [`build_mime_message`]: attachments are read and
-/// base64-encoded in 57-byte (→ 76-char) chunks written straight to `out`, so
-/// neither the raw attachment bytes nor their full base64 string are held in
-/// memory at once. Output is byte-identical to the in-memory builder.
+/// Streaming variant of [`build_mime_message`]: attachments and inline images
+/// are read and base64-encoded in 57-byte (→ 76-char) chunks written straight to
+/// `out`, so neither the raw bytes nor their full base64 string are held in
+/// memory at once.
+#[allow(clippy::too_many_arguments)]
 pub fn build_mime_to_writer<W: Write>(
     out: &mut W,
     to: &str,
@@ -445,8 +489,10 @@ pub fn build_mime_to_writer<W: Write>(
     body: &str,
     in_reply_to: &Option<String>,
     attachments: &[PathBuf],
+    images: &[PathBuf],
 ) -> Result<()> {
-    let boundary = format!("corky_boundary_{}", chrono::Utc::now().timestamp_millis());
+    let ts = chrono::Utc::now().timestamp_millis();
+    let boundary = format!("corky_boundary_{}", ts);
 
     if !from.is_empty() {
         write!(out, "From: {}\r\n", from)?;
@@ -461,73 +507,177 @@ pub fn build_mime_to_writer<W: Write>(
     }
     write!(out, "MIME-Version: 1.0\r\n")?;
 
-    if attachments.is_empty() {
+    let has_images = !images.is_empty();
+    let has_attachments = !attachments.is_empty();
+
+    // Simplest case: plain text only.
+    if !has_images && !has_attachments {
         write!(out, "Content-Type: text/plain; charset=UTF-8\r\n\r\n{}", body)?;
         return Ok(());
     }
 
-    write!(
-        out,
-        "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
-        boundary
-    )?;
-    // Text part
-    write!(out, "--{}\r\n", boundary)?;
-    write!(out, "Content-Type: text/plain; charset=UTF-8\r\n\r\n{}\r\n", body)?;
+    // Attachments only: multipart/mixed (text/plain + attachments).
+    if !has_images {
+        write!(
+            out,
+            "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
+            boundary
+        )?;
+        write!(
+            out,
+            "--{}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n{}\r\n",
+            boundary, body
+        )?;
+        for path in attachments {
+            write_part(out, &boundary, path, PartKind::Attachment)?;
+        }
+        write!(out, "--{}--\r\n", boundary)?;
+        return Ok(());
+    }
 
-    // Attachment parts — streamed in 57-byte chunks (57 → exactly 76 base64
-    // chars, no padding), matching the in-memory builder's line breaks.
-    const RAW_CHUNK: usize = 57;
-    for path in attachments {
-        let raw_filename = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "attachment".to_string());
-        // #ckymime: a raw filename with a quote or CR/LF could break the MIME
-        // structure / inject headers — sanitize for the quoted-string.
-        let filename = sanitize_mime_filename(&raw_filename);
-        let mime_type = mime_guess::from_path(path)
-            .first_or_octet_stream()
-            .to_string();
+    // Inline images: multipart/related around the body. CIDs use the same
+    // `image{N}@corky` convention as `draft push` so the two paths agree.
+    let related_b = format!("corky_rel_{}", ts);
+    let alt_b = format!("corky_alt_{}", ts);
+    let cids: Vec<String> = images
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("image{}@corky", i + 1))
+        .collect();
 
+    if has_attachments {
+        // Outer multipart/mixed, first part is the related block.
+        write!(
+            out,
+            "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
+            boundary
+        )?;
         write!(out, "--{}\r\n", boundary)?;
         write!(
             out,
-            "Content-Type: {}; name=\"{}\"\r\n",
-            mime_type, filename
+            "Content-Type: multipart/related; boundary=\"{}\"; type=\"multipart/alternative\"\r\n\r\n",
+            related_b
         )?;
-        write!(out, "Content-Transfer-Encoding: base64\r\n")?;
+    } else {
         write!(
             out,
-            "Content-Disposition: attachment; filename=\"{}\"\r\n\r\n",
-            filename
+            "Content-Type: multipart/related; boundary=\"{}\"; type=\"multipart/alternative\"\r\n\r\n",
+            related_b
         )?;
-
-        let mut f = std::fs::File::open(path)?;
-        let mut buf = [0u8; RAW_CHUNK];
-        loop {
-            let mut filled = 0;
-            while filled < RAW_CHUNK {
-                let n = f.read(&mut buf[filled..])?;
-                if n == 0 {
-                    break;
-                }
-                filled += n;
-            }
-            if filled == 0 {
-                break;
-            }
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..filled]);
-            out.write_all(encoded.as_bytes())?;
-            write!(out, "\r\n")?;
-            if filled < RAW_CHUNK {
-                break;
-            }
-        }
     }
 
-    write!(out, "--{}--\r\n", boundary)?;
+    // multipart/alternative (plain + html-with-cid-refs) inside the related block.
+    write!(out, "--{}\r\n", related_b)?;
+    write!(
+        out,
+        "Content-Type: multipart/alternative; boundary=\"{}\"\r\n\r\n",
+        alt_b
+    )?;
+    write!(
+        out,
+        "--{}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n{}\r\n",
+        alt_b, body
+    )?;
+    // HTML body, mirroring draft push: convert the markdown body and append
+    // <img src="cid:…"> references for each inline image (#ckymimeinline).
+    let mut html = super::markdown_to_html(body);
+    for (img, cid) in images.iter().zip(cids.iter()) {
+        let filename = img
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "image".to_string());
+        html.push_str(&format!(
+            "<p><img src=\"cid:{}\" alt=\"{}\" /></p>\n",
+            cid, filename
+        ));
+    }
+    write!(
+        out,
+        "--{}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{}\r\n",
+        alt_b, html
+    )?;
+    write!(out, "--{}--\r\n", alt_b)?;
+
+    // Inline image parts (Content-ID + inline disposition).
+    for (img, cid) in images.iter().zip(cids.iter()) {
+        write_inline_image(out, &related_b, img, cid)?;
+    }
+    write!(out, "--{}--\r\n", related_b)?;
+
+    // Attachments in the outer mixed wrapper, if any.
+    if has_attachments {
+        for path in attachments {
+            write_part(out, &boundary, path, PartKind::Attachment)?;
+        }
+        write!(out, "--{}--\r\n", boundary)?;
+    }
     Ok(())
+}
+
+enum PartKind {
+    Attachment,
+}
+
+/// Write a base64 attachment part under `boundary` (#ckymimestream).
+fn write_part<W: Write>(
+    out: &mut W,
+    boundary: &str,
+    path: &Path,
+    _kind: PartKind,
+) -> Result<()> {
+    let raw_filename = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "attachment".to_string());
+    // #ckymime: sanitize for the MIME quoted-string (no header injection).
+    let filename = sanitize_mime_filename(&raw_filename);
+    let mime_type = mime_guess::from_path(path)
+        .first_or_octet_stream()
+        .to_string();
+    write!(out, "--{}\r\n", boundary)?;
+    write!(
+        out,
+        "Content-Type: {}; name=\"{}\"\r\n",
+        mime_type, filename
+    )?;
+    write!(out, "Content-Transfer-Encoding: base64\r\n")?;
+    write!(
+        out,
+        "Content-Disposition: attachment; filename=\"{}\"\r\n\r\n",
+        filename
+    )?;
+    write_base64_stream(out, path)
+}
+
+/// Write an inline image part with a `Content-ID` under `boundary` (#ckymimeinline).
+fn write_inline_image<W: Write>(
+    out: &mut W,
+    boundary: &str,
+    path: &Path,
+    cid: &str,
+) -> Result<()> {
+    let raw_filename = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "image".to_string());
+    let filename = sanitize_mime_filename(&raw_filename);
+    let mime_type = mime_guess::from_path(path)
+        .first_or_octet_stream()
+        .to_string();
+    write!(out, "--{}\r\n", boundary)?;
+    write!(
+        out,
+        "Content-Type: {}; name=\"{}\"\r\n",
+        mime_type, filename
+    )?;
+    write!(out, "Content-Transfer-Encoding: base64\r\n")?;
+    write!(out, "Content-ID: <{}>\r\n", cid)?;
+    write!(
+        out,
+        "Content-Disposition: inline; filename=\"{}\"\r\n\r\n",
+        filename
+    )?;
+    write_base64_stream(out, path)
 }
 
 /// Encode a header value using RFC 2047 base64 UTF-8 if it contains non-ASCII.
@@ -613,6 +763,7 @@ mod tests {
             "Hello Alice",
             &None,
             &[],
+            &[],
         )
         .unwrap();
         let text = String::from_utf8(mime).unwrap();
@@ -631,6 +782,7 @@ mod tests {
             "Re: Test",
             "Body",
             &Some("<original@example.com>".to_string()),
+            &[],
             &[],
         )
         .unwrap();
@@ -653,6 +805,7 @@ mod tests {
             "Body",
             &None,
             &[path],
+            &[],
         )
         .unwrap();
         let text = String::from_utf8(mime).unwrap();
@@ -680,6 +833,7 @@ mod tests {
             "Body",
             &None,
             &[path],
+            &[],
         )
         .unwrap();
         let text = String::from_utf8(out).unwrap();
@@ -752,5 +906,91 @@ mod tests {
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mime)
         );
         assert_eq!(parsed["threadId"].as_str().unwrap(), "t987");
+    }
+
+    #[test]
+    fn test_build_mime_with_inline_image() {
+        // #ckymimeinline: `images:` must be embedded as multipart/related with
+        // Content-ID + inline disposition (previously dropped by draft send).
+        use std::io::Write;
+        let img = tempfile::NamedTempFile::new().unwrap();
+        // Minimal 1x1 PNG.
+        let png = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01,
+        ];
+        img.as_file().write_all(&png).unwrap();
+        let img_path = img.path().to_path_buf();
+
+        let mime = build_mime_message(
+            "alice@example.com",
+            "brian@example.com",
+            "Subject",
+            "Body",
+            &None,
+            &[],
+            std::slice::from_ref(&img_path),
+        )
+        .unwrap();
+        let text = String::from_utf8(mime).unwrap();
+
+        // Wrapped in multipart/related with an inline image carrying a CID.
+        assert!(text.contains("Content-Type: multipart/related"));
+        assert!(text.contains("Content-Type: multipart/alternative"));
+        assert!(text.contains("Content-ID: <image1@corky>"));
+        assert!(text.contains("Content-Disposition: inline"));
+        // The HTML alternative references the CID (mirrors draft push).
+        assert!(text.contains("cid:image1@corky"));
+        // The inline image bytes round-trip: collect base64 lines (the header
+        // lines carry ':' and blank lines separate them from the payload) and
+        // decode back to the original PNG.
+        let in_image = text
+            .lines()
+            .position(|l| l.contains("Content-ID: <image1@corky>"))
+            .unwrap();
+        let mut collected = String::new();
+        for line in text.lines().skip(in_image) {
+            if line.starts_with("--") {
+                break;
+            }
+            // base64 content lines have no ':' and aren't blank.
+            if !line.is_empty() && !line.contains(':') {
+                collected.push_str(line.trim());
+            }
+        }
+        let decoded =
+            base64::engine::general_purpose::STANDARD.decode(collected.as_bytes()).unwrap();
+        assert_eq!(decoded, png);
+    }
+
+    #[test]
+    fn test_build_mime_with_inline_image_and_attachment() {
+        // #ckymimeinline: both images and attachments → multipart/mixed wraps a
+        // multipart/related (alternative + inline image) plus the attachment.
+        use std::io::Write;
+        let img = tempfile::NamedTempFile::new().unwrap();
+        img.as_file().write_all(b"imgdata").unwrap();
+        let img_path = img.path().to_path_buf();
+        let att = tempfile::NamedTempFile::new().unwrap();
+        att.as_file().write_all(b"attdata").unwrap();
+        let att_path = att.path().to_path_buf();
+
+        let mime = build_mime_message(
+            "alice@example.com",
+            "brian@example.com",
+            "Subject",
+            "Body",
+            &None,
+            &[att_path],
+            &[img_path],
+        )
+        .unwrap();
+        let text = String::from_utf8(mime).unwrap();
+
+        assert!(text.contains("Content-Type: multipart/mixed"));
+        assert!(text.contains("Content-Type: multipart/related"));
+        assert!(text.contains("Content-ID: <image1@corky>"));
+        assert!(text.contains("Content-Disposition: inline"));
+        assert!(text.contains("Content-Disposition: attachment"));
     }
 }

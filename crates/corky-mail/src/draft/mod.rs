@@ -208,7 +208,7 @@ pub fn parse_draft_yaml(content: &str) -> Option<EmailDraftMeta> {
 }
 
 /// Convert markdown body text to HTML.
-fn markdown_to_html(body: &str) -> String {
+pub(crate) fn markdown_to_html(body: &str) -> String {
     use pulldown_cmark::{Options, Parser, html};
     let options =
         Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_SMART_PUNCTUATION;

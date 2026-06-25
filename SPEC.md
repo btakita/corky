@@ -535,6 +535,8 @@ format (run `corky draft migrate` to convert legacy format).
 
 **Large-attachment streaming (#ckymimestream):** when the combined attachment size is ≥ 5 MB, the MIME is spooled to a temp file via a streaming builder (attachments are read and base64-encoded in 57-byte → 76-char chunks written directly to the file), and the Gmail `{"raw":"…"}` JSON body is produced by streaming a base64url encoder over that file. Neither the raw attachment bytes, their full base64 string, nor the whole-message base64url payload are held in RAM at once, so a 500 MB attachment no longer peaks at ~1.8 GB. Below the threshold the simple in-memory path is used.
 
+**Inline images (#ckymimeinline):** the `images:` YAML field is honored (previously dropped). With inline images the body becomes `multipart/alternative` (plain + HTML with `<img src="cid:…">` references) wrapped in `multipart/related` carrying the image parts with `Content-ID` (`image{N}@corky`, matching `draft push`) and `Content-Disposition: inline`; when attachments are also present a `multipart/mixed` wraps the related block plus the attachment parts.
+
 **OAuth scope:** `GMAIL_SEND_SCOPE` (`gmail.compose`)
 
 **Token handling:** `draft send` resolves the same named account as `draft push`, stores compose-scope OAuth under `gmail:<account>:send`, and uses the resolved account user as the default `From:` header when YAML omits `from:`. The optional CLI `--account` value is treated as a Google login hint for OAuth, not as the token-store key. If Gmail returns 401, corky clears that cached send token and instructs the user to re-run `corky draft send`, which triggers compose-scope re-auth.
