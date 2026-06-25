@@ -291,6 +291,29 @@ Persistence contract:
 - Saves perform a 3-way merge against the caller's baseline so concurrent account-sync and contact-sync runs preserve unrelated updates
 - Label-state conflicts on the same mailbox keep the highest observed sync cursor (`last_uid` / `last_history_id`) when both sides advanced from the same baseline
 
+### 3.5 .sync-run-state.json — sync run-state machine (#ckysyncsm)
+
+A sidecar (`crates/corky-mail/src/sync/run_state.rs`) recording a typed *run phase*
+per account, layered on top of the cursor data in `.sync-state.json` (which stays
+the source of truth for *what* was fetched). It records *where in a run* a crash
+happened so the next sync/watch tick can detect an interrupted run and resume/repair
+instead of silently re-fetching.
+
+`SyncRunState`: `idle → fetching → merging → writing → done` (terminal), with
+`error` (terminal) on failure. Events (`SyncRunEvent`): `Start`, `Fetched`, `Merged`,
+`Complete` (finish from any in-flight phase), `Fail`, `Reset`; `transition()` rejects
+invalid edges. `is_in_flight()` (`fetching`/`merging`/`writing`) marks the interrupted
+runs `interrupted_accounts()` returns.
+
+```json
+{ "accounts": { "{account}": { "phase": "fetching", "started_at": "…", "updated_at": "…", "error": null } } }
+```
+
+`corky sync` records `Start` before each account's sync and `Complete`/`Fail` after,
+through the same locked atomic store (`save_json_with_lock`) as `.sync-state.json`.
+The resume *consumer* (reconciling an `is_in_flight` account on the next run) is
+staged as follow-up; this ships the typed machine + durable marker.
+
 ### 3.5 manifest.toml
 
 ```toml

@@ -9,6 +9,7 @@ pub mod manifest;
 pub mod markdown;
 pub mod markdown_clean;
 pub mod routes;
+pub mod run_state;
 pub mod slack_import;
 pub mod sms_import;
 pub mod telegram_import;
@@ -219,19 +220,21 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
         let acct = &accounts[name];
         println!("\n=== Account: {} ({}) ===", name, acct.user);
 
-        match acct.provider.as_str() {
-            "gmail-api" => {
-                gmail_api_sync::sync_account(
-                    name,
-                    &acct.user,
-                    &acct.labels,
-                    acct.sync_days,
-                    &mut state,
-                    full,
-                    touched.as_mut(),
-                    None,
-                )?;
-            }
+        // Record the run-phase marker (#ckysyncsm) so a crash mid-sync leaves an
+        // in-flight marker on disk for the next run to detect and resume/repair.
+        let _ = run_state::record(name, run_state::SyncRunEvent::Start, None);
+
+        let sync_result: Result<()> = match acct.provider.as_str() {
+            "gmail-api" => gmail_api_sync::sync_account(
+                name,
+                &acct.user,
+                &acct.labels,
+                acct.sync_days,
+                &mut state,
+                full,
+                touched.as_mut(),
+                None,
+            ),
             _ => {
                 let password = resolve_password(acct)?;
                 sync_account(
@@ -248,7 +251,18 @@ pub fn run(full: bool, account: Option<&str>) -> Result<()> {
                     None,
                     touched.as_mut(),
                     None,
-                )?;
+                )
+            }
+        };
+
+        match sync_result {
+            Ok(()) => {
+                let _ = run_state::record(name, run_state::SyncRunEvent::Complete, None);
+            }
+            Err(err) => {
+                let _ =
+                    run_state::record(name, run_state::SyncRunEvent::Fail, Some(err.to_string()));
+                return Err(err);
             }
         }
     }
