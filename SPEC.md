@@ -320,13 +320,15 @@ Mailbox fields:
 
 ```
 fn slugify(text: &str) -> String:
-    text = text.to_lowercase()
-    text = regex_replace(r"[^a-z0-9]+", "-", text)
+    text = text.to_lowercase()                        # Unicode-aware
+    text = regex_replace(r"[^\p{Alphabetic}\p{Nd}]+", "-", text)
     text = text.trim_matches('-')
-    text = text[..min(60, text.len())]
+    text = text[..min(60, text.len())]                # 60 bytes, char-boundary safe
     if text.is_empty(): return "untitled"
     return text
 ```
+
+The character class keeps Unicode letters and digits, so non-Latin subjects (CJK, Cyrillic, accented Latin) produce a meaningful slug instead of collapsing to `untitled`/`untitled-2`. Only subjects with no letters or digits at all (e.g. emoji-only) fall back to `untitled`.
 
 Slug collisions: If `{slug}.md` exists, try `{slug}-2.md`, `{slug}-3.md`, etc.
 

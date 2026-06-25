@@ -2,13 +2,19 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::process::Command;
 
-static SLUG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9]+").unwrap());
+// #ckyunicodeslug: keep Unicode letters and digits (CJK, Cyrillic, accented
+// Latin, …) instead of only ASCII `[a-z0-9]`, so non-Latin subjects produce a
+// meaningful slug rather than all collapsing to `untitled`. Everything else
+// (punctuation, whitespace, emoji) still becomes a hyphen separator.
+static SLUG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^\p{Alphabetic}\p{Nd}]+").unwrap());
 static THREAD_KEY_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(re|fwd?):\s*").unwrap());
 
-/// Generate a URL-safe slug from text.
+/// Generate a slug from text.
 ///
-/// Lowercases, replaces non-alphanumeric runs with hyphens,
-/// trims hyphens, truncates to 60 chars. Returns "untitled" if empty.
+/// Lowercases (Unicode-aware), replaces runs of non-(letter/digit) characters
+/// with hyphens, trims hyphens, truncates to 60 bytes on a char boundary.
+/// Unicode letters/digits are preserved (CJK, Cyrillic, …); only subjects with
+/// no letters or digits at all (e.g. emoji-only) fall back to "untitled".
 pub fn slugify(text: &str) -> String {
     let lower = text.to_lowercase();
     let slugged = SLUG_RE.replace_all(&lower, "-");
@@ -137,6 +143,20 @@ mod tests {
     fn test_slugify_empty() {
         assert_eq!(slugify(""), "untitled");
         assert_eq!(slugify("!!!"), "untitled");
+    }
+
+    #[test]
+    fn test_slugify_unicode_letters_preserved() {
+        // #ckyunicodeslug: non-Latin subjects must not collapse to "untitled".
+        assert_eq!(slugify("你好 世界"), "你好-世界");
+        assert_eq!(slugify("Привет мир"), "привет-мир");
+        assert_eq!(slugify("Café déjà vu"), "café-déjà-vu");
+        // Mixed scripts + digits.
+        assert_eq!(slugify("Q3 报告 2026"), "q3-报告-2026");
+        // Emoji are not letters/digits → become separators; with surrounding
+        // text the text survives; emoji-only still falls back.
+        assert_eq!(slugify("hi 👍 there"), "hi-there");
+        assert_eq!(slugify("👍🏽🎉"), "untitled");
     }
 
     #[test]

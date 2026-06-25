@@ -118,7 +118,7 @@ If `[gsc]` service-account auth is configured, corky only caches that Search Con
 
 ## Sync Behavior
 
-- **Immutable filenames**: Slug derived from subject on first write, never changes.
+- **Immutable filenames**: Slug derived from subject on first write, never changes. Unicode letters/digits are preserved (CJK, Cyrillic, accented Latin); only letterless subjects fall back to `untitled`.
   Thread identity tracked by `**Thread ID**` metadata inside the file.
 - **File mtime**: Set to last message date via `libc::utime()`.
 - **Multi-label accumulation**: Thread fetched from multiple labels/accounts accumulates all in metadata.
