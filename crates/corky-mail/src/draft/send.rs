@@ -37,6 +37,32 @@ pub fn run(file: &Path, extra_attachments: &[PathBuf], account: Option<&str>) ->
     run_internal(file, extra_attachments, account, false).map(|_| ())
 }
 
+/// A reply needs BOTH `in_reply_to` (RFC 2822 Message-ID → the `In-Reply-To`
+/// header) AND `thread_id` (Gmail's internal id → the API `threadId`) to thread.
+/// If only one is set the reply silently un-threads; return a warning naming the
+/// missing field (#ckythread).
+fn reply_threading_warning(
+    in_reply_to: &Option<String>,
+    thread_id: &Option<String>,
+) -> Option<String> {
+    let has_irt = in_reply_to.as_deref().is_some_and(|s| !s.trim().is_empty());
+    let has_tid = thread_id.as_deref().is_some_and(|s| !s.trim().is_empty());
+    match (has_irt, has_tid) {
+        (true, false) => Some(
+            "draft sets `in_reply_to` but not `thread_id`; Gmail needs both to thread a reply, \
+             so it will be sent as a new thread. Add the original thread's `thread_id`."
+                .to_string(),
+        ),
+        (false, true) => Some(
+            "draft sets `thread_id` but not `in_reply_to`; the `In-Reply-To` header will be \
+             missing, so non-Gmail clients won't thread the reply. Add the original Message-ID \
+             as `in_reply_to`."
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
 pub fn run_with_report(
     file: &Path,
     extra_attachments: &[PathBuf],
@@ -60,6 +86,12 @@ fn run_internal(
             "Draft must use YAML frontmatter format. Run `corky draft migrate` to convert."
         )
     })?;
+
+    // #ckythread: warn loudly when a reply has only one of the two threading
+    // fields, instead of silently un-threading.
+    if let Some(w) = reply_threading_warning(&meta.in_reply_to, &meta.thread_id) {
+        eprintln!("  warning: {w}");
+    }
 
     // Collect attachments: draft field + CLI extras.
     // Draft-declared attachment paths follow the same convention as `images:` —
@@ -256,6 +288,24 @@ fn encode_header(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reply_threading_warning_flags_partial_threading() {
+        let s = |v: &str| Some(v.to_string());
+        // Both present → no warning.
+        assert!(reply_threading_warning(&s("<m@x>"), &s("t123")).is_none());
+        // Neither present → not a reply, no warning.
+        assert!(reply_threading_warning(&None, &None).is_none());
+        // Only in_reply_to → warn about missing thread_id (Gmail).
+        let w = reply_threading_warning(&s("<m@x>"), &None).unwrap();
+        assert!(w.contains("thread_id"), "got: {w}");
+        // Only thread_id → warn about missing in_reply_to (In-Reply-To header).
+        let w = reply_threading_warning(&None, &s("t123")).unwrap();
+        assert!(w.contains("in_reply_to"), "got: {w}");
+        // Whitespace-only fields are treated as absent.
+        assert!(reply_threading_warning(&s("  "), &s("  ")).is_none());
+        assert!(reply_threading_warning(&s("<m@x>"), &s("  ")).unwrap().contains("thread_id"));
+    }
 
     #[test]
     fn test_encode_header_ascii() {

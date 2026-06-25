@@ -568,6 +568,16 @@ fn sync_label(
             .map(|h| h.get_value())
             .unwrap_or_default();
 
+        // #ckythread: the IMAP path previously hardcoded `message_id: None`, so
+        // Message-ID metadata was never written and IMAP replies could not be
+        // threaded. Extract it from the parsed headers like the other fields.
+        let message_id = parsed
+            .headers
+            .iter()
+            .find(|h| h.get_key_ref().eq_ignore_ascii_case("Message-ID"))
+            .map(|h| h.get_value().trim().to_string())
+            .filter(|v| !v.is_empty());
+
         let thread_key = thread_key_from_subject(&subject);
         let body = extract_body(&parsed);
 
@@ -580,7 +590,7 @@ fn sync_label(
             date,
             subject,
             body,
-            message_id: None,
+            message_id,
         };
 
         for out_dir in out_dirs {

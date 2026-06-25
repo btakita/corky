@@ -121,7 +121,7 @@ Mailbox resolution (when no explicit name given):
 {Body text}
 ```
 
-Per-message `**Message-ID**:`, `**To**:`, and `**CC**:` lines are emitted after the message header when non-empty. Old files without these lines parse correctly (fields default to empty). `**Message-ID**:` is extracted during Gmail sync and stored per message for use in reply threading (`in_reply_to` in drafts).
+Per-message `**Message-ID**:`, `**To**:`, and `**CC**:` lines are emitted after the message header when non-empty. Old files without these lines parse correctly (fields default to empty). `**Message-ID**:` is extracted during both Gmail and IMAP sync (the IMAP path reads it from the parsed message headers) and stored per message for use in reply threading (`in_reply_to` in drafts).
 
 Metadata regex: `^\*\*(.+?)\*\*:\s*(.+)$` (multiline)
 Message header regex: `^## (.+?) — (.+)$` (multiline, em dash U+2014)
@@ -158,6 +158,8 @@ Recommended fields: `status`, `author`
 Status values: `draft` → `review` → `approved` → `scheduled` → `sent`
 
 **Threading via `thread_id`:** When present, the value is included as `threadId` in Gmail API send/draft requests. This ensures the reply is placed in the correct Gmail thread, complementing `in_reply_to` which sets the RFC 2822 `In-Reply-To` header.
+
+A reply needs **both** fields to thread correctly. `corky draft send` prints a warning when exactly one of `in_reply_to` / `thread_id` is set (`in_reply_to` only → Gmail sends a new thread; `thread_id` only → the `In-Reply-To` header is missing so non-Gmail clients won't thread), rather than silently un-threading.
 Valid send statuses (for draft push --send): `review`, `approved`, `scheduled`
 
 **Legacy format:** The `**Key**: value` format is still supported for backward compatibility:
