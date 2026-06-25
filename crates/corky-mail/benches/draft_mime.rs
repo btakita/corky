@@ -41,7 +41,7 @@ fn build_mime_benches(c: &mut Criterion) {
 
     // A 4 KiB temp payload so the base64 attachment loop does real work.
     let tmp = tempfile::NamedTempFile::new().expect("temp file");
-    std::fs::write(tmp.path(), &b"x".repeat(4096)).expect("write payload");
+    std::fs::write(tmp.path(), b"x".repeat(4096)).expect("write payload");
     let attachments: Vec<PathBuf> = vec![tmp.path().to_path_buf()];
     group.bench_function("with_attachment", |b| {
         b.iter(|| {
