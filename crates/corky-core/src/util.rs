@@ -89,6 +89,16 @@ pub fn resolve_secret(inline: &str, cmd: &str, context: &str) -> anyhow::Result<
     anyhow::bail!("{}", context)
 }
 
+/// Take the first `max` characters of `s` without splitting a multi-byte
+/// char boundary.
+///
+/// Unlike byte slicing (`&s[..max]`), this never panics: it is safe on short
+/// strings (returns the whole string) and on multi-byte input (CJK, emoji,
+/// Cyrillic). `max` counts Unicode scalar values, not bytes.
+pub fn truncate_chars(s: &str, max: usize) -> String {
+    s.chars().take(max).collect()
+}
+
 /// Truncate a string for preview display, adding "..." if truncated.
 pub fn truncate_preview(s: &str, max: usize) -> String {
     let first_line = s.lines().next().unwrap_or("").trim();
@@ -127,6 +137,29 @@ mod tests {
     fn test_slugify_empty() {
         assert_eq!(slugify(""), "untitled");
         assert_eq!(slugify("!!!"), "untitled");
+    }
+
+    #[test]
+    fn test_truncate_chars_ascii() {
+        assert_eq!(truncate_chars("hello world", 5), "hello");
+        // Shorter than max returns the whole string (no panic, no padding).
+        assert_eq!(truncate_chars("hi", 10), "hi");
+        assert_eq!(truncate_chars("", 10), "");
+    }
+
+    #[test]
+    fn test_truncate_chars_multibyte_no_panic() {
+        // Byte-slicing &s[..10] here would panic mid-codepoint or on a short
+        // byte length; char-based truncation must not.
+        let cjk = "你好世界你好世界你好世界"; // 12 CJK chars, 36 bytes
+        assert_eq!(truncate_chars(cjk, 4), "你好世界");
+        let emoji = "👍🏽👍🏽👍🏽"; // multi-byte grapheme clusters
+        // Takes 2 scalar values without splitting a UTF-8 boundary.
+        assert_eq!(truncate_chars(emoji, 2).chars().count(), 2);
+        // due-string style: a date shorter than 10 chars must not panic.
+        assert_eq!(truncate_chars("2026", 10), "2026");
+        // RFC3339 date truncated to the YYYY-MM-DD prefix.
+        assert_eq!(truncate_chars("2026-06-24T10:00:00Z", 10), "2026-06-24");
     }
 
     #[test]

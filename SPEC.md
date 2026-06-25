@@ -485,6 +485,8 @@ Account resolution for sending:
 
 `--json` emits a stable summary with the action (`draft_created` or `sent`), transport (`imap`, `smtp`, or `gmail-api`), resolved account, recipient, subject, status transition, reply metadata, and attachment/image paths.
 
+The non-JSON push preview prints a `Body:` line truncated to the first 80 characters (with a trailing `...` when longer) via `util::truncate_chars`, so a CJK/emoji body never panics on a byte-slice boundary.
+
 ### 5.5.1 draft send
 
 ``` 
@@ -2169,7 +2171,9 @@ corky tasks done <TASK_ID> [--tasklist ID] [--account EMAIL]
 | add | POST | `/lists/{tasklist}/tasks` |
 | done | PATCH | `/lists/{tasklist}/tasks/{id}` |
 
-**list** output format: `[{id}] {title}` with optional `(due: YYYY-MM-DD)`.
+**list** output format: `[{id}] {title}` with optional `(due: YYYY-MM-DD)`. The
+due date is truncated to its first 10 characters with `util::truncate_chars`
+(char-boundary-safe) — a malformed or short `due` field never panics.
 
 **done** body: `{ "status": "completed" }` — Google Tasks marks the task hidden from default list views.
 

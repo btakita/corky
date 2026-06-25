@@ -37,7 +37,10 @@ pub fn run(tasklist: Option<&str>, account: Option<&str>) -> Result<()> {
                         if due.is_empty() {
                             println!("[{}] {}", id, title);
                         } else {
-                            println!("[{}] {} (due: {})", id, title, &due[..10]);
+                            // char-safe YYYY-MM-DD prefix: &due[..10] panics on
+                            // a due string shorter than 10 bytes.
+                            let due_date = corky_core::util::truncate_chars(due, 10);
+                            println!("[{}] {} (due: {})", id, title, due_date);
                         }
                     }
                 }

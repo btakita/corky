@@ -709,8 +709,9 @@ fn run_internal(file: &Path, send: bool, quiet: bool) -> Result<DraftPushResult>
                 println!("         {}", img);
             }
         }
-        let body_preview = if body.len() > 80 {
-            format!("{}...", &body[..80])
+        let body_preview = if body.chars().count() > 80 {
+            // char-boundary-safe: &body[..80] panics on CJK/emoji bodies.
+            format!("{}...", corky_core::util::truncate_chars(&body, 80))
         } else {
             body.clone()
         };
