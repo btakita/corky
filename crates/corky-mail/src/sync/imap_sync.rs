@@ -85,6 +85,38 @@ pub fn parse_msg_date(date_str: &str) -> DateTime<Utc> {
         .unwrap_or_default()
 }
 
+/// Extract and normalize the bare email address from a `From` header.
+///
+/// `"Display Name <addr@example.com>"` → `"addr@example.com"`, lowercased and
+/// trimmed, so the same sender dedups regardless of display-name formatting.
+/// Falls back to the trimmed, lowercased input when no angle-bracketed address
+/// is present.
+fn normalize_from_address(from: &str) -> String {
+    let addr = match (from.rfind('<'), from.rfind('>')) {
+        (Some(start), Some(end)) if start < end => &from[start + 1..end],
+        _ => from,
+    };
+    addr.trim().to_lowercase()
+}
+
+/// Stable dedup key for a message (#ckydedup).
+///
+/// Prefers the globally unique `Message-ID` (the same message from two providers
+/// shares one). When absent (for example the current IMAP path), falls back to
+/// the normalized sender address plus the UTC-second timestamp so timezone /
+/// date-format differences and display-name changes do not leak duplicates.
+fn dedup_key(m: &Message) -> String {
+    if let Some(mid) = m.message_id.as_deref() {
+        let mid = mid.trim();
+        if !mid.is_empty() {
+            return format!("mid:{mid}");
+        }
+    }
+    let addr = normalize_from_address(&m.from);
+    let secs = parse_msg_date(&m.date).timestamp();
+    format!("fd:{addr}:{secs}")
+}
+
 /// Set file mtime to the parsed date.
 #[allow(unused_variables)]
 fn set_mtime(path: &Path, date_str: &str) -> Result<()> {
@@ -181,13 +213,13 @@ pub fn merge_message_to_file(
         thread.accounts.push(account_name.to_string());
     }
 
-    // Deduplicate by (from, date)
-    let seen: HashSet<(&str, &str)> = thread
-        .messages
-        .iter()
-        .map(|m| (m.from.as_str(), m.date.as_str()))
-        .collect();
-    if seen.contains(&(message.from.as_str(), message.date.as_str())) {
+    // Deduplicate by a normalized key (#ckydedup): the raw `(from, date)` strings
+    // dropped distinct same-second messages and leaked duplicates across providers
+    // (date format/TZ and From display-name vary). `dedup_key` prefers the
+    // globally unique Message-ID and otherwise falls back to the normalized email
+    // address plus the UTC-second timestamp.
+    let seen: HashSet<String> = thread.messages.iter().map(dedup_key).collect();
+    if seen.contains(&dedup_key(message)) {
         // Still update labels/accounts even if message is a dupe
         if let Some(ref ef) = existing_file {
             std::fs::write(ef, thread_to_markdown(&thread))?;
@@ -584,6 +616,62 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    // --- #ckydedup: dedup key normalization ---
+
+    fn msg(from: &str, date: &str, mid: Option<&str>) -> Message {
+        Message {
+            id: String::new(),
+            thread_id: String::new(),
+            from: from.to_string(),
+            to: String::new(),
+            cc: String::new(),
+            date: date.to_string(),
+            subject: String::new(),
+            body: String::new(),
+            message_id: mid.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn normalize_from_address_strips_display_name() {
+        assert_eq!(
+            normalize_from_address("Jane Doe <Jane@Example.COM>"),
+            "jane@example.com"
+        );
+        assert_eq!(normalize_from_address("  bob@x.io  "), "bob@x.io");
+        // Same address, different display name → identical normalization.
+        assert_eq!(
+            normalize_from_address("Robert <bob@x.io>"),
+            normalize_from_address("Bob B. <bob@x.io>")
+        );
+    }
+
+    #[test]
+    fn dedup_key_prefers_message_id() {
+        // Same Message-ID across providers (different From/date formats) → one key.
+        let a = msg("Jane <jane@x.com>", "Mon, 1 Jun 2026 10:00:00 +0000", Some("<abc@mail>"));
+        let b = msg("jane@x.com", "1 Jun 2026 05:00:00 -0500", Some("<abc@mail>"));
+        assert_eq!(dedup_key(&a), dedup_key(&b));
+    }
+
+    #[test]
+    fn dedup_key_distinguishes_distinct_messages_same_second() {
+        // Two distinct messages, same sender and second, different Message-ID →
+        // distinct keys (the old (from,date) key collapsed these).
+        let a = msg("jane@x.com", "Mon, 1 Jun 2026 10:00:00 +0000", Some("<a@mail>"));
+        let b = msg("jane@x.com", "Mon, 1 Jun 2026 10:00:00 +0000", Some("<b@mail>"));
+        assert_ne!(dedup_key(&a), dedup_key(&b));
+    }
+
+    #[test]
+    fn dedup_key_fallback_normalizes_tz_and_display_name() {
+        // No Message-ID: the same instant expressed in two timezones plus a
+        // different display name must still dedup to one key.
+        let a = msg("Jane Doe <jane@x.com>", "Mon, 1 Jun 2026 10:00:00 +0000", None);
+        let b = msg("jane@x.com", "Mon, 1 Jun 2026 05:00:00 -0500", None);
+        assert_eq!(dedup_key(&a), dedup_key(&b));
+    }
 
     // --- Bug 1: Routing scope tests ---
 

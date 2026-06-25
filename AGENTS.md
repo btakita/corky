@@ -127,7 +127,7 @@ If `[gsc]` service-account auth is configured, corky only caches that Search Con
 - **Shared state persistence**: `tokens.json` and `.sync-state.json` are shared across commands. Treat them as locked, atomic-write stores; when behavior changes here, update README/SPEC/instruction files in the same commit.
 - **Shared label routing**: Labels in `[routing]` section of `.corky.toml` route to `mail/mailboxes/{name}/conversations/`.
   One label can fan-out to multiple mailboxes.
-- **Dedup**: Messages deduplicated by `(sender, date)` tuple when merging into existing files.
+- **Dedup**: Messages deduplicated by `Message-ID` when present, else normalized sender address + UTC-second timestamp (timezone/display-name independent) when merging into existing files.
 - **Slug collisions**: Different threads with same slug get `-2`, `-3` suffix.
 - **Orphan cleanup**: On `sync full` of all accounts, files not touched during sync are deleted. Skipped for scoped `--account` syncs (touched set is account-scoped, dir is global) and when it would reap >50% of conversations (transient/empty-fetch guard; override with `CORKY_SYNC_FORCE_ORPHAN_CLEANUP=1`).
 - **HTML-first body extraction**: Prefers `text/html` (converted to markdown via `htmd`) over `text/plain`. Falls back to plain text when no HTML part exists.

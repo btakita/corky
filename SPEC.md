@@ -337,7 +337,7 @@ Strips one layer of `Re:` or `Fwd:` prefix (case-insensitive), then lowercases.
 
 ### 4.3 Message Deduplication
 
-Messages are deduplicated by `(from, date)` tuple. If both match an existing message in the thread, the message is skipped but labels/accounts metadata is still updated.
+Messages are deduplicated by a normalized key. When a `Message-ID` is present it is the key (globally unique, so the same message synced from two providers dedups to one). Otherwise the key is the **normalized sender address** (display name stripped, lowercased) plus the **UTC-second timestamp** (parsed from the date header), so timezone/format differences and display-name changes do not leak duplicates and two distinct same-second messages are kept apart. If the key matches an existing message in the thread, the message is skipped but labels/accounts metadata is still updated.
 
 ### 4.4 Multi-Source Accumulation
 
@@ -1047,7 +1047,7 @@ From RFC822:
 For each message:
 1. Find existing thread file by scanning `**Thread ID**` metadata in all `.md` files
 2. If found, parse back into Thread object
-3. Check dedup: `(from, date)` tuple
+3. Check dedup: `Message-ID` when present, else normalized sender + UTC-second timestamp (see §4.3)
 4. If new: append message, sort by date, update `last_date`
 5. Accumulate labels and accounts
 6. Write markdown, set file mtime to last message date
