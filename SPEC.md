@@ -1575,6 +1575,8 @@ Client credentials resolution order per field:
 
 **LinkedIn limits:** 3000 character post body, 20 images max, visibility: PUBLIC or CONNECTIONS.
 
+**Commentary escaping (little Text Format):** The Posts API `commentary` field is stored in LinkedIn's "little" Text Format. Its reserved characters — `\ | { } @ [ ] ( ) < > # * _ ~` — must each be backslash-escaped *even when not part of a mention or hashtag*; an unescaped reserved character causes LinkedIn to silently drop the post text from that character onward (the "truncated post" bug, e.g. a body truncating at `~11µs` or `(Slot, Cell, Effect)`). Both commentary paths — `create_post` and the `update_post` PARTIAL_UPDATE reconcile (step 10 above) — run the body through `strip_linkedin_markdown` then `escape_little_text` after the length check (the 3000-char limit is measured on display text; escape backslashes are not rendered). The v2 `socialActions` comment endpoint uses the legacy plaintext `message.text` model (annotations in a separate `attributes` array), so first-comment text is **not** little-text-escaped.
+
 ### 12.7 CLI Commands
 
 ```

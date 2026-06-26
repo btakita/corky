@@ -37,6 +37,33 @@ fn strip_linkedin_markdown(text: &str) -> String {
     text.replace('`', "").replace("**", "")
 }
 
+/// Characters reserved by LinkedIn's "little" Text Format, used by the Posts
+/// API `commentary` field. Per LinkedIn's grammar (the `Text` rule), every one
+/// of these must be backslash-escaped — *even when it is not part of a mention
+/// or hashtag* — or LinkedIn silently drops the post text from the first
+/// unescaped reserved character onward (the "truncated post" bug). Backslash is
+/// included so a literal `\` survives; the char-by-char escaper below escapes
+/// each source character exactly once, so list order does not matter.
+const LITTLE_TEXT_RESERVED: &[char] = &[
+    '\\', '|', '{', '}', '@', '[', ']', '(', ')', '<', '>', '#', '*', '_', '~',
+];
+
+/// Escape every reserved little-text character with a backslash so the full
+/// body publishes instead of truncating at the first reserved character.
+///
+/// Source: LinkedIn little Text Format grammar (the `Text` production lists
+/// `\| \{ \} \@ \[ \] \( \) \< \> \# \\ \* \_ \~`).
+fn escape_little_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 16);
+    for c in text.chars() {
+        if LITTLE_TEXT_RESERVED.contains(&c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// Get the authenticated user's URN via /v2/userinfo.
 pub fn get_user_urn(access_token: &str) -> Result<String> {
     get_user_urn_at(API_BASE, access_token)
@@ -143,7 +170,10 @@ pub fn update_post_at(
         );
     }
 
-    let commentary = strip_linkedin_markdown(commentary);
+    // Escape little-text reserved chars after the length check — same reason as
+    // create_post_at. This PARTIAL_UPDATE reconciles the body on every publish,
+    // so without escaping it re-truncates a post that create got right.
+    let commentary = escape_little_text(&strip_linkedin_markdown(commentary));
 
     // URL-encode the URN (colons → %3A, commas → %2C)
     let encoded_urn = post_urn
@@ -284,7 +314,10 @@ pub fn create_post_at(
         );
     }
 
-    let body = strip_linkedin_markdown(body);
+    // Escape little-text reserved characters AFTER the length check (the limit
+    // is on display length; backslashes are not rendered). Without this,
+    // LinkedIn truncates the post at the first unescaped reserved char.
+    let body = escape_little_text(&strip_linkedin_markdown(body));
 
     // Validate image count
     if image_urns.len() > MAX_IMAGES {
@@ -387,5 +420,46 @@ mod tests {
             strip_linkedin_markdown("Plain text with no formatting."),
             "Plain text with no formatting."
         );
+    }
+
+    #[test]
+    fn test_escape_little_text_tilde_regression() {
+        // The "~" in "~1,000" / "~11µs" is reserved; unescaped, LinkedIn
+        // truncated the published post at the first one. Every reserved char
+        // must survive as an escaped sequence so the full body publishes.
+        assert_eq!(
+            escape_little_text("read the ~1,000 cells — about 11µs, ~5,000× cheaper"),
+            "read the \\~1,000 cells — about 11µs, \\~5,000× cheaper"
+        );
+    }
+
+    #[test]
+    fn test_escape_little_text_parens_regression() {
+        // The architecture post truncated right before "(Slot, Cell, Effect)".
+        assert_eq!(
+            escape_little_text("three primitives (Slot, Cell, Effect) plus one"),
+            "three primitives \\(Slot, Cell, Effect\\) plus one"
+        );
+    }
+
+    #[test]
+    fn test_escape_little_text_all_reserved() {
+        assert_eq!(
+            escape_little_text(r"\|{}@[]()<>#*_~"),
+            r"\\\|\{\}\@\[\]\(\)\<\>\#\*\_\~"
+        );
+    }
+
+    #[test]
+    fn test_escape_little_text_plain_unchanged() {
+        let plain = "A spreadsheet is the original reactive program: 10,000,000 cells.";
+        assert_eq!(escape_little_text(plain), plain);
+    }
+
+    #[test]
+    fn test_escape_little_text_backslash_escaped_once() {
+        // A literal backslash must become exactly one escaped backslash, and a
+        // following reserved char must still be escaped independently.
+        assert_eq!(escape_little_text(r"a\~b"), r"a\\\~b");
     }
 }
